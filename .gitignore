@@ -6,3 +6,7 @@ out/
 *.iml
 run/
 .superpowers/
+
+# The `build/` pattern above matches any directory named `build` at any depth,
+# including our source package dev.continuo.build. Un-ignore it.
+!buildSrc/src/main/kotlin/dev/continuo/build/
