@@ -11,3 +11,4 @@ rootProject.name = "continuo"
 
 include("platform")
 include("core")
+include("adapters:adapter-fabric-1.21.11")
