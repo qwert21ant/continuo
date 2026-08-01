@@ -187,7 +187,7 @@ repositories { mavenCentral() }
 dependencies {
     api(project(":platform"))
 
-    val junitVersion: String by project
+    val junitVersion = project.property("junit_version") as String
     testImplementation("org.junit.jupiter:junit-jupiter:$junitVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -445,7 +445,7 @@ plugins {
 dependencies {
     api(project(":platform"))
 
-    val junitVersion: String by project
+    val junitVersion = project.property("junit_version") as String
     testImplementation("org.junit.jupiter:junit-jupiter:$junitVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -1243,9 +1243,9 @@ java {
     toolchain { languageVersion = JavaLanguageVersion.of(21) }
 }
 
-val minecraftVersion: String by project
-val loaderVersion: String by project
-val fabricVersion: String by project
+val minecraftVersion = project.property("minecraft_version") as String
+val loaderVersion = project.property("loader_version") as String
+val fabricVersion = project.property("fabric_version") as String
 
 unimined.minecraft {
     version(minecraftVersion)
@@ -1260,10 +1260,10 @@ dependencies {
 }
 ```
 
-Note the property names: `gradle.properties` uses `minecraft_version`, and Kotlin DSL
-delegation converts to camelCase automatically only for exact matches. If
-`val minecraftVersion: String by project` fails to resolve, use
-`project.property("minecraft_version") as String` instead.
+Property names are read with `project.property("...")` rather than the `by project`
+delegate. The delegate matches the property name *exactly* — it does not convert
+`minecraft_version` to `minecraftVersion` — and silently fails at configuration time.
+This was confirmed the hard way in Task 1.
 
 Run: `./gradlew :adapters:adapter-fabric-1.21.11:build`
 
