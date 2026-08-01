@@ -7,6 +7,13 @@ pluginManagement {
     }
 }
 
+plugins {
+    // Lets Gradle resolve/auto-provision JVM toolchains (needed for `updateDaemonJvm` to
+    // compute per-platform download URLs for gradle/gradle-daemon-jvm.properties, and as a
+    // fallback if a machine doesn't already have the required JDK installed).
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 rootProject.name = "continuo"
 
 include("platform")

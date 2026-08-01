@@ -172,12 +172,28 @@ communicates only over the bridge protocol.
 
 ### Toolchain
 
-**unimined** is the preferred single loader plugin: it handles Forge 1.7.10 (MCP) and
-modern Fabric (Mojmap/Yarn) in one build, which is precisely this version spread. The
-contingency, if unimined proves troublesome, is two separate plugins — Loom for modern and
-RetroFuturaGradle for 1.7.10. Because M1 ships before 1.7.10 exists, the plugin choice must
-still be made in M1 with M2 in mind; picking a modern-only plugin at M1 means redoing the
-build at M2.
+**RESOLVED IN M1 — the single-plugin premise did not survive.** This section originally
+chose **unimined**, on the reasoning that one plugin handling Forge 1.7.10 (MCP) and modern
+Fabric (Mojmap) in one build is precisely this project's version spread. M1's toolchain
+spike found unimined's newest published release is **1.4.1 (2025-06-30)**, which predates
+Minecraft 1.21.11 (2025-12-09). Minecraft classes do not deobfuscate on 1.21.11 under it
+(unimined issue #189). A fix exists — PR #185, merged 2026-03-29 into the `lts/1.4` branch —
+but has never been cut as a release; it lives only in a floating `1.4.2-SNAPSHOT`, which is
+not an acceptable dependency for a toolchain meant to serve multiple milestones, since
+snapshot coordinates are mutable and can be garbage-collected.
+
+**The project therefore uses Fabric Loom 1.17.17** for modern versions, with Gradle 9.6.1.
+See [`docs/toolchain-decision.md`](../../toolchain-decision.md) for the full evidence trail.
+
+**Consequence for M2, which is a real cost and not a footnote:** Forge 1.7.10 needs a
+second, unrelated toolchain — **RetroFuturaGradle** is the maintained option. M2 must budget
+for standing it up, and the two adapters will not share build infrastructure. The claim that
+this project's version independence lives in the *code* rather than the *build* is now
+load-bearing rather than convenient: the SPI has to carry weight the build no longer does.
+
+Worth re-checking at M2: if unimined has cut a 1.4.2 release by then, consolidating onto one
+plugin is worth reconsidering, since the original reasoning was sound and only the release
+cadence defeated it.
 
 Mixins: standard Fabric mixin on 1.21.11; **UniMixins** on 1.7.10 — but **not before M3**.
 M1 and M2 need only plain event subscriptions (`ClientTickEvents` on Fabric,
@@ -229,7 +245,7 @@ deliberately licensed compatibly.
 | SPI cannot express both 1.7.10 and 1.21.11 without bloating | M2 | A2 is deliberately placed before anything depends on the SPI. The M2 gate stops everything if it happens |
 | SPI v0 designed around 1.21-shaped assumptions during M1 | M1 | Design SPI v0 as if 1.7.10 already existed; explicit SPI v1 revision at the end of M2 |
 | Forge 1.7.10 dev environment proves hostile in 2026 | M2 | unimined first, RetroFuturaGradle as fallback. Discovered in month 1, not month 6 |
-| Build plugin chosen at M1 cannot handle 1.7.10 at M2 | M1 | Loader plugin selected in M1 against M2's requirements, not M1's |
+| ~~Build plugin chosen at M1 cannot handle 1.7.10 at M2~~ **MATERIALIZED** | M1 | Unavoidable: unimined has no release supporting 1.21.11, so Loom was forced. M2 now needs RetroFuturaGradle as a second toolchain. Cost accepted, recorded in `docs/toolchain-decision.md` |
 | Logic leaks from core into adapters | M5, ongoing | SPI audit gate after every sub-project; adapter LOC tracked as a metric |
 | Java 8 core becomes painful to write | ongoing | Accepted cost. Revisit only if it demonstrably slows delivery; the escape hatch is a desugaring build step |
 | A* is undebuggable without visualisation | M4–M5 | Test-time path renderer in M4; pull E forward if insufficient |
