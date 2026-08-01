@@ -1002,6 +1002,7 @@ class ContinuoCoreTest {
         core.requestWalk();
         tick(45);
 
+        assertTrue(actuator.callCount() > 0, "walk must produce actuator calls");
         for (FakeActuator.Call call : actuator.calls()) {
             assertEquals(Input.FORWARD, call.input);
         }
@@ -1079,6 +1080,18 @@ class ContinuoCoreTest {
             }
         });
     }
+
+    @Test
+    void stopBeforeStartFails() {
+        ContinuoCore unstarted = new ContinuoCore();
+
+        assertThrows(IllegalStateException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                unstarted.stop();
+            }
+        });
+    }
 }
 ```
 
@@ -1140,6 +1153,9 @@ public final class ContinuoCore implements IGameEvents {
      * disconnect mid-walk leaves the client holding a movement key.
      */
     public void stop() {
+        if (context == null) {
+            throw new IllegalStateException("start(IPlatformContext) must be called first");
+        }
         if (walking) {
             context.actuator().setInput(Input.FORWARD, false);
         }
@@ -1179,7 +1195,7 @@ public final class ContinuoCore implements IGameEvents {
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `./gradlew :core:test`
-Expected: PASS, 11 tests
+Expected: PASS, 12 tests
 
 - [ ] **Step 7: Run the full build including invariant checks**
 

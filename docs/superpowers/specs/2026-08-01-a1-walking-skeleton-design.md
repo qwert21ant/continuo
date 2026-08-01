@@ -219,8 +219,15 @@ calls `requestWalk()`, pumps `onClientTick(PRE)` 45 times, and asserts:
 3. no other `Input` value is ever touched
 4. ticks 42–45 produce no further actuator calls
 
-Plus: `requestWalk()` during an active walk produces no additional actuator calls, and
-`stop()` mid-walk releases `FORWARD` and resets.
+Plus: `requestWalk()` during an active walk produces no additional actuator calls;
+`stop()` mid-walk releases `FORWARD` and resets; and both `requestWalk()` and `stop()`
+throw `IllegalStateException` when called before `start()` — one lifecycle contract, not
+two.
+
+Assertion 3 must also assert that at least one call was recorded. Without that, a dead
+core produces zero calls, the loop runs zero times, and the test passes while proving
+nothing. This test class is the template every later core test copies, so the weakness
+would propagate.
 
 No Minecraft, milliseconds to run. That this is *possible* is the entire architectural
 claim of the project, demonstrated on day one.
