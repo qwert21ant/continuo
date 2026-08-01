@@ -63,13 +63,39 @@
 
 - [ ] **Step 1: Generate the Gradle wrapper**
 
+There is no Gradle on PATH on this machine, so bootstrap one first. Any installed JDK 17+
+can run Gradle 8.14 for this purpose — the Java 21 requirement applies to the Minecraft
+adapter, not to Gradle itself.
+
 ```bash
-gradle wrapper --gradle-version 8.14
+SCRATCH="$TMPDIR/gradle-bootstrap"
+mkdir -p "$SCRATCH"
+curl -fsSL -o "$SCRATCH/gradle.zip" https://services.gradle.org/distributions/gradle-8.14-bin.zip
+unzip -q -o "$SCRATCH/gradle.zip" -d "$SCRATCH"
+"$SCRATCH/gradle-8.14/bin/gradle" wrapper --gradle-version 8.14
 ```
 
-If no system Gradle is available, download the wrapper from any existing project or run
-`gradle wrapper` from a Gradle Docker image. The wrapper files
-(`gradlew`, `gradlew.bat`, `gradle/wrapper/*`) must be committed.
+If `$TMPDIR` is unset, use the session scratch directory instead. Verify the wrapper works
+and then discard the bootstrap copy — it is not part of the repo:
+
+```bash
+./gradlew --version
+```
+
+Expected: `Gradle 8.14`.
+
+The wrapper files (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar`,
+`gradle/wrapper/gradle-wrapper.properties`) must be committed. Note that
+`gradle-wrapper.jar` is a binary and some `.gitignore` templates exclude `*.jar` — confirm
+it is actually staged.
+
+**Toolchain note.** The build requires a Java 21 toolchain. If Gradle reports
+"No matching toolchain found for Java 21", the installed JDK 21 is not in a location Gradle
+auto-detects. Point Gradle at it explicitly by adding to `gradle.properties`:
+
+```properties
+org.gradle.java.installations.paths=C:\\path\\to\\jdk-21
+```
 
 - [ ] **Step 2: Write `.gitignore`**
 
