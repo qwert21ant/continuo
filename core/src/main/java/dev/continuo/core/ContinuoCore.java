@@ -36,6 +36,9 @@ public final class ContinuoCore implements IGameEvents {
      * disconnect mid-walk leaves the client holding a movement key.
      */
     public void stop() {
+        if (context == null) {
+            throw new IllegalStateException("start(IPlatformContext) must be called first");
+        }
         if (walking) {
             context.actuator().setInput(Input.FORWARD, false);
         }

@@ -71,6 +71,7 @@ class ContinuoCoreTest {
         core.requestWalk();
         tick(45);
 
+        assertTrue(actuator.callCount() > 0, "walk must produce actuator calls");
         for (FakeActuator.Call call : actuator.calls()) {
             assertEquals(Input.FORWARD, call.input);
         }
@@ -145,6 +146,18 @@ class ContinuoCoreTest {
             @Override
             public void execute() {
                 unstarted.requestWalk();
+            }
+        });
+    }
+
+    @Test
+    void stopBeforeStartFails() {
+        ContinuoCore unstarted = new ContinuoCore();
+
+        assertThrows(IllegalStateException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                unstarted.stop();
             }
         });
     }
