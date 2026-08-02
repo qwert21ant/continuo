@@ -30,9 +30,14 @@ val checkDependencyDirection = tasks.register("checkDependencyDirection") {
                 violations += "${p.path} is not listed in allowedProjectDependencies"
                 return@forEach
             }
+            // Only production configurations are checked. Test-scoped project dependencies
+            // (testImplementation, testCompileOnly, testRuntimeOnly, ...) are deliberately
+            // excluded from the allowlist rule: a module's tests may need fixtures from
+            // another module without that implying a production dependency direction.
+            val productionConfigurationNames =
+                setOf("api", "implementation", "compileOnly", "runtimeOnly", "compileOnlyApi")
             val actual = p.configurations
-                .filter { it.name.endsWith("Implementation") || it.name.endsWith("Api") ||
-                          it.name == "implementation" || it.name == "api" }
+                .filter { it.name in productionConfigurationNames }
                 .flatMap { it.dependencies }
                 .filterIsInstance<ProjectDependency>()
                 .map { it.path }
