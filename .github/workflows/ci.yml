@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # A cold runner has no Gradle cache and no Fabric Loom cache, so the first build must
+    # download Minecraft, mappings, and Fabric Loader/API, then deobfuscate/remap Minecraft
+    # against the official mappings. That is slow and network-bound, not CPU-bound, so the
+    # default GitHub-hosted runner is fine but the job needs headroom beyond a "normal" Java
+    # build. 45 minutes is generous for a cold Loom run while still failing fast if something
+    # actually hangs (e.g. a stalled download), rather than running to the platform default
+    # of 360 minutes.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          # Matches the toolchainVersion (21, no vendor pin) in
+          # gradle/gradle-daemon-jvm.properties, so Gradle's daemon-JVM criteria are already
+          # satisfied by this JDK and it does not need to fetch another one via the
+          # foojay-resolver-convention plugin. That plugin stays in settings.gradle.kts purely
+          # as a fallback for runners/machines where no matching JDK is preinstalled.
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          # v6 defaults to Gradle's proprietary Develocity-backed cache. This build has no
+          # need for that: it opts into the open-source, actions/cache-backed provider so
+          # caching of ~/.gradle (dependencies, wrapper, and the Fabric Loom/Minecraft
+          # artifacts it stores there) does not depend on a third-party service. This is what
+          # makes the second and later CI runs fast despite Loom's slow cold start.
+          cache-provider: "basic"
+
+      - name: Build, test, and check invariants
+        run: ./gradlew build --stacktrace
+
+      - name: Verify core bytecode is Java 8
+        # Redundant with `build`, which already runs these three via the `check` lifecycle
+        # task (see buildSrc/continuo-pure-module.gradle.kts and the root build.gradle.kts).
+        # Kept anyway: on a warm Gradle cache within the same job, `:core`/`:platform`
+        # compileJava is UP-TO-DATE, so re-running just these three verification tasks costs
+        # about a second (confirmed locally) - it does not repeat compilation or touch the
+        # Fabric adapter/Loom at all. That's cheap enough that naming the specific invariant
+        # that broke, instead of forcing a scroll through the full build log, is still worth
+        # it even though the overall build is now much longer than when this step was
+        # originally written.
+        run: ./gradlew checkCoreBytecode checkCorePurity checkDependencyDirection --stacktrace
