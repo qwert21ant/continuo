@@ -155,7 +155,7 @@ continuo/
 ├── platform/                          <- SPI. java-library, --release 8
 ├── core/                              <- ContinuoCore. java-library, --release 8, -> platform
 └── adapters/
-    └── adapter-fabric-1.21.11/        <- unimined, Java 21, -> platform + core
+    └── adapter-fabric-1.21.11/        <- Fabric Loom, Java 21, -> platform + core
 ```
 
 Three modules plus `buildSrc`. The architecture doc's full module tree (`core-math`,
@@ -163,19 +163,24 @@ Three modules plus `buildSrc`. The architecture doc's full module tree (`core-ma
 `bridge/*`) is created as code arrives to justify each one. Empty modules slow the build
 and obscure the repo.
 
-**Gradle Kotlin DSL. unimined as the loader plugin**, selected against M2's requirements
-rather than M1's — a modern-only plugin chosen here means redoing the build a milestone
-later. Mojang mappings for 1.21.11.
+**Gradle Kotlin DSL. Fabric Loom as the loader plugin** — unimined was the original
+candidate but does not support 1.21.11 in any released version; see
+`docs/toolchain-decision.md` for the full evaluation and the M2 (Forge 1.7.10) consequence.
+Mojang mappings for 1.21.11.
 
 `platform` and `core` are plain `java-library`; no loader plugin touches them. That is the
 structural expression of the architecture's central claim.
 
-**No mixins in A1.** Fabric API provides `ClientTickEvents.END_CLIENT_TICK` and
+**No mixins in A1.** Fabric API provides `ClientTickEvents.START_CLIENT_TICK` and
 `KeyBindingHelper` directly; Forge 1.7.10 provides `TickEvent.ClientTickEvent` and
 `ClientRegistry.registerKeyBinding` on its event bus. Both milestones' hooks are plain
 event subscriptions. Mixins — and UniMixins on 1.7.10, which is the fiddly part — are
 deferred until something needs them, probably M3 for block access. This removes the most
 environment-sensitive tooling from the milestone whose job is proving the environment works.
+
+`START_CLIENT_TICK`, not `END_CLIENT_TICK`, is load-bearing: inputs set before the game
+processes the tick take effect on that same tick, and it is the only phase consistent with
+the core being told `TickPhase.PRE`.
 
 ---
 

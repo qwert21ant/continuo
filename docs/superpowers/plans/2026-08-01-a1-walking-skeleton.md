@@ -6,7 +6,7 @@
 
 **Architecture:** Three Gradle modules plus `buildSrc`. `platform` holds the SPI (four interfaces, three enums); `core` holds one class, `ContinuoCore`, tested headlessly against fake implementations; `adapters/adapter-fabric-1.21.11` is the only module that sees `net.minecraft`, and it does nothing but translate. Three `buildSrc` checks fail the build if Minecraft leaks into the core, if module dependencies point the wrong way, or if core bytecode exceeds Java 8.
 
-**Tech Stack:** Java 8 (core/platform) and Java 21 (adapter), Gradle 8.14 with Kotlin DSL, JUnit 5.11.4, Fabric Loader 0.19.3, Fabric API 0.141.6+1.21.11, Mojang mappings.
+**Tech Stack:** Java 8 (core/platform) and Java 21 (adapter), Gradle 9.6.1 with Kotlin DSL, JUnit 5.11.4, Fabric Loader 0.19.3, Fabric API 0.141.6+1.21.11, Mojang mappings.
 
 ## Global Constraints
 

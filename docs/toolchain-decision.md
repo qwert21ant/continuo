@@ -81,10 +81,17 @@ directly.** No time was spent attempting to configure unimined.
   reads it programmatically.
 - First real build attempt failed with: `Dependency requires at least JVM runtime version 21.
   This build uses a Java 17 JVM.` — the Gradle **daemon's own JVM**, not just the project's
-  compile toolchain, must be Java 21+ for Loom 1.17.17's plugin classpath to load. Fixed by
-  adding `org.gradle.java.home=C:\\SDK\\jdk-21.0.12` to `gradle.properties` (alongside the
-  existing `org.gradle.java.installations.paths` used for toolchain resolution — these are
-  two different settings; the latter alone was not sufficient).
+  compile toolchain, must be Java 21+ for Loom 1.17.17's plugin classpath to load. This was
+  first fixed with a machine-specific `org.gradle.java.home=C:\\SDK\\jdk-21.0.12` entry in
+  `gradle.properties`, but that was reverted (commit `bed748a`) as a Critical: it hard-fails
+  every Gradle invocation, including CI, on any machine without that exact path. The durable
+  fix is `gradle/gradle-daemon-jvm.properties` (`toolchainVersion=21`, plus a
+  `toolchainUrl.<OS>.<ARCH>` entry per platform pointing at foojay), generated via
+  `./gradlew updateDaemonJvm --jvm-version=21` and paired with the `foojay-resolver-convention`
+  settings plugin in `settings.gradle.kts` so Gradle can auto-provision a matching JDK on any
+  machine — no absolute path required. `org.gradle.java.installations.paths` in
+  `gradle.properties` remains as a toolchain *search hint* only (harmless if absent or wrong
+  elsewhere); it is not what selects the daemon's own JVM.
 - Second attempt failed with a Gradle plugin variant mismatch: Loom 1.17.17 declares
   `org.gradle.plugin.api-version = 9.5.0`, but the committed wrapper was Gradle 8.14. **The
   Gradle wrapper was bumped from 8.14 to 9.6.1** (the current stable Gradle release, confirmed
@@ -135,9 +142,14 @@ including the adapter module, which failed to configure under the old Gradle ver
 
 Additionally, the Gradle **daemon's own JVM** (not just the project's Java 21 compile
 toolchain) must now be Java 21+, since Loom 1.17.17's plugin classpath requires it. This is
-set via `org.gradle.java.home=C:\\SDK\\jdk-21.0.12` in `gradle.properties`, alongside the
-pre-existing `org.gradle.java.installations.paths` (used for toolchain resolution — a
-different setting that alone did not fix this).
+set via `gradle/gradle-daemon-jvm.properties` (`toolchainVersion=21`, plus a per-OS/arch
+`toolchainUrl` entry resolved through foojay), together with the
+`foojay-resolver-convention` settings plugin declared in `settings.gradle.kts`. Do **not**
+commit a machine-specific `org.gradle.java.home=<absolute path>` in `gradle.properties` as a
+substitute — that was tried first, then reverted as a Critical (commit `bed748a`) because it
+hard-fails every Gradle invocation, including CI, on any machine without that exact path.
+`org.gradle.java.installations.paths` remains in `gradle.properties` as a toolchain search
+hint only; it does not select the daemon's JVM.
 
 ## Step 7 — PENDING HUMAN VERIFICATION
 
@@ -157,10 +169,12 @@ menu, with no mod behaviour to observe yet. Close the client when confirmed.
 - `runClient` itself has not been executed by anyone yet (human or agent) — `build` proves
   compilation, mapping resolution, and jar remapping succeed, but not that the client actually
   launches and reaches the main menu. That is exactly what Step 7 is for.
-- The Gradle daemon-JVM requirement (`org.gradle.java.home`) is pinned to this machine's exact
-  path (`C:\SDK\jdk-21.0.12`), matching the existing convention for
-  `org.gradle.java.installations.paths` in this repo, but it means both settings will need
-  updating together if this project ever moves to a different machine or CI runner.
+- The Gradle daemon-JVM requirement is satisfied portably via
+  `gradle/gradle-daemon-jvm.properties` + the `foojay-resolver-convention` plugin, which can
+  auto-provision a matching JDK on any machine, including CI — no machine-specific path is
+  committed. `org.gradle.java.installations.paths=C:\SDK\jdk-21.0.12` still exists in
+  `gradle.properties` as a local toolchain search hint on this machine; it is optional and
+  harmless if absent or stale elsewhere, since foojay resolution does not depend on it.
 - Bumping the wrapper to Gradle 9.6.1 was not exhaustively tested against every existing task
   beyond `build`, `clean build`, and `checkDependencyDirection` (all of which passed). It is
   possible, though not observed, that some other tooling (IDE import, CI config referencing
