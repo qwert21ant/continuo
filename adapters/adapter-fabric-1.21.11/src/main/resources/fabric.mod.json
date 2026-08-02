@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "continuo",
+  "version": "${version}",
+  "name": "Continuo",
+  "description": "Version-independent Minecraft automation. Walking skeleton.",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.continuo.adapter.fabric.ContinuoFabricMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
