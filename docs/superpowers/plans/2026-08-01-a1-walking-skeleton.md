@@ -1547,6 +1547,7 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1564,11 +1565,17 @@ public final class ContinuoFabricMod implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        // 1.21.11 replaced the old String-literal keybind category with a registered
+        // KeyMapping.Category record keyed by Identifier. Name/type correction only; the
+        // category still exists purely to label the controls screen entry.
+        KeyMapping.Category category =
+            KeyMapping.Category.register(Identifier.fromNamespaceAndPath("continuo", "main"));
+
         walkKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
             "key.continuo.walk",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_K,
-            "category.continuo"
+            category
         ));
 
         FabricPlatformContext context = new FabricPlatformContext(Minecraft.getInstance());
