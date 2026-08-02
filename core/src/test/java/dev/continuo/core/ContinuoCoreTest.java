@@ -161,4 +161,37 @@ class ContinuoCoreTest {
             }
         });
     }
+
+    @Test
+    void startWithNullContextFails() {
+        final ContinuoCore unstarted = new ContinuoCore();
+
+        assertThrows(IllegalArgumentException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                unstarted.start(null);
+            }
+        });
+    }
+
+    /**
+     * Pins current behaviour: calling {@code start()} a second time silently replaces the
+     * context rather than throwing. This is not a stated contract, only what the class does
+     * today; if that ever changes, this test should change with it rather than be deleted
+     * silently.
+     */
+    @Test
+    void startTwiceReplacesContext() {
+        FakePlatformContext secondCtx = new FakePlatformContext();
+        FakeActuator secondActuator = secondCtx.fakeActuator();
+
+        core.start(secondCtx);
+        core.requestWalk();
+        tick(1);
+
+        assertEquals(0, actuator.callCount(), "original context's actuator must not be used");
+        assertEquals(1, secondActuator.callCount());
+        assertEquals(Input.FORWARD, secondActuator.calls().get(0).input);
+        assertTrue(secondActuator.calls().get(0).pressed);
+    }
 }
