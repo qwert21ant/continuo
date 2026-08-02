@@ -22,10 +22,7 @@ final class FabricActuator implements IActuator {
 
     @Override
     public void setInput(Input input, boolean pressed) {
-        KeyMapping mapping = mappingFor(input);
-        if (mapping != null) {
-            mapping.setDown(pressed);
-        }
+        mappingFor(input).setDown(pressed);
     }
 
     private KeyMapping mappingFor(Input input) {
@@ -37,7 +34,7 @@ final class FabricActuator implements IActuator {
             case JUMP:    return minecraft.options.keyJump;
             case SNEAK:   return minecraft.options.keyShift;
             case SPRINT:  return minecraft.options.keySprint;
-            default:      return null;
+            default:      throw new IllegalArgumentException("Unmapped input: " + input);
         }
     }
 }

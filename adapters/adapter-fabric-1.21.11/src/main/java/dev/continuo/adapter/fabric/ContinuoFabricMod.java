@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.continuo.core.ContinuoCore;
 import dev.continuo.platform.TickPhase;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -28,8 +29,7 @@ public final class ContinuoFabricMod implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         // 1.21.11 replaced the old String-literal keybind category with a registered
-        // KeyMapping.Category record keyed by Identifier (see task-6-report.md for how this
-        // was confirmed against the official mappings). This is a name/type correction only;
+        // KeyMapping.Category keyed by an Identifier. This is a name/type correction only;
         // the category still exists purely to label the controls screen entry.
         KeyMapping.Category category =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath("continuo", "main"));
@@ -60,6 +60,11 @@ public final class ContinuoFabricMod implements ClientModInitializer {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             LOGGER.info("Continuo stopping: disconnected");
+            core.stop();
+        });
+
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            LOGGER.info("Continuo stopping: client shutting down");
             core.stop();
         });
     }
