@@ -106,6 +106,41 @@ The SPI is revised to v1 here on the strength of what 1.7.10 taught, and nothing
 this milestone starts until that revision is settled. This is the last cheap moment to
 change the SPI.
 
+### Carried forward from M1 — read before starting M2
+
+**1. Write the SPI's behavioural contract into the SPI, and back it with a conformance
+test kit.** This was M1's final review's single highest-value recommendation. The SPI
+currently defines seven *shapes* and almost no *semantics*. `onClientTick`'s entire
+specification is "called once per client tick, per phase" — it does not say once per *tick*
+rather than once per *frame*, does not say `PRE` must fire before the game reads input for
+that tick (the reason the walk is 40 ticks and not 39), and does not say who owns input
+state after `setInput` returns. M2's stated purpose is testing whether a second adapter
+implements the SPI *faithfully*, and "faithfully" is presently undefined and untestable:
+there are zero adapter tests and zero conformance tests. Two adapters will silently diverge
+on exactly these points and produce plausible-looking bots that walk slightly wrong
+distances. Put the contract in the javadoc now; add a `platform-testkit` module with a
+suite an adapter must pass while writing the second adapter, when there are two
+implementations to generalise from.
+
+**2. Decide edge-triggered vs level-triggered actuation before two adapters exist.**
+Today the core sets `FORWARD` once at tick 1 and assumes it persists for 40 ticks. It does
+not necessarily: Minecraft clears key state whenever a screen opens
+(`KeyMapping.releaseAll`; 1.7.10's `KeyBinding.unPressAllKeys`) and when the user physically
+taps the key. Opening the inventory mid-walk on a multiplayer server — where ticks keep
+running — silently truncates the walk with no error, and the failure presents as a wrong
+distance. The behaviour is consistent across both target versions, which is good for
+portability and bad for robustness. The alternative is a level-triggered contract where the
+core re-asserts held inputs every tick. Whichever is chosen, it belongs in the SPI contract
+above, decided once, rather than discovered separately by each adapter author.
+
+**3. Budget for a 1.7.10 `KeyBinding` workaround.** 1.7.10's `KeyBinding` has no
+per-instance setter — `pressed` is private, and the only public route is the static,
+keycode-addressed `KeyBinding.setKeyBindState(int keyCode, boolean)`. That silently does
+nothing when the movement key is unbound (keycode 0), and it addresses whichever binding
+occupies that keycode, which may not be the intended one. A faithful adapter needs
+reflection on the private field or an access transformer. Roughly half a day — not a
+redesign, but not free either.
+
 ### M3 · World abstraction (B)
 
 The block-property table is **data, not code** — a per-version JSON mapping
