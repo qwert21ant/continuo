@@ -105,5 +105,13 @@ deliberately making the core throw, which is not something to leave in the tree.
 implemented and knowingly unverified until M2's `platform-testkit` covers it. Do not record
 this checklist as evidence that fault handling works.
 
+Also not covered: PRE/POST phase pairing across a mid-tick world change (dimension change or
+a disconnect processed during the tick). The adapter delivers both phases deliberately, and
+includes a `preDelivered` latch to ensure `POST` is paired only when `PRE` was delivered in
+that same tick. This pairing is currently unobservable in practice because `ContinuoCore`
+ignores the `POST` phase entirely — there is no in-game symptom to verify. It will become
+observable and worth a dedicated step as soon as any core behaviour starts acting on `POST`.
+Until then, do not record this checklist as evidence that phase pairing is correct.
+
 Record the result (pass/fail) of each step individually. Any single failure blocks A1
 sign-off, even if every other step passed.
