@@ -46,9 +46,11 @@ A1 sign-off — do not skip a step or assume it would have passed.
    *Observe:* displacement should be **8–9 blocks**. Forty ticks at vanilla walking speed is
    about 8.6 blocks, so this is the expected range, not exactly 8 or exactly 10.
    *Diagnostic interpretations if it's outside 8–9 blocks:*
-   - Roughly double (~17 blocks) or roughly half (~4 blocks) means the tick hook is firing at
-     the wrong rate (e.g. registered on both client tick phases, or on server tick instead of
-     client tick).
+   - Roughly double (~17 blocks) or roughly half (~4 blocks) means the core is acting on the
+     wrong number of ticks. Note that the adapter is *deliberately* registered on both client
+     tick phases (START_CLIENT_TICK -> PRE, END_CLIENT_TICK -> POST) and that is correct and
+     required by the SPI contract. The bug to look for is the core acting on POST as well as
+     PRE, or the hook being on server tick instead of client tick.
    - Zero (player never moved) means the actuator is not reaching the key mapping — the W key
      is not actually being pressed in-game even though the walk was requested.
    - Never stopping (movement continues past a reasonable point, e.g. well past 9 blocks and
@@ -77,6 +79,63 @@ A1 sign-off — do not skip a step or assume it would have passed.
    not being called on disconnect (or the key release is not reaching the game), leaving
    input state stuck across a reconnect. This is the step most likely to reveal a real
    defect — verify it properly, don't assume it passed because the earlier steps did.
+
+9. **Title-screen keypress.** From the main menu, before loading any world, press `K` five
+   or six times. Then load the world you created in step 2 (reuse it — do not create a new
+   one).
+   *Observe:* the log must **not** contain `Continuo walk requested` from those presses, and
+   the player must not start walking on its own at any point after the world loads.
+   *Why this matters:* the SPI's `onClientTick` contract delivers ticks only while a world is
+   loaded with a local player. A `Continuo walk requested` line logged at the title screen, or
+   a walk starting on its own after the world loads, means something is driving the core
+   outside the tick window — a real defect, whatever its cause.
+   *What this step does NOT verify — read before recording a pass:* it exercises neither the
+   adapter's out-of-world click drain nor its in-world guard. Minecraft only accumulates
+   `KeyMapping` clicks while no `Screen` is open, and the title screen is a screen, so nothing
+   is queued — neither for the drain to discard nor for the guard to hold back. This step
+   therefore passes identically against a build with either mechanism deleted. It is a
+   tripwire for a walk appearing from nowhere, not evidence that either mechanism works. The
+   drain's only reachable path is the faulted one, which is in-world; see the coverage note
+   below for why this checklist cannot reach it.
+
+10. **Leave a singleplayer world mid-walk.** Press `K`, and while the bot is still moving
+    choose "Save and Quit to Title". Stay at the title screen this time rather than
+    rejoining.
+    *Observe:* the log must contain `Continuo stopping: disconnected`.
+    *Why this matters:* global rule 2 requires `stop()` on world unload, and the adapter
+    relies on `DISCONNECT` alone to cover it. Step 8 checks the symptom after a rejoin; this
+    step checks the cause directly, in the singleplayer case that the design flagged as
+    verify-don't-assume. If the line is absent, `DISCONNECT` does not fire on singleplayer
+    exit and the adapter needs a separate world-unload hook.
+
+**Not covered by this checklist:** global rule 3 (fault handling). Exercising it requires
+deliberately making the core throw, which is not something to leave in the tree. Rule 3 is
+implemented and knowingly unverified until M2's `platform-testkit` covers it. Do not record
+this checklist as evidence that fault handling works.
+
+Also not covered: the adapter's click drain (`drainClicks`). Every tester-reachable moment
+with no world loaded also has a `Screen` open — the title screen, the world-selection list,
+the world-loading screens — and Minecraft only accumulates `KeyMapping` clicks while no screen
+is open. No manual sequence available here queues a click that the out-of-world drain then has
+to discard, which is why step 9 explicitly disclaims it. The one drain path that is genuinely
+reachable in play is the *faulted* path, which happens in-world with no screen up; that is out
+of scope for the same reason rule 3 above is. The drain is implemented and knowingly
+unverified until M2's `platform-testkit` covers it. Do not record this checklist as evidence
+that the drain works.
+
+Also not covered: PRE/POST phase pairing across a mid-tick world change (dimension change or
+a disconnect processed during the tick). The adapter delivers both phases deliberately, and
+includes a `preDelivered` latch to ensure `POST` is paired only when `PRE` was delivered in
+that same tick. The latch closes one direction only. In the other direction, `PRE` **can go
+unpaired**: if the tick window closes or a fault is set between `START_CLIENT_TICK` and
+`END_CLIENT_TICK` of the same tick, `PRE` has already been delivered and `POST` is then
+correctly suppressed. That is the exception the SPI's `onClientTick` contract explicitly
+permits, not a defect — but it means a `PRE` without a `POST` is a state this adapter can
+reach, and nothing in this checklist observes it. The pairing is unobservable in practice
+either way, because `ContinuoCore` ignores the `POST` phase entirely, so there is no in-game
+symptom to verify. It will become observable and worth a dedicated step as soon as any core
+behaviour starts acting on `POST`. Until then, do not record this checklist as evidence that
+phase pairing is correct in either direction.
 
 Record the result (pass/fail) of each step individually. Any single failure blocks A1
 sign-off, even if every other step passed.

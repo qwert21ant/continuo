@@ -101,6 +101,19 @@ val checkCoreBytecode = tasks.register("checkCoreBytecode") {
     }
 }
 
+// Nothing else in the build reads the javadoc, so a broken {@link} in the SPI's behavioural
+// contract would be invisible. -Xwerror promotes doclint warnings to failures; -missing is
+// excluded because not every member is documented and requiring that is a separate argument.
+// -Xwerror is safe only because Javadoc never inherits options.release = 8 from JavaCompile,
+// so doclint never sees the source-8-is-obsolete warning javac emits. Do not set a source or
+// release level here — that would turn that unrelated deprecation notice into a build failure.
+tasks.withType<Javadoc>().configureEach {
+    (options as StandardJavadocDocletOptions).apply {
+        addBooleanOption("Xdoclint:all,-missing", true)
+        addBooleanOption("Xwerror", true)
+    }
+}
+
 tasks.named("check") {
-    dependsOn(checkCorePurity, checkCoreBytecode)
+    dependsOn(checkCorePurity, checkCoreBytecode, tasks.named("javadoc"))
 }

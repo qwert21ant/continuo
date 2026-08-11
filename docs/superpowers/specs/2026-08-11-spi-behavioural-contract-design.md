@@ -1,7 +1,11 @@
 # SPI behavioural contract — design
 
 **Date:** 2026-08-11
-**Status:** approved, not yet implemented
+**Status:** approved and implemented, on branch `spi-behavioural-contract`. §6, §7 and §8 have
+been revised post-implementation to describe what actually shipped rather than what was
+planned; §4 and §5 gained a caveat index (§4.1). Where this document and the `platform`
+javadoc differ, **the javadoc is normative** — it is the artefact M2 measures the Forge
+adapter against, and this one summarises it.
 **Predecessor:** `2026-08-01-mc-automation-roadmap-design.md` §"Carried forward from M1", item 1
 **Successor:** M2 (A2, Forge 1.7.10 adapter)
 
@@ -63,9 +67,9 @@ therefore live once, as a numbered list, in `package-info.java` — which alread
 already carries this package's other global rules. Per-type javadoc states only what is
 specific to that type and cites the global rules by number.
 
-The numbering is not cosmetic. M2's testkit gets an obvious structure to mirror — one
-conformance case per numbered rule, plus per-type cases — and code review gains a way to cite
-a requirement precisely.
+The numbering is not cosmetic. M2's testkit gets an obvious structure to mirror — cases
+organised by rule number, plus per-type cases — and code review gains a way to cite a
+requirement precisely. Note that not every rule reduces to a test; see §8.
 
 RFC 2119 keywords (MUST, MUST NOT, MAY) are used throughout and mean what they normally mean.
 
@@ -98,8 +102,9 @@ still enter the faulted state. The handler must not be able to fault.
 
 Rationale: a bot bug must never crash the user's game, and a half-dead core must never leave
 a movement key held. Recovery is tied to world load because that is the same event that opens
-the tick window under rule 2 and §5's `onClientTick` rule — one event, one state transition,
-no separate recovery machinery.
+the tick window under §5's `onClientTick` rule — one event, one state transition, no separate
+recovery machinery. (The window is `onClientTick`'s alone; rule 2 is lifecycle only and does
+not state it. The numbering is load-bearing for M2's testkit, so the attribution matters.)
 
 **Rule 4 — Input persistence is not guaranteed.** State set through `setInput` may be cleared
 by the platform at any time without notice. Any screen opening does this on both target
@@ -113,6 +118,26 @@ Until then, both adapters MUST behave identically here, so that M5 can change bo
 move. The A1 core's assumption that a single `setInput(FORWARD, true)` persists for 40 ticks
 is documented-as-unguaranteed by this rule, not fixed by it.
 
+### 4.1 Caveats added during implementation
+
+Four caveats were added to the shipped javadoc after this section was approved. They are
+listed here by reference rather than restated, because §3's whole argument is that a rule
+copied into two documents drifts. Read the javadoc for the wording that binds.
+
+1. **Rule 2, world unload — unsettled.** A dimension change replaces the client level without
+   ending the session. Fabric's `DISCONNECT` does not fire; 1.7.10's `WorldEvent.Unload` does.
+   Two defensibly conformant adapters therefore disagree observably on walking through a
+   portal. `package-info` records the ambiguity, recommends the stricter reading (a dimension
+   change *is* a world unload), and hands the decision to M2.
+2. **Rule 2, client shutdown on 1.7.10.** No client-stopping event exists there; the customary
+   JVM shutdown hook runs off the main thread and collides with rule 1. Recorded as a tension
+   an adapter may only satisfy approximately. The other two triggers are unaffected.
+3. **§5's `setInput` clauses on 1.7.10.** The only public route is the static,
+   keycode-addressed `KeyBinding.setKeyBindState(int, boolean)`, which addresses whichever
+   binding holds the keycode and silently no-ops on an unbound key. An unbound key is a real
+   failure mode a conformant adapter must surface, not swallow.
+4. **§5's "both phases MUST be delivered" — one exception.** See §5 below.
+
 ---
 
 ## 5. Per-type semantics
@@ -125,9 +150,16 @@ is documented-as-unguaranteed by this rule, not fixed by it.
 - `PRE` MUST fire before the game reads input for that tick. The consequence is the part
   worth writing down: `setInput` called during `PRE` of tick *N* affects the player's
   movement on tick *N*. This is why a 40-tick walk yields 40 ticks of travel, not 39.
+  *Shipped caveat:* ticks counted are not ticks travelled — the callback keeps firing while
+  the game is paused or the death screen is up, with the level frozen.
 - `POST` MUST fire after the game has finished processing that tick's logic, and after `PRE`
   for the same tick.
-- Adapters MUST deliver both phases. See §6 for why, and for the cost.
+- Adapters MUST deliver both phases. See §6 for why, and for the cost. *Shipped caveat:*
+  `POST` MAY be suppressed for a tick whose `PRE` was already delivered, if and only if the
+  tick window has closed or the adapter has faulted by the time `POST` is due — never for any
+  other reason, and never the other way round. This is the intended resolution of the tension
+  with the world-window and rule 3 clauses, and the javadoc states it so a conformance suite
+  can encode it as an assertion rather than a failure.
 - Delivered only while a world is loaded and a local player exists.
 - MUST NOT be delivered re-entrantly.
 
@@ -180,9 +212,10 @@ no-`net.minecraft`-in-core check, and the dependency-direction check are all una
 therefore requires nothing of the core. Stated here explicitly so that implementation does
 not drift into unrelated edits.
 
-### `adapters/adapter-fabric-1.21.11/` — four conformance changes
+### `adapters/adapter-fabric-1.21.11/` — six conformance changes
 
-All in `ContinuoFabricMod.java`:
+Four were planned; two more were found necessary during implementation. All in
+`ContinuoFabricMod.java`:
 
 1. **In-world guard.** Deliver ticks only when a world and a local player are present.
    Closes the §1 gap.
@@ -190,10 +223,32 @@ All in `ContinuoFabricMod.java`:
 3. **Fault handling.** Wrap core calls per rule 3: catch, log with stack trace, `stop()`, set
    a faulted flag, cease delivery.
 4. **Fault recovery.** Clear the faulted flag on world load.
+5. **`preDelivered` latch** *(added during implementation)*. The in-world and faulted flags
+   are re-read independently by each phase's handler, so either can flip between
+   `START_CLIENT_TICK` and `END_CLIENT_TICK` of one `Minecraft.tick()` — a dimension change,
+   or a disconnect processed mid-tick. Without the latch, `POST` could fire with no same-tick
+   `PRE`, violating change 2's own ordering clause. The latch is cleared unconditionally on
+   every `END_CLIENT_TICK` entry so it cannot wedge across ticks. Its residual effect — a
+   `PRE` left unpaired — is the exception now written into §5.
+6. **Unconditional click drain** *(added during implementation)*. Change 1 drained clicks only
+   on the out-of-world path. Clicks queued while faulted, or left queued when `requestWalk()`
+   threw partway through the consume loop, then leaked into a walk once `JOIN` cleared the
+   fault. The drain now also runs on the faulted path and after the guarded `PRE` block.
 
-**To verify during implementation, not assume:** whether `ClientPlayConnectionEvents.DISCONNECT`
-fires when leaving a *singleplayer* world. Rule 2 requires `stop()` on world unload, and the
-current adapter relies on `DISCONNECT` alone to cover it.
+**Deviation from the plan, owner-approved.** Changes 5 and 6 alter code the implementation
+plan supplied verbatim. Review found that the verbatim code did not satisfy §5's phase-pairing
+clause or rule 3's "release any held input" intent, and the conflict was escalated rather than
+resolved silently. The owner ruled: fix both — the `IGameEvents` contract governs over the
+plan's literal code. Recorded here because a spec that shows only the planned code would make
+the shipped adapter look like an unexplained divergence to M2.
+
+**On the "verify, don't assume" item.** `ClientPlayConnectionEvents.DISCONNECT` is expected to
+fire when leaving a *singleplayer* world — quit-to-title tears down the integrated server
+connection like any other. That is a static reading, not an in-game observation; smoke
+checklist step 10 exists to confirm it directly, and the checklist has not been run in this
+branch. Separately, and regardless of how step 10 comes out, `DISCONNECT` does **not** cover a
+dimension change, which replaces the client level with no disconnect at all — see §4.1 caveat
+1, the unresolved half of this question.
 
 **On mandating both phases.** This is a new requirement rather than a fix to an existing
 violation, and is the one place this sub-project exceeds "javadoc only". It was chosen
@@ -211,17 +266,35 @@ be registered on both phases, correctly, and the core will ignore one of them. L
 sends a future debugger after a non-bug. The doubled-distance diagnostic must be rewritten to
 point at the core acting on both phases rather than at registration on both phases.
 
-**Addition.** Pressing the walk key at the title screen must do nothing.
+**Addition.** Pressing the walk key at the title screen must do nothing. *As shipped* this is
+step 9, and it carries an explicit disclaimer: Minecraft accumulates `KeyMapping` clicks only
+while no `Screen` is open, so the title screen queues nothing and the step cannot exercise the
+click drain of change 6. It evidences the in-world guard and the absence of the log line, and
+says so. The drain is knowingly unverified — every reachable no-world moment has a screen up,
+and the one drain path reachable in play is the faulted one, which is out of scope alongside
+rule 3.
 
-**Addition.** Walking, then exiting to title mid-walk, must leave no key held.
+**Addition.** Walking, then exiting to title mid-walk, must leave no key held. *As shipped*
+this is split across steps 8 (symptom, after rejoining) and 10 (cause: the
+`Continuo stopping: disconnected` line).
+
+**Also shipped, not planned.** Two disclosure paragraphs at the foot of the checklist, for the
+drain and for PRE/POST phase pairing, alongside the planned rule 3 one. The pairing paragraph
+records that the `preDelivered` latch closes only the POST-without-PRE direction and that an
+unpaired `PRE` is reachable by design.
 
 ---
 
 ## 7. Verification, and its limits
 
-`./gradlew clean build` covers the core's 14 tests and the three `buildSrc` invariant checks.
-Since the core does not change, these serve as a regression guard rather than as evidence for
-the contract.
+`./gradlew clean build` covers the core's 15 tests and four invariant checks: `checkCorePurity`
+and `checkCoreBytecode` from the `continuo-pure-module` convention plugin,
+`checkDependencyDirection` from the root build, and — added by this sub-project — `javadoc`
+with `-Xdoclint:all,-missing -Xwerror`, wired into `check` for `platform` and `core`. The
+fifteenth test (`stopIsIdempotent`) was added here; the javadoc check exists because nothing
+else in the build read the javadoc, so a broken `{@link}` in a contract expressed *entirely*
+as javadoc would have been invisible. The other three serve as a regression guard rather than
+as evidence for the contract.
 
 The adapter has zero automated tests and cannot get them without Minecraft on the classpath.
 Adapter conformance therefore rests on the manual smoke checklist.
@@ -237,10 +310,35 @@ must not imply it exercises the fault path.
 ## 8. Consequences for M2
 
 - "Faithfully implements the SPI" now has a referent. M2's Forge 1.7.10 adapter is measured
-  against §4 and §5.
-- `platform-testkit` gains a ready-made structure: one conformance case per numbered global
-  rule, plus per-type cases, with rule 3 as its first priority since nothing else covers it.
+  against §4 and §5 — and, where they differ, against the `platform` javadoc, which is
+  normative.
+- `platform-testkit` gains a ready-made structure to organise by: the numbered rules, plus
+  per-type cases, with rule 3 the first priority since nothing else covers it. **Not** one
+  case per rule — an earlier draft of this section promised that, and it is not achievable as
+  the code is currently wired:
+  - **Rule 1** is half-testable. "Called on the client main thread" can be asserted by a
+    recording implementation that captures `Thread.currentThread()`. "No implementation may
+    block" cannot: it has no threshold, no observable failure, and no way to distinguish a
+    slow tick from a blocking one. It stays a review rule, not a test.
+  - **Rules 2 and 3** bind `start` and `stop`, which are methods on `ContinuoCore` in the
+    `core` module. They are not on any type in `dev.continuo.platform`, and §2 forbids adding
+    one. A testkit that depends only on the SPI package cannot express them; it would have to
+    depend on `core`, or M2 must decide the lifecycle belongs on an SPI type after all.
+  - **Rule 4** is a statement that something *may* happen, not that it must. There is no
+    assertion to write; it constrains review and M5, not a test.
+- **Seam problem M2 must solve first.** `ContinuoFabricMod` constructs its core with
+  `new ContinuoCore()` inline, with no way to inject anything else. Every conformance case
+  worth writing needs to substitute a *recording* `IGameEvents` — one that logs phases, ticks,
+  threads and lifecycle calls — and observe what the adapter actually delivers. Until an
+  adapter can be handed its `IGameEvents` rather than creating one, the testkit can only test
+  the core against a fake adapter, which is the direction that was never in doubt. The seam is
+  deliberately **not** added in this sub-project: §2 keeps this to javadoc plus the minimum
+  adapter conformance changes, and a seam is a design decision that wants both adapters in
+  view. M2 designs it once, for both.
 - Rule 4 constrains M2 concretely: keep 1.7.10's actuation mechanically identical to Fabric's,
   so M5 can change both together.
+- §4.1's four caveats are M2's opening agenda. Caveat 1 (what counts as a world unload) is the
+  one that must be decided before the Forge adapter's lifecycle wiring is written, because
+  both adapters change together whichever way it goes.
 - The SPI v1 revision at the end of M2 revises this document alongside the code. The contract
   and the shapes are versioned together.
