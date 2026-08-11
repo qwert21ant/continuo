@@ -1,0 +1,21 @@
+pluginManagement {
+    repositories {
+        maven("https://maven.fabricmc.net/") { name = "Fabric" }
+        maven("https://maven.wagyourtail.xyz/releases") { name = "WagYourTail" }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+plugins {
+    // Lets Gradle resolve/auto-provision JVM toolchains (needed for `updateDaemonJvm` to
+    // compute per-platform download URLs for gradle/gradle-daemon-jvm.properties, and as a
+    // fallback if a machine doesn't already have the required JDK installed).
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
+rootProject.name = "continuo"
+
+include("platform")
+include("core")
+include("adapters:adapter-fabric-1.21.11")

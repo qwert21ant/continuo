@@ -106,6 +106,52 @@ The SPI is revised to v1 here on the strength of what 1.7.10 taught, and nothing
 this milestone starts until that revision is settled. This is the last cheap moment to
 change the SPI.
 
+### Carried forward from M1 — read before starting M2
+
+**1. Write the SPI's behavioural contract into the SPI, and back it with a conformance
+test kit.** This was M1's final review's single highest-value recommendation. The SPI
+currently defines seven *shapes* and almost no *semantics*. `onClientTick`'s entire
+specification is "called once per client tick, per phase" — it does not say once per *tick*
+rather than once per *frame*, does not say `PRE` must fire before the game reads input for
+that tick (the reason the walk is 40 ticks and not 39), and does not say who owns input
+state after `setInput` returns. M2's stated purpose is testing whether a second adapter
+implements the SPI *faithfully*, and "faithfully" is presently undefined and untestable:
+there are zero adapter tests and zero conformance tests. Two adapters will silently diverge
+on exactly these points and produce plausible-looking bots that walk slightly wrong
+distances. Put the contract in the javadoc now; add a `platform-testkit` module with a
+suite an adapter must pass while writing the second adapter, when there are two
+implementations to generalise from.
+
+**2. Do NOT lock in edge- vs level-triggered actuation yet — it is an M5 decision.**
+Today the core sets `FORWARD` once at tick 1 and assumes it persists for 40 ticks. It does
+not necessarily: Minecraft clears key state whenever a screen opens
+(`KeyMapping.releaseAll`; 1.7.10's `KeyBinding.unPressAllKeys`) and when the user physically
+taps the key. Opening the inventory mid-walk on a multiplayer server — where ticks keep
+running — silently truncates the walk with no error, and the failure presents as a wrong
+distance. The behaviour is consistent across both target versions, which is good for
+portability and bad for robustness.
+
+M1's review recommended deciding this before two adapters exist. **Deferred deliberately.**
+The right answer depends on machinery that does not exist yet: M5 builds the executor's
+per-tick position resync and `onPositionCorrection` handling, and a core that already
+reconciles against authoritative server state each tick has effectively answered this
+question — re-asserting held inputs becomes a special case of the same reconciliation loop.
+Choosing now would mean guessing at a contract that the resync design will either confirm
+or invalidate.
+
+What M2 must do instead: keep the 1.7.10 adapter's actuation *mechanically identical* to
+Fabric's, so that whichever model M5 picks can be applied to both adapters in one change.
+Do not let one adapter quietly start re-asserting inputs while the other does not — that
+divergence is the thing that would actually be expensive.
+
+**3. Budget for a 1.7.10 `KeyBinding` workaround.** 1.7.10's `KeyBinding` has no
+per-instance setter — `pressed` is private, and the only public route is the static,
+keycode-addressed `KeyBinding.setKeyBindState(int keyCode, boolean)`. That silently does
+nothing when the movement key is unbound (keycode 0), and it addresses whichever binding
+occupies that keycode, which may not be the intended one. A faithful adapter needs
+reflection on the private field or an access transformer. Roughly half a day — not a
+redesign, but not free either.
+
 ### M3 · World abstraction (B)
 
 The block-property table is **data, not code** — a per-version JSON mapping
@@ -127,6 +173,13 @@ Goals, process manager, path executor, per-tick position resync, `onPositionCorr
 handling. `goto x y z` works in-game on both versions. `IActuator` gains its **humanizer
 seam** here (no-op by default) so anticheat plausibility can be added later without
 touching core or movements.
+
+**Decide edge- vs level-triggered actuation here** (deferred from M1 — see the M2
+carry-forward notes). Minecraft can clear held key state at any time, so a walk can silently
+truncate. Once the executor reconciles against authoritative server position every tick,
+re-asserting held inputs is a special case of that same loop, and the contract should fall
+out of the resync design rather than being guessed at in advance. Whatever is chosen goes
+into the SPI's behavioural contract and applies to both adapters in one change.
 
 **Gate — SPI audit:** count adapter lines that are *logic* rather than *translation*.
 Logic in an adapter means it leaked out of the core. Fix before continuing.
@@ -172,12 +225,28 @@ communicates only over the bridge protocol.
 
 ### Toolchain
 
-**unimined** is the preferred single loader plugin: it handles Forge 1.7.10 (MCP) and
-modern Fabric (Mojmap/Yarn) in one build, which is precisely this version spread. The
-contingency, if unimined proves troublesome, is two separate plugins — Loom for modern and
-RetroFuturaGradle for 1.7.10. Because M1 ships before 1.7.10 exists, the plugin choice must
-still be made in M1 with M2 in mind; picking a modern-only plugin at M1 means redoing the
-build at M2.
+**RESOLVED IN M1 — the single-plugin premise did not survive.** This section originally
+chose **unimined**, on the reasoning that one plugin handling Forge 1.7.10 (MCP) and modern
+Fabric (Mojmap) in one build is precisely this project's version spread. M1's toolchain
+spike found unimined's newest published release is **1.4.1 (2025-06-30)**, which predates
+Minecraft 1.21.11 (2025-12-09). Minecraft classes do not deobfuscate on 1.21.11 under it
+(unimined issue #189). A fix exists — PR #185, merged 2026-03-29 into the `lts/1.4` branch —
+but has never been cut as a release; it lives only in a floating `1.4.2-SNAPSHOT`, which is
+not an acceptable dependency for a toolchain meant to serve multiple milestones, since
+snapshot coordinates are mutable and can be garbage-collected.
+
+**The project therefore uses Fabric Loom 1.17.17** for modern versions, with Gradle 9.6.1.
+See [`docs/toolchain-decision.md`](../../toolchain-decision.md) for the full evidence trail.
+
+**Consequence for M2, which is a real cost and not a footnote:** Forge 1.7.10 needs a
+second, unrelated toolchain — **RetroFuturaGradle** is the maintained option. M2 must budget
+for standing it up, and the two adapters will not share build infrastructure. The claim that
+this project's version independence lives in the *code* rather than the *build* is now
+load-bearing rather than convenient: the SPI has to carry weight the build no longer does.
+
+Worth re-checking at M2: if unimined has cut a 1.4.2 release by then, consolidating onto one
+plugin is worth reconsidering, since the original reasoning was sound and only the release
+cadence defeated it.
 
 Mixins: standard Fabric mixin on 1.21.11; **UniMixins** on 1.7.10 — but **not before M3**.
 M1 and M2 need only plain event subscriptions (`ClientTickEvents` on Fabric,
@@ -229,7 +298,7 @@ deliberately licensed compatibly.
 | SPI cannot express both 1.7.10 and 1.21.11 without bloating | M2 | A2 is deliberately placed before anything depends on the SPI. The M2 gate stops everything if it happens |
 | SPI v0 designed around 1.21-shaped assumptions during M1 | M1 | Design SPI v0 as if 1.7.10 already existed; explicit SPI v1 revision at the end of M2 |
 | Forge 1.7.10 dev environment proves hostile in 2026 | M2 | unimined first, RetroFuturaGradle as fallback. Discovered in month 1, not month 6 |
-| Build plugin chosen at M1 cannot handle 1.7.10 at M2 | M1 | Loader plugin selected in M1 against M2's requirements, not M1's |
+| ~~Build plugin chosen at M1 cannot handle 1.7.10 at M2~~ **MATERIALIZED** | M1 | Unavoidable: unimined has no release supporting 1.21.11, so Loom was forced. M2 now needs RetroFuturaGradle as a second toolchain. Cost accepted, recorded in `docs/toolchain-decision.md` |
 | Logic leaks from core into adapters | M5, ongoing | SPI audit gate after every sub-project; adapter LOC tracked as a metric |
 | Java 8 core becomes painful to write | ongoing | Accepted cost. Revisit only if it demonstrably slows delivery; the escape hatch is a desugaring build step |
 | A* is undebuggable without visualisation | M4–M5 | Test-time path renderer in M4; pull E forward if insufficient |

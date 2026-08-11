@@ -6,7 +6,7 @@
 
 **Architecture:** Three Gradle modules plus `buildSrc`. `platform` holds the SPI (four interfaces, three enums); `core` holds one class, `ContinuoCore`, tested headlessly against fake implementations; `adapters/adapter-fabric-1.21.11` is the only module that sees `net.minecraft`, and it does nothing but translate. Three `buildSrc` checks fail the build if Minecraft leaks into the core, if module dependencies point the wrong way, or if core bytecode exceeds Java 8.
 
-**Tech Stack:** Java 8 (core/platform) and Java 21 (adapter), Gradle 8.14 with Kotlin DSL, JUnit 5.11.4, Fabric Loader 0.19.3, Fabric API 0.141.6+1.21.11, Mojang mappings.
+**Tech Stack:** Java 8 (core/platform) and Java 21 (adapter), Gradle 9.6.1 with Kotlin DSL, JUnit 5.11.4, Fabric Loader 0.19.3, Fabric API 0.141.6+1.21.11, Mojang mappings.
 
 ## Global Constraints
 
@@ -63,13 +63,39 @@
 
 - [ ] **Step 1: Generate the Gradle wrapper**
 
+There is no Gradle on PATH on this machine, so bootstrap one first. Any installed JDK 17+
+can run Gradle 8.14 for this purpose — the Java 21 requirement applies to the Minecraft
+adapter, not to Gradle itself.
+
 ```bash
-gradle wrapper --gradle-version 8.14
+SCRATCH="$TMPDIR/gradle-bootstrap"
+mkdir -p "$SCRATCH"
+curl -fsSL -o "$SCRATCH/gradle.zip" https://services.gradle.org/distributions/gradle-8.14-bin.zip
+unzip -q -o "$SCRATCH/gradle.zip" -d "$SCRATCH"
+"$SCRATCH/gradle-8.14/bin/gradle" wrapper --gradle-version 8.14
 ```
 
-If no system Gradle is available, download the wrapper from any existing project or run
-`gradle wrapper` from a Gradle Docker image. The wrapper files
-(`gradlew`, `gradlew.bat`, `gradle/wrapper/*`) must be committed.
+If `$TMPDIR` is unset, use the session scratch directory instead. Verify the wrapper works
+and then discard the bootstrap copy — it is not part of the repo:
+
+```bash
+./gradlew --version
+```
+
+Expected: `Gradle 8.14`.
+
+The wrapper files (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar`,
+`gradle/wrapper/gradle-wrapper.properties`) must be committed. Note that
+`gradle-wrapper.jar` is a binary and some `.gitignore` templates exclude `*.jar` — confirm
+it is actually staged.
+
+**Toolchain note.** The build requires a Java 21 toolchain. If Gradle reports
+"No matching toolchain found for Java 21", the installed JDK 21 is not in a location Gradle
+auto-detects. Point Gradle at it explicitly by adding to `gradle.properties`:
+
+```properties
+org.gradle.java.installations.paths=C:\\path\\to\\jdk-21
+```
 
 - [ ] **Step 2: Write `.gitignore`**
 
@@ -161,7 +187,7 @@ repositories { mavenCentral() }
 dependencies {
     api(project(":platform"))
 
-    val junitVersion: String by project
+    val junitVersion = project.property("junit_version") as String
     testImplementation("org.junit.jupiter:junit-jupiter:$junitVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -419,7 +445,7 @@ plugins {
 dependencies {
     api(project(":platform"))
 
-    val junitVersion: String by project
+    val junitVersion = project.property("junit_version") as String
     testImplementation("org.junit.jupiter:junit-jupiter:$junitVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -976,6 +1002,7 @@ class ContinuoCoreTest {
         core.requestWalk();
         tick(45);
 
+        assertTrue(actuator.callCount() > 0, "walk must produce actuator calls");
         for (FakeActuator.Call call : actuator.calls()) {
             assertEquals(Input.FORWARD, call.input);
         }
@@ -1053,6 +1080,18 @@ class ContinuoCoreTest {
             }
         });
     }
+
+    @Test
+    void stopBeforeStartFails() {
+        ContinuoCore unstarted = new ContinuoCore();
+
+        assertThrows(IllegalStateException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                unstarted.stop();
+            }
+        });
+    }
 }
 ```
 
@@ -1114,6 +1153,9 @@ public final class ContinuoCore implements IGameEvents {
      * disconnect mid-walk leaves the client holding a movement key.
      */
     public void stop() {
+        if (context == null) {
+            throw new IllegalStateException("start(IPlatformContext) must be called first");
+        }
         if (walking) {
             context.actuator().setInput(Input.FORWARD, false);
         }
@@ -1153,7 +1195,7 @@ public final class ContinuoCore implements IGameEvents {
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `./gradlew :core:test`
-Expected: PASS, 11 tests
+Expected: PASS, 12 tests
 
 - [ ] **Step 7: Run the full build including invariant checks**
 
@@ -1217,9 +1259,9 @@ java {
     toolchain { languageVersion = JavaLanguageVersion.of(21) }
 }
 
-val minecraftVersion: String by project
-val loaderVersion: String by project
-val fabricVersion: String by project
+val minecraftVersion = project.property("minecraft_version") as String
+val loaderVersion = project.property("loader_version") as String
+val fabricVersion = project.property("fabric_version") as String
 
 unimined.minecraft {
     version(minecraftVersion)
@@ -1234,10 +1276,10 @@ dependencies {
 }
 ```
 
-Note the property names: `gradle.properties` uses `minecraft_version`, and Kotlin DSL
-delegation converts to camelCase automatically only for exact matches. If
-`val minecraftVersion: String by project` fails to resolve, use
-`project.property("minecraft_version") as String` instead.
+Property names are read with `project.property("...")` rather than the `by project`
+delegate. The delegate matches the property name *exactly* — it does not convert
+`minecraft_version` to `minecraftVersion` — and silently fails at configuration time.
+This was confirmed the hard way in Task 1.
 
 Run: `./gradlew :adapters:adapter-fabric-1.21.11:build`
 
@@ -1505,6 +1547,7 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1522,11 +1565,17 @@ public final class ContinuoFabricMod implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        // 1.21.11 replaced the old String-literal keybind category with a registered
+        // KeyMapping.Category record keyed by Identifier. Name/type correction only; the
+        // category still exists purely to label the controls screen entry.
+        KeyMapping.Category category =
+            KeyMapping.Category.register(Identifier.fromNamespaceAndPath("continuo", "main"));
+
         walkKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
             "key.continuo.walk",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_K,
-            "category.continuo"
+            category
         ));
 
         FabricPlatformContext context = new FabricPlatformContext(Minecraft.getInstance());
