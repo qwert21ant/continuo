@@ -122,16 +122,27 @@ distances. Put the contract in the javadoc now; add a `platform-testkit` module 
 suite an adapter must pass while writing the second adapter, when there are two
 implementations to generalise from.
 
-**2. Decide edge-triggered vs level-triggered actuation before two adapters exist.**
+**2. Do NOT lock in edge- vs level-triggered actuation yet — it is an M5 decision.**
 Today the core sets `FORWARD` once at tick 1 and assumes it persists for 40 ticks. It does
 not necessarily: Minecraft clears key state whenever a screen opens
 (`KeyMapping.releaseAll`; 1.7.10's `KeyBinding.unPressAllKeys`) and when the user physically
 taps the key. Opening the inventory mid-walk on a multiplayer server — where ticks keep
 running — silently truncates the walk with no error, and the failure presents as a wrong
 distance. The behaviour is consistent across both target versions, which is good for
-portability and bad for robustness. The alternative is a level-triggered contract where the
-core re-asserts held inputs every tick. Whichever is chosen, it belongs in the SPI contract
-above, decided once, rather than discovered separately by each adapter author.
+portability and bad for robustness.
+
+M1's review recommended deciding this before two adapters exist. **Deferred deliberately.**
+The right answer depends on machinery that does not exist yet: M5 builds the executor's
+per-tick position resync and `onPositionCorrection` handling, and a core that already
+reconciles against authoritative server state each tick has effectively answered this
+question — re-asserting held inputs becomes a special case of the same reconciliation loop.
+Choosing now would mean guessing at a contract that the resync design will either confirm
+or invalidate.
+
+What M2 must do instead: keep the 1.7.10 adapter's actuation *mechanically identical* to
+Fabric's, so that whichever model M5 picks can be applied to both adapters in one change.
+Do not let one adapter quietly start re-asserting inputs while the other does not — that
+divergence is the thing that would actually be expensive.
 
 **3. Budget for a 1.7.10 `KeyBinding` workaround.** 1.7.10's `KeyBinding` has no
 per-instance setter — `pressed` is private, and the only public route is the static,
@@ -162,6 +173,13 @@ Goals, process manager, path executor, per-tick position resync, `onPositionCorr
 handling. `goto x y z` works in-game on both versions. `IActuator` gains its **humanizer
 seam** here (no-op by default) so anticheat plausibility can be added later without
 touching core or movements.
+
+**Decide edge- vs level-triggered actuation here** (deferred from M1 — see the M2
+carry-forward notes). Minecraft can clear held key state at any time, so a walk can silently
+truncate. Once the executor reconciles against authoritative server position every tick,
+re-asserting held inputs is a special case of that same loop, and the contract should fall
+out of the resync design rather than being guessed at in advance. Whatever is chosen goes
+into the SPI's behavioural contract and applies to both adapters in one change.
 
 **Gate — SPI audit:** count adapter lines that are *logic* rather than *translation*.
 Logic in an adapter means it leaked out of the core. Fix before continuing.
