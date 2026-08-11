@@ -30,6 +30,18 @@ public interface IActuator {
      * is a conformance failure. The core MUST NOT pass {@code null}, and adapter behaviour
      * on {@code null} is unspecified.
      *
+     * <p><b>Caveat — 1.7.10 has no per-instance setter.</b> "Takes effect at the game's next
+     * input read" and "adapters MUST support every constant" both assume the adapter can
+     * address one binding and set its state. Forge 1.7.10's only public route is the static,
+     * keycode-addressed {@code KeyBinding.setKeyBindState(int, boolean)}: it addresses
+     * whichever binding currently holds that keycode rather than one the adapter chose, and
+     * on a key the user has left unbound it silently does nothing — the call returns normally
+     * and the input never takes effect. Reaching a per-instance setter there may require
+     * reflection or an access transformer. An unbound key is a real failure mode rather than
+     * an edge case, and a conformant adapter MUST surface it rather than accept a
+     * {@code setInput} that quietly does nothing. This concerns whether the input takes
+     * effect at all, not whether it lasts; persistence is global rule 4's subject, above.
+     *
      * @param input   which movement input to change; never {@code null}
      * @param pressed {@code true} to press, {@code false} to release
      */
