@@ -20,8 +20,13 @@ import org.slf4j.LoggerFactory;
  * tick. Every behavioural decision lives in {@link ContinuoCore}.
  *
  * <p>Implements the four global rules documented in the {@code dev.continuo.platform}
- * package. Two of them need machinery here: rule 2's tick window (the {@link #inWorld}
- * guard) and rule 3's fault handling ({@link #guarded} and {@link #faulted}).
+ * package, plus {@link dev.continuo.platform.IGameEvents#onClientTick}'s own phase-ordering
+ * contract. The machinery: rule 2's tick window (the {@link #inWorld} guard), rule 3's fault
+ * handling ({@link #guarded} and {@link #faulted}), the PRE/POST pairing latch ({@link
+ * #preDelivered}) that keeps {@code onClientTick} calls matched within a tick even if
+ * {@link #inWorld} or {@link #faulted} changes mid-tick, and the click drain ({@link
+ * #drainClicks}) that keeps a queued click from surviving a transition into or out of a
+ * ticked state.
  */
 public final class ContinuoFabricMod implements ClientModInitializer {
 
@@ -35,6 +40,19 @@ public final class ContinuoFabricMod implements ClientModInitializer {
      * Cleared on the next world load.
      */
     private boolean faulted;
+
+    /**
+     * Set when {@link TickPhase#PRE} is delivered for the current tick; cleared the moment
+     * {@code END_CLIENT_TICK} next runs, whether or not it goes on to deliver {@link
+     * TickPhase#POST}. {@link #inWorld} and {@link #faulted} are re-read independently by
+     * each phase's handler, so either can change between {@code START_CLIENT_TICK} and
+     * {@code END_CLIENT_TICK} of the same tick (a mid-tick dimension change or a disconnect
+     * processed inside {@code Minecraft.tick()}). This latch is what stops {@code POST} from
+     * ever firing without a same-tick {@code PRE}. It cannot wedge across ticks: it is
+     * unconditionally cleared on every {@code END_CLIENT_TICK} call, so a {@code PRE} that
+     * loses its {@code POST} mid-tick never leaves the latch set for the next one.
+     */
+    private boolean preDelivered;
 
     @Override
     public void onInitializeClient() {
@@ -64,12 +82,13 @@ public final class ContinuoFabricMod implements ClientModInitializer {
             if (!inWorld(client)) {
                 // Drain clicks made outside a world so a title-screen keypress cannot fire
                 // a walk the instant the next world loads.
-                while (walkKey.consumeClick()) {
-                    // discarded deliberately
-                }
+                drainClicks();
                 return;
             }
             if (faulted) {
+                // Same invariant while faulted: a click must not survive to be replayed once
+                // the fault clears on the next world load.
+                drainClicks();
                 return;
             }
             guarded(() -> {
@@ -78,11 +97,18 @@ public final class ContinuoFabricMod implements ClientModInitializer {
                     core.requestWalk();
                 }
                 core.onClientTick(TickPhase.PRE);
+                preDelivered = true;
             });
+            // If the block above ran to completion, walkKey is already empty and this is a
+            // no-op. If requestWalk() threw partway through the loop, this discards whatever
+            // clicks were still queued so they cannot leak into a tick after the fault clears.
+            drainClicks();
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (!inWorld(client) || faulted) {
+            boolean deliverPost = preDelivered;
+            preDelivered = false;
+            if (!deliverPost || !inWorld(client) || faulted) {
                 return;
             }
             guarded(() -> core.onClientTick(TickPhase.POST));
@@ -112,6 +138,18 @@ public final class ContinuoFabricMod implements ClientModInitializer {
      */
     private static boolean inWorld(Minecraft client) {
         return client.level != null && client.player != null;
+    }
+
+    /**
+     * Discards any clicks queued on {@link #walkKey} without feeding them to the core. Called
+     * on every path that declines to (or has just stopped) deliver a tick, so a click made
+     * while out of world, while faulted, or immediately before a mid-loop fault can never
+     * survive into a later, successful tick.
+     */
+    private void drainClicks() {
+        while (walkKey.consumeClick()) {
+            // discarded deliberately
+        }
     }
 
     /**
