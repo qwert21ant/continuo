@@ -46,9 +46,11 @@ A1 sign-off — do not skip a step or assume it would have passed.
    *Observe:* displacement should be **8–9 blocks**. Forty ticks at vanilla walking speed is
    about 8.6 blocks, so this is the expected range, not exactly 8 or exactly 10.
    *Diagnostic interpretations if it's outside 8–9 blocks:*
-   - Roughly double (~17 blocks) or roughly half (~4 blocks) means the tick hook is firing at
-     the wrong rate (e.g. registered on both client tick phases, or on server tick instead of
-     client tick).
+   - Roughly double (~17 blocks) or roughly half (~4 blocks) means the core is acting on the
+     wrong number of ticks. Note that the adapter is *deliberately* registered on both client
+     tick phases (START_CLIENT_TICK -> PRE, END_CLIENT_TICK -> POST) and that is correct and
+     required by the SPI contract. The bug to look for is the core acting on POST as well as
+     PRE, or the hook being on server tick instead of client tick.
    - Zero (player never moved) means the actuator is not reaching the key mapping — the W key
      is not actually being pressed in-game even though the walk was requested.
    - Never stopping (movement continues past a reasonable point, e.g. well past 9 blocks and
@@ -77,6 +79,31 @@ A1 sign-off — do not skip a step or assume it would have passed.
    not being called on disconnect (or the key release is not reaching the game), leaving
    input state stuck across a reconnect. This is the step most likely to reveal a real
    defect — verify it properly, don't assume it passed because the earlier steps did.
+
+9. **Title-screen keypress.** From the main menu, before loading any world, press `K` five
+   or six times. Then load the world from step 2.
+   *Observe:* the log must **not** contain `Continuo walk requested` from those presses, and
+   the player must not start walking on its own at any point after the world loads.
+   *Why this matters:* the SPI contract delivers ticks only while a world is loaded with a
+   local player, and the adapter drains clicks made outside a world so they cannot fire on
+   join. A walk starting the moment you spawn means the drain is missing; a
+   `Continuo walk requested` line logged at the title screen means the in-world guard is
+   missing.
+
+10. **Leave a singleplayer world mid-walk.** Press `K`, and while the bot is still moving
+    choose "Save and Quit to Title". Stay at the title screen this time rather than
+    rejoining.
+    *Observe:* the log must contain `Continuo stopping: disconnected`.
+    *Why this matters:* global rule 2 requires `stop()` on world unload, and the adapter
+    relies on `DISCONNECT` alone to cover it. Step 8 checks the symptom after a rejoin; this
+    step checks the cause directly, in the singleplayer case that the design flagged as
+    verify-don't-assume. If the line is absent, `DISCONNECT` does not fire on singleplayer
+    exit and the adapter needs a separate world-unload hook.
+
+**Not covered by this checklist:** global rule 3 (fault handling). Exercising it requires
+deliberately making the core throw, which is not something to leave in the tree. Rule 3 is
+implemented and knowingly unverified until M2's `platform-testkit` covers it. Do not record
+this checklist as evidence that fault handling works.
 
 Record the result (pass/fail) of each step individually. Any single failure blocks A1
 sign-off, even if every other step passed.
