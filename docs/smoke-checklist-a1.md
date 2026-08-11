@@ -81,14 +81,19 @@ A1 sign-off — do not skip a step or assume it would have passed.
    defect — verify it properly, don't assume it passed because the earlier steps did.
 
 9. **Title-screen keypress.** From the main menu, before loading any world, press `K` five
-   or six times. Then load the world from step 2.
+   or six times. Then load the world you created in step 2 (reuse it — do not create a new
+   one).
    *Observe:* the log must **not** contain `Continuo walk requested` from those presses, and
    the player must not start walking on its own at any point after the world loads.
-   *Why this matters:* the SPI contract delivers ticks only while a world is loaded with a
-   local player, and the adapter drains clicks made outside a world so they cannot fire on
-   join. A walk starting the moment you spawn means the drain is missing; a
-   `Continuo walk requested` line logged at the title screen means the in-world guard is
-   missing.
+   *Why this matters:* the SPI's `onClientTick` contract delivers ticks only while a world is
+   loaded with a local player. A `Continuo walk requested` line logged at the title screen, or
+   a walk starting on its own after the world loads, means the in-world guard is not holding.
+   *What this step does NOT verify — read before recording a pass:* it does **not** exercise
+   the adapter's out-of-world click drain. Minecraft only accumulates `KeyMapping` clicks
+   while no `Screen` is open, and the title screen is a screen, so nothing is queued for the
+   drain to discard. This step therefore passes identically against a build with the drain
+   deleted. Treat it as evidence for the in-world guard and for the absence of the log line,
+   and for nothing else.
 
 10. **Leave a singleplayer world mid-walk.** Press `K`, and while the bot is still moving
     choose "Save and Quit to Title". Stay at the title screen this time rather than
@@ -104,6 +109,16 @@ A1 sign-off — do not skip a step or assume it would have passed.
 deliberately making the core throw, which is not something to leave in the tree. Rule 3 is
 implemented and knowingly unverified until M2's `platform-testkit` covers it. Do not record
 this checklist as evidence that fault handling works.
+
+Also not covered: the adapter's click drain (`drainClicks`). Every tester-reachable moment
+with no world loaded also has a `Screen` open — the title screen, the world-selection list,
+the world-loading screens — and Minecraft only accumulates `KeyMapping` clicks while no screen
+is open. No manual sequence available here queues a click that the out-of-world drain then has
+to discard, which is why step 9 explicitly disclaims it. The one drain path that is genuinely
+reachable in play is the *faulted* path, which happens in-world with no screen up; that is out
+of scope for the same reason rule 3 above is. The drain is implemented and knowingly
+unverified until M2's `platform-testkit` covers it. Do not record this checklist as evidence
+that the drain works.
 
 Also not covered: PRE/POST phase pairing across a mid-tick world change (dimension change or
 a disconnect processed during the tick). The adapter delivers both phases deliberately, and
