@@ -32,7 +32,8 @@ public final class ContinuoCore implements IGameEvents {
     /**
      * Releases any held input and resets state.
      *
-     * <p>The adapter must call this on world unload and on shutdown. Without it, a
+     * <p>Global rule 2 of the {@code dev.continuo.platform} package requires the adapter to
+     * call this on all three of world unload, disconnect and client shutdown. Without it, a
      * disconnect mid-walk leaves the client holding a movement key.
      */
     public void stop() {

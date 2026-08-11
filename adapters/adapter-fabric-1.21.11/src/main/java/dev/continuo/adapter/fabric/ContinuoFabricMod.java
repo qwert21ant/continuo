@@ -145,9 +145,13 @@ public final class ContinuoFabricMod implements ClientModInitializer {
 
     /**
      * Discards any clicks queued on {@link #walkKey} without feeding them to the core. Called
-     * on every path that declines to (or has just stopped) deliver a tick, so a click made
-     * while out of world, while faulted, or immediately before a mid-loop fault can never
-     * survive into a later, successful tick.
+     * on all three {@code START_CLIENT_TICK} paths — out of world, faulted, and after a
+     * delivered {@code PRE} that may have aborted mid-loop — so a click made while out of
+     * world, while faulted, or immediately before a mid-loop fault can never survive into a
+     * later, successful tick. Deliberately not called from {@code END_CLIENT_TICK}: clicks
+     * are consumed only in the {@code PRE} handler, so that tick's queue was already dealt
+     * with, and draining again would swallow a keypress the user makes between the two
+     * halves of a tick.
      */
     private void drainClicks() {
         while (walkKey.consumeClick()) {

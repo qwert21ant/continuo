@@ -25,6 +25,13 @@ public interface IGameEvents {
      *       called during {@code PRE} of tick <i>N</i> affects the player's movement on
      *       tick <i>N</i>. This is why a forty-tick walk yields forty ticks of travel and
      *       not thirty-nine.
+     *       <p>Ticks counted are not the same as ticks travelled. This callback keeps firing
+     *       while the game is paused or the death screen is up — the client's tick loop still
+     *       runs, and a world and local player still exist — but the level itself is frozen,
+     *       so a core counting forty of these ticks can cover less than forty ticks of
+     *       ground. What happens to a held input across those screens is global rule 4's
+     *       subject and is deferred to M5; this note only records that the tick count and the
+     *       distance are not the same quantity.
      *   <li><b>{@link TickPhase#POST} MUST fire after the game has finished processing that
      *       tick's logic</b>, and after {@code PRE} for the same tick.
      *   <li><b>Both phases MUST be delivered.</b> An adapter that delivers only {@code PRE}
