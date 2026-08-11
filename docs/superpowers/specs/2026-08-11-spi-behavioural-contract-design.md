@@ -98,8 +98,9 @@ still enter the faulted state. The handler must not be able to fault.
 
 Rationale: a bot bug must never crash the user's game, and a half-dead core must never leave
 a movement key held. Recovery is tied to world load because that is the same event that opens
-the tick window under rule 2 and §5's `onClientTick` rule — one event, one state transition,
-no separate recovery machinery.
+the tick window under §5's `onClientTick` rule — one event, one state transition, no separate
+recovery machinery. (The window is `onClientTick`'s alone; rule 2 is lifecycle only and does
+not state it. The numbering is load-bearing for M2's testkit, so the attribution matters.)
 
 **Rule 4 — Input persistence is not guaranteed.** State set through `setInput` may be cleared
 by the platform at any time without notice. Any screen opening does this on both target

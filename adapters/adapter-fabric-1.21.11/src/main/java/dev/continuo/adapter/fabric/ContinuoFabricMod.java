@@ -20,8 +20,9 @@ import org.slf4j.LoggerFactory;
  * tick. Every behavioural decision lives in {@link ContinuoCore}.
  *
  * <p>Implements the four global rules documented in the {@code dev.continuo.platform}
- * package, plus {@link dev.continuo.platform.IGameEvents#onClientTick}'s own phase-ordering
- * contract. The machinery: rule 2's tick window (the {@link #inWorld} guard), rule 3's fault
+ * package, plus {@link dev.continuo.platform.IGameEvents#onClientTick}'s own tick-window and
+ * phase-ordering contract. The machinery: {@code onClientTick}'s own tick window (the
+ * {@link #inWorld} guard), rule 3's fault
  * handling ({@link #guarded} and {@link #faulted}), the PRE/POST pairing latch ({@link
  * #preDelivered}) that stops {@code POST} from ever firing without a same-tick {@code PRE}
  * when {@link #inWorld} or {@link #faulted} changes mid-tick — the converse is deliberately
@@ -134,8 +135,9 @@ public final class ContinuoFabricMod implements ClientModInitializer {
     }
 
     /**
-     * Global rule 2's tick window: ticks are delivered only while a world is loaded and a
-     * local player exists.
+     * The tick window from {@link dev.continuo.platform.IGameEvents#onClientTick}: ticks are
+     * delivered only while a world is loaded and a local player exists. Global rule 2 is
+     * lifecycle only and does not state this window.
      */
     private static boolean inWorld(Minecraft client) {
         return client.level != null && client.player != null;
