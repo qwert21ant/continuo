@@ -23,10 +23,11 @@ import org.slf4j.LoggerFactory;
  * package, plus {@link dev.continuo.platform.IGameEvents#onClientTick}'s own phase-ordering
  * contract. The machinery: rule 2's tick window (the {@link #inWorld} guard), rule 3's fault
  * handling ({@link #guarded} and {@link #faulted}), the PRE/POST pairing latch ({@link
- * #preDelivered}) that keeps {@code onClientTick} calls matched within a tick even if
- * {@link #inWorld} or {@link #faulted} changes mid-tick, and the click drain ({@link
- * #drainClicks}) that keeps a queued click from surviving a transition into or out of a
- * ticked state.
+ * #preDelivered}) that stops {@code POST} from ever firing without a same-tick {@code PRE}
+ * when {@link #inWorld} or {@link #faulted} changes mid-tick — the converse is deliberately
+ * not prevented, and a {@code PRE} left unpaired that way is the exception the
+ * {@code onClientTick} contract permits — and the click drain ({@link #drainClicks}) that
+ * keeps a queued click from surviving a transition into or out of a ticked state.
  */
 public final class ContinuoFabricMod implements ClientModInitializer {
 
