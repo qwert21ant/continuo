@@ -124,6 +124,24 @@ class ContinuoCoreTest {
         assertEquals(0, actuator.callCount());
     }
 
+    /**
+     * Global rule 2 states that {@code stop()} is idempotent. The core already satisfies
+     * this; the test exists to pin it, so that a future change to {@code stop()} cannot
+     * quietly break an adapter that calls it on both world unload and client shutdown.
+     */
+    @Test
+    void stopIsIdempotent() {
+        core.requestWalk();
+        tick(20);
+        core.stop();
+        actuator.clear();
+
+        core.stop();
+        core.stop();
+
+        assertEquals(0, actuator.callCount(), "repeated stop() must not touch the actuator");
+    }
+
     @Test
     void canWalkAgainAfterStop() {
         core.requestWalk();
@@ -176,9 +194,12 @@ class ContinuoCoreTest {
 
     /**
      * Pins current behaviour: calling {@code start()} a second time silently replaces the
-     * context rather than throwing. This is not a stated contract, only what the class does
-     * today; if that ever changes, this test should change with it rather than be deleted
-     * silently.
+     * context rather than throwing.
+     *
+     * <p>Global rule 2 says an adapter calls {@code start()} exactly once per lifetime. That
+     * rule binds adapters, not the core, and this leniency is deliberately not promoted to a
+     * guarantee — an adapter MUST NOT rely on it. If the core's behaviour here ever changes,
+     * this test should change with it rather than be deleted silently.
      */
     @Test
     void startTwiceReplacesContext() {
