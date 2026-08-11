@@ -1,10 +1,10 @@
 plugins {
     java
-    // The Kotlin DSL `plugins {}` block is evaluated in a restricted scope that has no
-    // access to `property()`/`providers` from the enclosing script (a Gradle limitation,
-    // confirmed by "Unresolved reference" at configuration time), so the version cannot be
-    // read from gradle.properties here as the brief's template assumed. Hardcoded literal;
-    // value still tracked in gradle.properties (loom_version) for documentation.
+    // The Kotlin DSL `plugins {}` block is evaluated in a restricted scope with no access
+    // to `property()`/`providers` from the enclosing script (a Gradle limitation, confirmed
+    // by "Unresolved reference" at configuration time), so this version cannot be read from
+    // gradle.properties. It is deliberately a literal and this line is the single source of
+    // truth for it — do not add a loom_version property expecting it to take effect.
     id("fabric-loom") version "1.17.17"
 }
 
