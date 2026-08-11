@@ -9,9 +9,11 @@
  * <h2>Global rules</h2>
  *
  * <p>These four rules are cross-cutting: they bind every type in this package, in both
- * directions. Per-type documentation cites them by number. Conformance tests are expected
- * to mirror this numbering, one case per rule. The keywords MUST, MUST NOT and MAY carry
- * their RFC 2119 meanings.
+ * directions. Per-type documentation cites them by number. Conformance tests are expected to
+ * be organised by this numbering, though not every rule reduces to a test — rule 1's "no
+ * implementation may block" and rule 4's "may be cleared at any time" have no assertion to
+ * write, and rules 2 and 3 bind methods that are not on any type in this package. The
+ * keywords MUST, MUST NOT and MAY carry their RFC 2119 meanings.
  *
  * <h3>Rule 1 — Threading</h3>
  *
