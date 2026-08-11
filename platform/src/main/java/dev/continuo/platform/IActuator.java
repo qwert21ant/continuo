@@ -19,8 +19,12 @@ public interface IActuator {
      * perspective.
      *
      * <p>The effect does not necessarily persist. Global rule 4 in this package's
-     * documentation applies: the platform may clear input state at any time without notice,
-     * and neither core nor adapter may assume a held input survives to the next tick.
+     * documentation applies: the platform may clear input state at any time without notice —
+     * any screen opening does so on both target versions, as does the user physically tapping
+     * the key. This is a stated hazard, not an obligation: the SPI does not require either
+     * side to re-assert a held input, and does not require either side to rely on one
+     * persisting. Whether actuation is edge- or level-triggered is deferred to milestone M5;
+     * see global rule 4 for that deferral.
      *
      * <p>Adapters MUST support every {@link Input} constant; throwing for a valid constant
      * is a conformance failure. The core MUST NOT pass {@code null}, and adapter behaviour
