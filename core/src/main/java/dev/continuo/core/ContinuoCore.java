@@ -14,7 +14,11 @@ import dev.continuo.platform.TickPhase;
  */
 public final class ContinuoCore implements IGameEvents {
 
-    /** Roughly 8.6 blocks at vanilla walking speed. */
+    /**
+     * Roughly 8.6 blocks at steady-state vanilla walking speed. Measured travel from a
+     * standing start is a little under that — 8 blocks in the 2026-08-11 smoke run — because
+     * the first few ticks are spent accelerating. Both figures describe the same 40 ticks.
+     */
     public static final int WALK_TICKS = 40;
 
     private IPlatformContext context;

@@ -108,19 +108,50 @@ change the SPI.
 
 ### Carried forward from M1 — read before starting M2
 
-**1. Write the SPI's behavioural contract into the SPI, and back it with a conformance
-test kit.** This was M1's final review's single highest-value recommendation. The SPI
-currently defines seven *shapes* and almost no *semantics*. `onClientTick`'s entire
-specification is "called once per client tick, per phase" — it does not say once per *tick*
-rather than once per *frame*, does not say `PRE` must fire before the game reads input for
-that tick (the reason the walk is 40 ticks and not 39), and does not say who owns input
-state after `setInput` returns. M2's stated purpose is testing whether a second adapter
-implements the SPI *faithfully*, and "faithfully" is presently undefined and untestable:
-there are zero adapter tests and zero conformance tests. Two adapters will silently diverge
-on exactly these points and produce plausible-looking bots that walk slightly wrong
-distances. Put the contract in the javadoc now; add a `platform-testkit` module with a
-suite an adapter must pass while writing the second adapter, when there are two
-implementations to generalise from.
+**1. Write the SPI's behavioural contract into the SPI — ✅ DONE 2026-08-11.** The contract
+half of this item shipped as its own sub-project; see
+[`2026-08-11-spi-behavioural-contract-design.md`](2026-08-11-spi-behavioural-contract-design.md).
+Four numbered global rules (1 Threading, 2 Lifecycle, 3 Faults, 4 Input persistence) live in
+`dev.continuo.platform`'s `package-info`, with per-type semantics on all seven types. The
+Fabric adapter was made to conform: in-world tick window, both tick phases with a PRE/POST
+latch, fault handling with world-load recovery, an unconditional click drain. A build check
+now fails on an unresolvable javadoc reference. **Where that spec and the javadoc differ, the
+javadoc is normative** — it is what M2 measures A2 against.
+
+**Verified 2026-08-11:** the owner ran `docs/smoke-checklist-a1.md` (10 steps) against a real
+1.21.11 client. All steps passed; measured displacement 8 blocks, inside the 8–9 band. Note
+that 8.6 is the steady-state figure and ignores the acceleration ramp from standstill, so 8
+is what a correct 40-tick walk looks like — do not read it as 0.6 blocks short. This manual
+run is the *only* evidence the adapter conforms; it has no automated tests and cannot get
+any without Minecraft on the classpath.
+
+**What M2 still owes on this item:**
+
+- **The `platform-testkit` conformance suite.** Deliberately deferred to M2, when two
+  implementations exist to generalise from — writing it against one adapter risks encoding
+  Fabric's accidents as the contract. Do not promise one case per numbered rule: rule 1's
+  "no implementation may block" is unfalsifiable as a test, and rules 2 and 3 bind
+  `start`/`stop`, which live on `ContinuoCore` in `core`, not in the SPI package at all.
+- **An injection seam.** `ContinuoFabricMod` hard-codes `new ContinuoCore()`, so there is no
+  way to substitute a recording `IGameEvents`. Without a seam the testkit cannot observe an
+  adapter at all. Solving this is M2's first testkit problem, and it must not be solved by
+  adding a type to `dev.continuo.platform`.
+- **Decide whether a dimension change is a world unload.** Global rule 2 requires `stop()` on
+  world unload. Fabric's `DISCONNECT` does not fire on a dimension change; 1.7.10's
+  `WorldEvent.Unload` does. Two defensibly conformant adapters therefore disagree observably
+  on walking through a portal — the exact divergence the contract exists to prevent. The
+  javadoc records the ambiguity and recommends the stricter reading (a dimension change *is*
+  an unload); M2 settles it.
+- **Pick a mechanism for `IActuator`'s unbound-key clause.** It says a conformant adapter
+  MUST surface an unbound key, while a neighbouring clause forbids throwing for a valid
+  `Input` constant. Logging satisfies both, but the contract does not say so.
+- **Minor:** the contract spec's §4.1 says "four caveats were added"; five shipped. The fifth
+  (ticks counted ≠ ticks travelled while paused) appears only as a §5 pointer.
+
+**Known unverified, by design:** global rule 3 (fault handling) is implemented but untested —
+exercising it needs a deliberate throw, which is not something to leave in the tree, and the
+manual checklist cannot reach it. PRE/POST pairing is likewise unobservable while the core
+ignores `POST`. Both are the testkit's job. Do not treat a green smoke run as covering either.
 
 **2. Do NOT lock in edge- vs level-triggered actuation yet — it is an M5 decision.**
 Today the core sets `FORWARD` once at tick 1 and assumes it persists for 40 ticks. It does
@@ -247,6 +278,11 @@ load-bearing rather than convenient: the SPI has to carry weight the build no lo
 Worth re-checking at M2: if unimined has cut a 1.4.2 release by then, consolidating onto one
 plugin is worth reconsidering, since the original reasoning was sound and only the release
 cadence defeated it.
+
+**Re-checked 2026-08-11: still 1.4.1.** No 1.4.2 release has been cut; the fix remains only
+in the floating snapshot. Consolidation is not available, so **M2 stands up
+RetroFuturaGradle as planned** and should not spend time re-litigating this. Re-check again
+only if M2 slips far enough that a new release becomes plausible.
 
 Mixins: standard Fabric mixin on 1.21.11; **UniMixins** on 1.7.10 — but **not before M3**.
 M1 and M2 need only plain event subscriptions (`ClientTickEvents` on Fabric,
