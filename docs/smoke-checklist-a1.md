@@ -87,13 +87,16 @@ A1 sign-off — do not skip a step or assume it would have passed.
    the player must not start walking on its own at any point after the world loads.
    *Why this matters:* the SPI's `onClientTick` contract delivers ticks only while a world is
    loaded with a local player. A `Continuo walk requested` line logged at the title screen, or
-   a walk starting on its own after the world loads, means the in-world guard is not holding.
-   *What this step does NOT verify — read before recording a pass:* it does **not** exercise
-   the adapter's out-of-world click drain. Minecraft only accumulates `KeyMapping` clicks
-   while no `Screen` is open, and the title screen is a screen, so nothing is queued for the
-   drain to discard. This step therefore passes identically against a build with the drain
-   deleted. Treat it as evidence for the in-world guard and for the absence of the log line,
-   and for nothing else.
+   a walk starting on its own after the world loads, means something is driving the core
+   outside the tick window — a real defect, whatever its cause.
+   *What this step does NOT verify — read before recording a pass:* it exercises neither the
+   adapter's out-of-world click drain nor its in-world guard. Minecraft only accumulates
+   `KeyMapping` clicks while no `Screen` is open, and the title screen is a screen, so nothing
+   is queued — neither for the drain to discard nor for the guard to hold back. This step
+   therefore passes identically against a build with either mechanism deleted. It is a
+   tripwire for a walk appearing from nowhere, not evidence that either mechanism works. The
+   drain's only reachable path is the faulted one, which is in-world; see the coverage note
+   below for why this checklist cannot reach it.
 
 10. **Leave a singleplayer world mid-walk.** Press `K`, and while the bot is still moving
     choose "Save and Quit to Title". Stay at the title screen this time rather than
