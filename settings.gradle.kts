@@ -2,6 +2,7 @@ pluginManagement {
     repositories {
         maven("https://maven.fabricmc.net/") { name = "Fabric" }
         maven("https://maven.wagyourtail.xyz/releases") { name = "WagYourTail" }
+        maven("https://nexus.gtnewhorizons.com/repository/public/") { name = "GTNH" }
         gradlePluginPortal()
         mavenCentral()
     }
@@ -19,3 +20,4 @@ rootProject.name = "continuo"
 include("platform")
 include("core")
 include("adapters:adapter-fabric-1.21.11")
+include("adapters:adapter-forge-1.7.10")
