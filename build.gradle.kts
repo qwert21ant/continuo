@@ -10,6 +10,7 @@ plugins {
 val allowedProjectDependencies: Map<String, Set<String>> = mapOf(
     ":platform" to emptySet(),
     ":core" to setOf(":platform"),
+    ":platform-testkit" to setOf(":platform", ":core"),
     // ":adapters" itself is an implicit parent project created by the colon-segmented
     // `include("adapters:adapter-fabric-1.21.11")` in settings.gradle.kts. It has no
     // build.gradle.kts and declares no dependencies, but it is still a real project in

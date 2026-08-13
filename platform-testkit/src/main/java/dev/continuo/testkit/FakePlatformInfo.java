@@ -1,4 +1,4 @@
-package dev.continuo.core.fakes;
+package dev.continuo.testkit;
 
 import dev.continuo.platform.IPlatformInfo;
 import dev.continuo.platform.Loader;

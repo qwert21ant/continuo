@@ -1,7 +1,7 @@
 package dev.continuo.core;
 
-import dev.continuo.core.fakes.FakeActuator;
-import dev.continuo.core.fakes.FakePlatformContext;
+import dev.continuo.testkit.FakeActuator;
+import dev.continuo.testkit.FakePlatformContext;
 import dev.continuo.platform.Input;
 import dev.continuo.platform.TickPhase;
 import org.junit.jupiter.api.BeforeEach;
