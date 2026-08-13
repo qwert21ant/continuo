@@ -45,3 +45,61 @@ dependencies {
     implementation(project(":platform"))
     implementation(project(":core"))
 }
+
+// --- Dev-run-only workaround: strip the OpenAL natives before runClient launches ---
+//
+// `./gradlew :adapters:adapter-forge-1.7.10:runClient` was crashing reproducibly (2/2 runs)
+// about 40 seconds after launch with:
+//
+//   java.lang.UnsatisfiedLinkError: org.lwjgl.openal.AL10.nalGetSourcei(II)I
+//     at paulscode.sound.libraries.ChannelLWJGLOpenAL.playing
+//     at net.minecraft.client.audio.SoundManager.isSoundPlaying
+//     at net.minecraft.client.audio.MusicTicker.update
+//     at net.minecraft.client.Minecraft.runTick
+//
+// Root cause (established from run/logs/fml-client-latest.log, not a defect in this
+// project's mod code — our mod never appears in the failure and initialises correctly):
+//
+//   1. Sound system #1 starts and successfully creates an OpenAL context.
+//   2. FML's second startup resource reload calls SoundManager.reloadSoundSystem().
+//      paulscode's context teardown for #1 is asynchronous, so #2's AL.create() can run
+//      before #1's context is destroyed, and fails with
+//      "IllegalStateException: Only one OpenAL context may be instantiated at any one time".
+//   3. Because of that, #2 never finishes loading, and paulscode's fixed 30-second
+//      initialisation timeout eventually fires.
+//   4. The fallback "Switching to No Sound" then tears down the OpenAL binding while a
+//      thread from #1 is still calling into it, producing the UnsatisfiedLinkError above
+//      and killing the client thread.
+//
+// This is a race in Minecraft 1.7.10 / paulscode's sound engine that fast machines lose
+// reliably; it has nothing to do with anything this module does.
+//
+// The approved fix is to make OpenAL unavailable for the dev client, not to try to patch
+// around the race: with no OpenAL native library present, AL.create() fails immediately
+// during the *first* sound system initialisation, paulscode falls back to silent mode
+// right away, no OpenAL context is ever created, ChannelLWJGLOpenAL is never exercised,
+// and the failing native call is simply unreachable. Deleting both the 32- and 64-bit
+// DLLs is deterministic; only OpenAL64.dll is actually loaded by this JVM, but removing
+// OpenAL32.dll too avoids relying on that assumption.
+//
+// This is a dev-run-only workaround, applied by deleting files out of the generated
+// run/natives/lwjgl2 directory before runClient launches. It is NOT part of the shipped
+// mod artifact and has no effect on anything other than this Gradle task. Running without
+// sound is acceptable here because this adapter drives a movement bot; nothing in this
+// module or its tests plays or depends on audio.
+//
+// Configuration-cache note: `runClient`'s action below must not call Project methods like
+// file(...) or delete(...) — RetroFuturaGradle 2.x supports the configuration cache, and
+// those calls are not serializable into the cache entry. The File objects are therefore
+// resolved once here, at configuration time, and only File.delete() (a plain JDK call) is
+// invoked inside doFirst.
+val lwjgl2NativesDir = layout.projectDirectory.dir("run/natives/lwjgl2").asFile
+val openAl32Native = File(lwjgl2NativesDir, "OpenAL32.dll")
+val openAl64Native = File(lwjgl2NativesDir, "OpenAL64.dll")
+
+tasks.named("runClient") {
+    doFirst {
+        openAl32Native.delete()
+        openAl64Native.delete()
+    }
+}
