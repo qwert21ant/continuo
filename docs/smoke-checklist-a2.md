@@ -165,8 +165,8 @@ implemented and knowingly unverified until M2's `platform-testkit` covers it. Do
 this checklist as evidence that fault handling works.
 
 Also not covered: the adapter's click drain (`drainClicks`). Every tester-reachable moment
-with no world loaded also has a `Screen` open — the title screen, the world-selection list,
-the world-loading screens — and Minecraft only accumulates `KeyMapping` clicks while no screen
+with no world loaded also has a `GuiScreen` open — the title screen, the world-selection list,
+the world-loading screens — and Minecraft only accumulates `KeyBinding` clicks while no screen
 is open. No manual sequence available here queues a click that the out-of-world drain then has
 to discard, which is why step 9 explicitly disclaims it. The one drain path that is genuinely
 reachable in play is the *faulted* path, which happens in-world with no screen up; that is out
@@ -178,8 +178,8 @@ Also not covered: PRE/POST phase pairing across a mid-tick world change (dimensi
 a disconnect processed during the tick). The adapter delivers both phases deliberately, and
 includes a `preDelivered` latch to ensure `POST` is paired only when `PRE` was delivered in
 that same tick. The latch closes one direction only. In the other direction, `PRE` **can go
-unpaired**: if the tick window closes or a fault is set between `START_CLIENT_TICK` and
-`END_CLIENT_TICK` of the same tick, `PRE` has already been delivered and `POST` is then
+unpaired**: if the tick window closes or a fault is set between `TickEvent.Phase.START` and
+`TickEvent.Phase.END` of the same tick, `PRE` has already been delivered and `POST` is then
 correctly suppressed. That is the exception the SPI's `onClientTick` contract explicitly
 permits, not a defect — but it means a `PRE` without a `POST` is a state this adapter can
 reach, and nothing in this checklist observes it. The pairing is unobservable in practice
