@@ -1,6 +1,5 @@
 package dev.continuo.core;
 
-import dev.continuo.platform.IGameEvents;
 import dev.continuo.platform.IPlatformContext;
 import dev.continuo.platform.Input;
 import dev.continuo.platform.TickPhase;
@@ -12,7 +11,7 @@ import dev.continuo.platform.TickPhase;
  * constructs it and holds it, which is exactly why this class can be tested with no
  * Minecraft on the classpath.
  */
-public final class ContinuoCore implements IGameEvents {
+public final class ContinuoCore implements CoreApi {
 
     /**
      * Roughly 8.6 blocks at steady-state vanilla walking speed. Measured travel from a
@@ -26,6 +25,7 @@ public final class ContinuoCore implements IGameEvents {
     private int tick;
 
     /** Called once by the adapter, before any other method. */
+    @Override
     public void start(IPlatformContext context) {
         if (context == null) {
             throw new IllegalArgumentException("context must not be null");
@@ -42,6 +42,7 @@ public final class ContinuoCore implements IGameEvents {
      * and on client shutdown where the platform exposes a main-thread client-stopping event.
      * Without it, a disconnect mid-walk leaves the client holding a movement key.
      */
+    @Override
     public void stop() {
         if (context == null) {
             throw new IllegalStateException("start(IPlatformContext) must be called first");
