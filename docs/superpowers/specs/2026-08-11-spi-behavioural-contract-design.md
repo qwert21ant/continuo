@@ -137,6 +137,11 @@ copied into two documents drifts. Read the javadoc for the wording that binds.
    binding holds the keycode and silently no-ops on an unbound key. An unbound key is a real
    failure mode a conformant adapter must surface, not swallow.
 4. **§5's "both phases MUST be delivered" — one exception.** See §5 below.
+5. **`onClientTick`, ticks counted vs. ticks travelled.** The callback keeps firing while the
+   game is paused or the death screen is up — the tick loop, a world, and a local player all
+   still exist, but the level itself is frozen — so a core counting forty of these ticks can
+   cover less than forty ticks of ground. `IGameEvents#onClientTick`'s javadoc records this;
+   what happens to a held input across those screens is rule 4's subject, deferred to M5.
 
 ---
 
