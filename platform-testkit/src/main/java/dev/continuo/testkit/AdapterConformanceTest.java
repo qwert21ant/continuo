@@ -366,6 +366,12 @@ public abstract class AdapterConformanceTest {
         subject.queueClick(3);
         subject.tickStart(LEVEL_A, PLAYER);
 
+        // The faulted tick returns before the dispatch loop, so a zero count here would hold
+        // whether the click was discarded or merely left sitting in the queue. Only clearing
+        // the fault tells the two apart: the world load to LEVEL_B reopens the dispatch loop,
+        // and a click the drain failed to discard is handled on that tick.
+        subject.tickStart(LEVEL_B, PLAYER);
+
         assertEquals(0, subject.clicksHandled(),
             "a click must not survive to be replayed once the fault clears");
     }
@@ -385,6 +391,15 @@ public abstract class AdapterConformanceTest {
             "a throw from the click handler faults exactly as a throw from the core does");
         assertEquals(0, core.count(RecordingCore.Event.TICK_PRE),
             "the fault aborts the tick before PRE is reached");
+
+        // Those three are all decided inside the guard, before the trailing drain runs, so
+        // they cannot tell a discarded click from one still queued. Clearing the fault with a
+        // world load reopens the dispatch loop: the two clicks the aborted loop never reached
+        // are handled here, and the count reaches 4, unless they were drained.
+        subject.tickStart(LEVEL_B, PLAYER);
+
+        assertEquals(2, subject.clicksHandled(),
+            "the clicks left queued by the aborted loop must not leak into a later tick");
     }
 
     @Test
