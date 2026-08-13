@@ -114,9 +114,14 @@ on.
   graph, so "the same unmodified core jar" is a property of the build rather than a claim,
   and the owner measured the 40-tick walk at 8–9 blocks on a real 1.7.10 client
   (`docs/smoke-checklist-a2.md`, verified 2026-08-13).
-- **A2b — remaining.** The injection seam, `platform-testkit`, and the SPI v1 revision. These
-  are the three items retargeted from "M2" below; nothing beyond M2 starts until the v1
-  revision is settled.
+- **A2b — ✅ DONE.** The injection seam, `platform-testkit`, and the SPI v1 revision. Spec:
+  [`2026-08-13-a2b-conformance-testkit-design.md`](2026-08-13-a2b-conformance-testkit-design.md).
+  The seam **dissolved rather than got solved**: extracting both adapters' shared conformance
+  machinery into `:runtime` made the object worth observing the runtime, which the testkit
+  constructs directly, so no substitution mechanism inside an adapter is needed and no type was
+  added to `dev.continuo.platform`. Rule 3 fault handling, the click drain and PRE/POST pairing
+  are now offline assertions. The SPI v1 revision was a documentation pass: **no SPI type,
+  method, signature or enum constant changed.**
 
 **Gate: evaluated 2026-08-13 — NOT tripped.** The rule is *if the two adapters require
 materially different SPI shapes, stop and redesign*. They do not. Every difference between
@@ -179,21 +184,37 @@ written without answering. Full reasoning in
 - **Minor — the §4.1 caveat count.** The contract spec said "four caveats were added"; five
   shipped. Corrected. A2a spec §5.4.
 
-**Still open — retargeted from M2 to A2b.** A2a deliberately did not attempt these; see the
-A2a spec's §1 "explicitly not in A2a" and its §7 ledger.
+**Closed by A2b — ✅.** A2a deliberately did not attempt these; see the A2a spec's §1
+"explicitly not in A2a" and its §7 ledger. Each bullet keeps the text it was written with, so
+the reasoning that was acted on stays legible, with A2b's outcome recorded beneath it.
 
-- **An injection seam — A2b.** Both adapters hard-code `new ContinuoCore()`, so there is no
-  way to substitute a recording `IGameEvents`. Without a seam the testkit cannot observe an
-  adapter at all. This is A2b's first testkit problem, and it must not be solved by adding a
-  type to `dev.continuo.platform`.
-- **The `platform-testkit` conformance suite — A2b.** Deferred until two implementations
-  existed to generalise from; they now do, which is the precondition A2b was waiting on. Do
-  not promise one case per numbered rule: rule 1's "no implementation may block" is
-  unfalsifiable as a test, and rules 2 and 3 bind `start`/`stop`, which live on
+- **An injection seam — ✅ dissolved, not built.** Both adapters hard-code `new
+  ContinuoCore()`, so there is no way to substitute a recording `IGameEvents`. Without a seam
+  the testkit cannot observe an adapter at all. This is A2b's first testkit problem, and it
+  must not be solved by adding a type to `dev.continuo.platform`.
+  *Outcome:* both adapters still hard-code `new ContinuoCore()`, and no seam was added.
+  Extracting their shared conformance machinery into `:runtime` moved the object worth
+  observing out of the adapters, and the testkit constructs `AdapterRuntime` directly against a
+  recording core. The constraint held: no type was added to `dev.continuo.platform`.
+- **The `platform-testkit` conformance suite — ✅ shipped, 28 cases.** Deferred until two
+  implementations existed to generalise from; they now do, which is the precondition A2b was
+  waiting on. Do not promise one case per numbered rule: rule 1's "no implementation may
+  block" is unfalsifiable as a test, and rules 2 and 3 bind `start`/`stop`, which live on
   `ContinuoCore` in `core`, not in the SPI package at all.
-- **The SPI v1 revision — A2b.** A2a produced the gate evidence; A2b acts on it. The gate did
-  not trip (below), so this is a refinement pass, not a redesign — but it is still the gate's
-  own condition that nothing beyond M2 starts until the revision is settled.
+  *Outcome:* the warning was right and was obeyed. The suite is organised by the global rule
+  numbering and covers rules 2 and 3 against the core-side interface that declares
+  `start`/`stop`; rules 1 and 4, and `onClientTick`'s re-entrancy clause, have no cases and are
+  documented as deliberate gaps rather than left silent. What it asserts is the shared
+  `AdapterRuntime`, not either adapter's platform binding.
+- **The SPI v1 revision — ✅ settled as a documentation pass.** A2a produced the gate evidence;
+  A2b acts on it. The gate did not trip (below), so this is a refinement pass, not a redesign —
+  but it is still the gate's own condition that nothing beyond M2 starts until the revision is
+  settled.
+  *Outcome:* a refinement is what it turned out to be, and a smaller one than budgeted for. **No
+  SPI type, method, signature or enum constant changed.** The revision was confined to the
+  global-rules preamble in `package-info`, which now points at the suite and states that the
+  rule numbering is load-bearing, plus reconciling the contract spec's §4.1. The gate's
+  condition is therefore met and M3 is unblocked.
 
 **The M2 gate — evaluated 2026-08-13, NOT tripped.** The rule: *if the two adapters require
 materially different SPI shapes, stop and redesign.* Answered against both adapters as built,
@@ -267,6 +288,18 @@ are the testkit's job. Do not treat a green smoke run as covering any of them.
 disclaimers verbatim and both were recorded as passing *with* them. A future session must not
 read two green manual runs as having covered rule 3, the drain, or phase pairing; the runs did
 not and structurally could not.
+
+**Superseded by A2b for the shared logic.** Global rule 3, the click drain and PRE/POST pairing
+are now asserted offline by `platform-testkit` against `AdapterRuntime`, which both adapters
+delegate to. What remains unverified by anything automated is the platform binding itself:
+whether each adapter passes the correct level and player objects, and whether `setInput` moves
+the player. A green smoke run still does not cover the three behaviours, and a green suite
+still does not cover the binding.
+
+**Neither checklist has been re-run since the adapters were converted.** Both were rewritten in
+A2b to delegate to `AdapterRuntime`, and the 2026-08-13 runs above predate that change. The
+suite is evidence that the extracted logic behaves; it is not evidence that either adapter is
+still wired to it correctly in a real client. Re-running both checklists is an outstanding item.
 
 **2. Do NOT lock in edge- vs level-triggered actuation yet — it is an M5 decision.**
 Today the core sets `FORWARD` once at tick 1 and assumes it persists for 40 ticks. It does

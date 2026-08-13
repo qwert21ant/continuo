@@ -198,6 +198,12 @@ symptom to verify. It will become observable and worth a dedicated step as soon 
 behaviour starts acting on `POST`. Until then, do not record this checklist as evidence that
 phase pairing is correct in either direction.
 
+Those three are covered by the `platform-testkit` conformance suite, added in A2b, which runs
+offline against the shared `AdapterRuntime`. **The suite and this checklist are complements.**
+A green suite says nothing about whether this adapter passes the correct level or player
+object, whether `setInput` moves the player, or whether `PRE` precedes the game's input read —
+that is what the steps above are for. Neither is evidence about the other's subject.
+
 Record the result (pass/fail) of each step individually. Any single failure blocks A2
 sign-off, even if every other step passed.
 
