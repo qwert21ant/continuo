@@ -34,9 +34,19 @@
  * {@code start} call, and a test pins that behaviour, but an adapter MUST NOT rely on it.
  *
  * <p><b>What counts as a world unload.</b> Settled in A2a. An adapter MUST call {@code stop}
- * whenever the client level instance it last ticked against is replaced or becomes
- * {@code null}. A dimension change replaces the client's level object without ending the
- * session, and therefore <em>is</em> a world unload under this rule.
+ * on each of these transitions in the client level instance it last ticked against:
+ *
+ * <ul>
+ *   <li>To {@code null} — a world unload, a disconnect, or a quit to title.
+ *   <li>Between two different non-{@code null} instances — a dimension change, which replaces
+ *       the client's level object without ending the session, and therefore <em>is</em> a
+ *       world unload under this rule.
+ *   <li>From {@code null} to non-{@code null} — a world load. In the ordinary case the
+ *       preceding transition already called {@code stop}, so this call is a no-op under rule
+ *       2's idempotency; the obligation is not merely defensive, because it is also the call
+ *       that clears stale core state if that earlier {@code stop} itself threw before the new
+ *       level loaded.
+ * </ul>
  *
  * <p>This is stated as an observable condition rather than as a per-platform event on
  * purpose. Naming each platform's hook separately is what let the two adapters disagree on

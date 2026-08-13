@@ -120,6 +120,12 @@ is documented-as-unguaranteed by this rule, not fixed by it.
 
 ### 4.1 Caveats added during implementation
 
+**Caveats 1–3 below were settled in A2a; the normative text is now `dev.continuo.platform`'s
+`package-info` javadoc, and `2026-08-12-a2a-legacy-adapter-design.md` records the reasoning.
+The three entries are left as written below — unsettled, approximate, and unbound-key-must-surface
+— until A2b's SPI v1 revision rewrites this section to match; rewriting them piecemeal here is
+out of scope for A2a.**
+
 Five caveats were added to the shipped javadoc after this section was approved. They are
 listed here by reference rather than restated, because §3's whole argument is that a rule
 copied into two documents drifts. Read the javadoc for the wording that binds.
