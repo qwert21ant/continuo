@@ -89,6 +89,10 @@ lifetime, before any other core method. `stop()` may be called any number of tim
 idempotent, and leaves the core reusable — no second `start()` follows it. An adapter MUST
 call `stop()` on world unload, on disconnect, and on client shutdown.
 
+**The client-shutdown clause above was narrowed in A2a to MUST-where-available; it is no
+longer unconditional. `dev.continuo.platform`'s `package-info` javadoc is normative — see its
+Rule 2 for the current text.**
+
 Note for readers of the test suite: `ContinuoCoreTest.startTwiceReplacesContext` asserts that
 the core *tolerates* a second `start()`. This rule binds adapters, not the core. The core's
 leniency is not licence for an adapter to rely on it.

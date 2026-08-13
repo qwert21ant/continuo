@@ -160,10 +160,11 @@ written without answering. Full reasoning in
 [`2026-08-12-a2a-legacy-adapter-design.md`](2026-08-12-a2a-legacy-adapter-design.md).
 
 - **Is a dimension change a world unload? — Yes.** The trigger is now stated as an observable
-  condition rather than as per-platform events: an adapter MUST call `stop()` whenever the
-  client level instance it last ticked against is replaced or becomes null. Both adapters run
-  the identical `updateLevel` level-identity watch, so they cannot diverge here. A2a spec
-  §3.3 and §5.1; verified by the portal step on both versions.
+  condition rather than as per-platform events: an adapter MUST call `stop()` on each of three
+  client level-instance transitions — to `null`, between two different non-`null` instances,
+  and from `null` to non-`null`. Both adapters run the identical `updateLevel` level-identity
+  watch, so they cannot diverge here. A2a spec §3.3 and §5.1; verified by the portal step on
+  both versions.
 - **Mechanism for `IActuator`'s unbound-key clause — dissolved, not chosen.** Both platforms
   address the key binding *per instance* (`KeyMapping.setDown`; `KeyBinding.pressed` via the
   access transformer), and movement reads that field rather than polling the keyboard, so an
@@ -231,7 +232,13 @@ ones that could be misread as shape:
   two adapters do not *interpret* that clause differently — they conform to the same clause,
   one with the capability and one without — and the obligation has no observable effect either
   way, since `stop()`'s effects cannot outlive the process. This is the roadmap's own
-  "version differences are data, not branches" pattern applied to the contract.
+  "version differences are data, not branches" pattern applied to the contract. Calling that
+  relaxation "not a shape difference" is itself a judgement the verdict hinges on, not a
+  mechanical fact: `IGameEvents` states the project's anti-capability-check principle in
+  absolute terms, and rule 2's client-shutdown clause is now exactly the kind of
+  capability-conditional obligation that principle rules out elsewhere — defensible here only
+  because the obligation has no observable effect, which is where a disagreeing reader should
+  push.
 
 The strongest evidence runs the other way, and it is worth recording as the finding rather
 than as a footnote: **the one place where two defensibly conformant adapters genuinely would

@@ -25,19 +25,21 @@ import org.lwjgl.input.Keyboard;
  * ({@link #guarded} and {@link #faulted}), the PRE/POST pairing latch ({@link #preDelivered}),
  * and the click drain ({@link #drainClicks}).
  *
+ * <p>Lifecycle is driven by a single level-identity condition ({@link #updateLevel}) rather
+ * than by connection events: global rule 2's world-unload and disconnect triggers and global
+ * rule 3's recovery are all the same observable transition, and expressing them one way is
+ * what keeps this adapter and the 1.21.11 one from diverging on a dimension change.
+ *
  * <p>1.7.10 predates SLF4J in Minecraft, so this adapter logs through log4j2, which is what
  * the game ships. That is a logging-API difference only; the messages match the Fabric
  * adapter's deliberately, because the smoke checklists assert on them.
  */
 // clientSideOnly is deliberately omitted: the FML build this module actually compiles
 // against (the decompiled cpw.mods.fml.common.Mod in build/rfg/minecraft-src, which is
-// what compileJava resolves, not a newer binary) has no such element on @Mod. The task-4
-// brief's source specified it verbatim; adding it back is a compile error here
-// ("cannot find symbol: method clientSideOnly()"), confirmed by direct inspection of that
-// decompiled annotation. This is metadata only (server-side load exclusion), not
-// behavioural logic, so its absence does not affect tick wiring. Flagged for the plan
-// owner: either the brief's assumed FML build is wrong for this toolchain, or a
-// forge_version bump is needed to gain the attribute.
+// what compileJava resolves, not a newer binary) has no such element on @Mod. The
+// attribute was added to FML for MC 1.8+ and never backported to 1.7.10, confirmed by
+// direct inspection of the decompiled annotation. This is metadata only (server-side load
+// exclusion); acceptableRemoteVersions = "*" below covers the same purpose.
 @Mod(
     modid = ContinuoForgeMod.MOD_ID,
     name = "Continuo",

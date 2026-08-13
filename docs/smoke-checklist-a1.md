@@ -76,7 +76,7 @@ A1 sign-off — do not skip a step or assume it would have passed.
    the W key must not be stuck down (movement should behave completely normally — you should
    be able to stand still).
    *If the player keeps moving forward after rejoining, or W appears stuck:* `core.stop()` is
-   not being called on disconnect (or the key release is not reaching the game), leaving
+   not being called on world unload (or the key release is not reaching the game), leaving
    input state stuck across a reconnect. This is the step most likely to reveal a real
    defect — verify it properly, don't assume it passed because the earlier steps did.
 

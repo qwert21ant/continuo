@@ -274,8 +274,10 @@ of open questions rather than additions. **Rule numbering (1 Threading, 2 Lifecy
 
 The "Open question — what counts as a world unload" block is replaced by a settled trigger,
 stated as an observable condition rather than as per-platform events: **an adapter MUST call
-`stop()` whenever the client level instance it last ticked against is replaced or becomes
-null.**
+`stop()` on each of three client level-instance transitions — to `null` (world unload,
+disconnect, or quit to title), between two different non-`null` instances (a dimension
+change), and from `null` to non-`null` (a world load, ordinarily a no-op under idempotency,
+but the call that clears stale state if a preceding `stop()` itself threw).**
 
 The stricter reading wins on asymmetry of failure. Stopping too often is a visible, harmless
 abort. Continuing across a portal is a silent wrong-distance bug, on a core whose state
