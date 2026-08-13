@@ -157,3 +157,21 @@ phase pairing is correct in either direction.
 
 Record the result (pass/fail) of each step individually. Any single failure blocks A1
 sign-off, even if every other step passed.
+
+---
+
+**Verified 2026-08-13:** the owner re-ran this checklist in full against a real 1.21.11
+client, after A2a's level-identity change replaced the `JOIN`/`DISCONNECT` handlers. The
+report is that everything works and **all steps passed**, the new portal step (step 11)
+included. Changing keybindings behaved as expected.
+
+Two limits on this record, stated so a later session does not read more into it than was
+reported. First, the owner gave a summary rather than a per-step table, so this is the
+owner's statement that every step passed — not eleven individually transcribed results.
+Second, **no displacement figure was reported for this run**; the 8 blocks recorded on
+2026-08-11 remains the only measured Fabric figure, and nothing here should be taken as a
+second measurement.
+
+This run covers **none** of the three items disclaimed above — global rule 3, the click
+drain, and PRE/POST pairing are all still unverified, and a green run of this checklist is
+not evidence for any of them. That is unchanged by this run and by A2a as a whole.

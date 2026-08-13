@@ -200,3 +200,28 @@ phase pairing is correct in either direction.
 
 Record the result (pass/fail) of each step individually. Any single failure blocks A2
 sign-off, even if every other step passed.
+
+---
+
+**Verified 2026-08-13:** the owner ran this checklist against a real 1.7.10 client. The
+report is that everything works and **all steps passed**, the portal step (step 11)
+included. On 1.7.10 the player walked **8–9 blocks**, inside the expected band. Changing
+keybindings behaved as expected.
+
+**Step 4's unbound-key sub-check passed, explicitly confirmed:** with the vanilla Forward
+key set to NONE (unbound), the bot still walked. This was the load-bearing sub-check — the
+deletion of `IActuator`'s unbound-key clause (A2a design §3.2, §5.3) rests on exactly this
+behaviour, and it holds in the live client, not only in theory.
+
+**The access transformer is thereby confirmed to work at runtime, not merely at compile
+time.** No `IllegalAccessError` occurred, so `META-INF/continuo_at.cfg`'s widening of
+`KeyBinding.pressed` (`field_74513_e`) took effect under `runClient` as well as under
+`compileJava`. Step 4 flagged this as a specific known risk that had never been observed
+before this run; it is now closed by observation.
+
+One limit on this record: the owner gave a summary rather than a per-step table, so this is
+the owner's statement that every step passed — not eleven individually transcribed results.
+
+This run covers **none** of the three items disclaimed above — global rule 3, the click
+drain, and PRE/POST pairing are all still unverified, and a green run of this checklist is
+not evidence for any of them. That is unchanged by this run and by A2a as a whole.
