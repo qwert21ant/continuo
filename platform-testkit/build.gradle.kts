@@ -12,3 +12,12 @@ dependencies {
     val junitVersion = project.property("junit_version") as String
     api("org.junit.jupiter:junit-jupiter:$junitVersion")
 }
+
+dependencies {
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging { events("passed", "failed", "skipped") }
+}
