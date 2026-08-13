@@ -17,11 +17,10 @@ import net.minecraft.client.settings.KeyBinding;
  * instance is addressed, rather than a keycode, so that {@code setInput} affects one chosen
  * binding regardless of what key (if any) the user has bound it to.
  *
- * <p>Reading the decompiled source, {@code MovementInputFromOptions.updatePlayerMoveState()}
- * drives movement via each binding's {@code getIsKeyPressed()} rather than by polling the
- * keyboard, which would suggest an unbound key is not a failure mode here. That conclusion is
- * source-level reasoning, not an observed result, and is pending in-game confirmation (Task 4
- * Step 7).
+ * <p>{@code MovementInputFromOptions.updatePlayerMoveState()} drives movement via each
+ * binding's {@code getIsKeyPressed()} rather than by polling the keyboard, so an unbound key is
+ * not a failure mode here: confirmed in-game, with the Forward key set to NONE, walking still
+ * worked.
  */
 final class ForgeActuator implements IActuator {
 

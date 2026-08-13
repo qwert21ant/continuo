@@ -27,38 +27,44 @@
  * <p>The core's {@code start} method is called exactly once per adapter lifetime, before
  * any other core method. The core's {@code stop} method may be called any number of times,
  * is idempotent, and leaves the core reusable — no second {@code start} follows it. An
- * adapter MUST call {@code stop} on world unload, on disconnect, and on client shutdown.
+ * adapter MUST call {@code stop} on world unload and on disconnect, both of which the
+ * level-identity condition below covers, and on client shutdown where the platform allows.
  *
  * <p>This rule binds adapters, not the core. The current core happens to tolerate a second
  * {@code start} call, and a test pins that behaviour, but an adapter MUST NOT rely on it.
  *
- * <p><b>Open question — what counts as a world unload.</b> A dimension change replaces the
- * client's level object without ending the session. Whether that is a "world unload" for the
- * purposes of this rule is not settled here, and the two target platforms pull in opposite
- * directions: Fabric's {@code ClientPlayConnectionEvents.DISCONNECT} does not fire on a
- * dimension change, so the current adapter does not call {@code stop} and core walk state
- * straddles two levels; 1.7.10's {@code WorldEvent.Unload} does fire, so a faithful adapter
- * there would call {@code stop}. Both readings are defensible under the present wording, and
- * they disagree observably — walking into a portal aborts the walk on one adapter and
- * continues it on the other. That is precisely the cross-adapter divergence this contract
- * exists to prevent, so it MUST be settled, and settled once for every adapter.
+ * <p><b>What counts as a world unload.</b> Settled in A2a. An adapter MUST call {@code stop}
+ * whenever the client level instance it last ticked against is replaced or becomes
+ * {@code null}. A dimension change replaces the client's level object without ending the
+ * session, and therefore <em>is</em> a world unload under this rule.
  *
- * <p>M2 settles it. The recommendation on the table is the stricter reading: a dimension
- * change <em>is</em> a world unload and MUST call {@code stop}. The core's state describes a
- * position in a level, so it should not outlive the level it describes; the platform has in
- * any case already cleared held input behind the loading screen under rule 4, leaving a core
- * that believes it is still walking while nothing is pressed. Adopting it means the Fabric
- * adapter needs a level-change hook rather than relying on {@code DISCONNECT} alone. Adopting
- * the looser reading instead means 1.7.10 MUST NOT call {@code stop} from
- * {@code WorldEvent.Unload} on a dimension change. Either way, both adapters change together.
+ * <p>This is stated as an observable condition rather than as a per-platform event on
+ * purpose. Naming each platform's hook separately is what let the two adapters disagree on
+ * walking through a portal — Fabric's {@code DISCONNECT} does not fire on a dimension change
+ * and 1.7.10's {@code WorldEvent.Unload} does — which is the exact cross-adapter divergence
+ * this contract exists to prevent. A condition both adapters evaluate identically cannot
+ * drift, and it gives a conformance suite something uniform to assert.
  *
- * <p><b>Caveat — client shutdown on 1.7.10.</b> Forge 1.7.10 exposes no client-stopping
- * event. The customary route is a JVM shutdown hook, which runs off the main thread and so
- * collides head-on with rule 1. An adapter there may therefore be able to satisfy the
- * client-shutdown trigger only approximately — for example by treating the last world unload
- * or disconnect as the effective end of life, or by accepting a rule 1 violation confined to
- * a hook that runs when no further ticks can occur. This tension is recorded, not resolved;
- * the world-unload and disconnect triggers are unaffected and remain binding.
+ * <p>The stricter reading wins on the asymmetry of its failure mode. Stopping too often is a
+ * visible, harmless abort. Continuing across a portal is a silent wrong-distance bug, on a
+ * core whose state describes a position in a level that no longer exists, with held input the
+ * platform has already cleared behind the loading screen under rule 4.
+ *
+ * <p>The same condition carries rule 3's recovery trigger: a transition to a non-{@code null}
+ * level is the world load that clears a fault. One observable condition, three obligations,
+ * no separate machinery.
+ *
+ * <p><b>Client shutdown.</b> {@code stop} MUST be called on client shutdown where the
+ * platform exposes a main-thread client-stopping event, and MAY be omitted where none exists.
+ * Forge 1.7.10 exposes none: the customary route is a JVM shutdown hook, which runs off the
+ * main thread and would collide head-on with rule 1.
+ *
+ * <p>The omission is safe, not a concession, because {@code stop}'s only observable effects —
+ * releasing held input and resetting in-memory core state — cannot outlive the process. On
+ * client shutdown the obligation is hygiene rather than a defended failure mode. Fabric keeps
+ * its {@code CLIENT_STOPPING} handler because it costs nothing to keep. Rule 1 therefore
+ * stays exception-free, which is the point: an obligation with no observable effect is not
+ * worth the first exception to the one rule stated without any.
  *
  * <h3>Rule 3 — Faults</h3>
  *

@@ -120,7 +120,7 @@ is documented-as-unguaranteed by this rule, not fixed by it.
 
 ### 4.1 Caveats added during implementation
 
-Four caveats were added to the shipped javadoc after this section was approved. They are
+Five caveats were added to the shipped javadoc after this section was approved. They are
 listed here by reference rather than restated, because §3's whole argument is that a rule
 copied into two documents drifts. Read the javadoc for the wording that binds.
 
@@ -337,7 +337,7 @@ must not imply it exercises the fault path.
   view. M2 designs it once, for both.
 - Rule 4 constrains M2 concretely: keep 1.7.10's actuation mechanically identical to Fabric's,
   so M5 can change both together.
-- §4.1's four caveats are M2's opening agenda. Caveat 1 (what counts as a world unload) is the
+- §4.1's five caveats are M2's opening agenda. Caveat 1 (what counts as a world unload) is the
   one that must be decided before the Forge adapter's lifecycle wiring is written, because
   both adapters change together whichever way it goes.
 - The SPI v1 revision at the end of M2 revises this document alongside the code. The contract
