@@ -746,8 +746,6 @@ package dev.continuo.testkit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -1236,7 +1234,17 @@ git commit -m "feat(runtime): add :runtime with AdapterRuntime lifecycle and the
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `AdapterConformanceTest`, before the closing brace:
+First add the two imports these cases and Task 6's need, to `AdapterConformanceTest`:
+
+```java
+import java.util.Arrays;
+```
+
+```java
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+```
+
+Then append to `AdapterConformanceTest`, before the closing brace:
 
 ```java
     // ---- Global rule 3 — Faults ----
@@ -1260,9 +1268,8 @@ Append to `AdapterConformanceTest`, before the closing brace:
         enterWorld(LEVEL_A);
         core.failOnPre(new RuntimeException("core bug"));
 
-        subject.tickStart(LEVEL_A, PLAYER);
-        // Reaching here without an exception is the assertion: a bot bug must never crash the
-        // user's game.
+        // A bot bug must never crash the user's game.
+        assertDoesNotThrow(() -> subject.tickStart(LEVEL_A, PLAYER));
     }
 
     @Test
@@ -1272,7 +1279,7 @@ Append to `AdapterConformanceTest`, before the closing brace:
         subject.tickStart(LEVEL_A, PLAYER);
         core.failOnPost(new RuntimeException("core bug"));
 
-        subject.tickEnd(LEVEL_A, PLAYER);
+        assertDoesNotThrow(() -> subject.tickEnd(LEVEL_A, PLAYER));
     }
 
     @Test
@@ -1415,7 +1422,8 @@ Add at the end of the class:
 
 - [ ] **Step 4: Do not commit yet**
 
-The suite is red until Task 6. Proceed directly to Task 6.
+The suite is red until Task 6, so there is nothing green to commit. **Tasks 5 and 6 are one
+deliverable and are executed as a single unit**; proceed directly to Task 6 and commit there.
 
 ---
 
@@ -1965,22 +1973,30 @@ public final class ContinuoFabricMod implements ClientModInitializer {
 Run: `./gradlew build`
 Expected: PASS, including `checkDependencyDirection`.
 
-- [ ] **Step 5: Hand off to the owner for manual verification**
+- [ ] **Step 5: Commit, stating plainly that the checklist has not been run**
 
-**STOP. This step is the owner's, not yours.** Report to the owner:
-
-> The Fabric adapter is converted. Please run `docs/smoke-checklist-a1.md` against a real 1.21.11 client, including the portal step. All eleven steps should pass and the walk should measure 8–9 blocks.
-
-Do not proceed to Task 9 until the owner reports the result. If any step fails, stop and escalate rather than guessing at a fix — the conversion is a behaviour-preserving extraction, so a failure means the extraction is wrong.
-
-- [ ] **Step 6: Commit**
-
-Only after the owner reports the checklist result. Write what they actually reported into the commit body — do not assert a pass you were not told about.
+The smoke checklist is an owner action on a real client and cannot happen inside this session. Commit the conversion with a message that says so. **Do not write any claim about walk distance, portal behaviour, or checklist steps passing** — you have not observed any of it.
 
 ```bash
 git add build.gradle.kts adapters/adapter-fabric-1.21.11/
-git commit -m "refactor(fabric): delegate conformance to AdapterRuntime"
+git commit -F - <<'MSG'
+refactor(fabric): delegate conformance to AdapterRuntime
+
+The adapter now registers the keybind, builds the context, and forwards
+four calls. All conformance state moves to the shared AdapterRuntime.
+
+NOT YET VERIFIED: docs/smoke-checklist-a1.md has not been run against a
+real 1.21.11 client for this change. `./gradlew build` is green, which
+covers compilation only — no adapter behaviour is exercised by any
+automated test, by design.
+MSG
 ```
+
+- [ ] **Step 6: Report the outstanding checklist to the controller**
+
+State in your report that `docs/smoke-checklist-a1.md` is outstanding and must be run by the owner against a real 1.21.11 client, including the portal step, expecting 8–9 blocks of displacement. The controller surfaces this to the owner.
+
+If the owner later reports a failure, the conversion is a behaviour-preserving extraction, so a failure means the extraction is wrong — it is not to be patched by adjusting the adapter.
 
 ---
 
@@ -2160,22 +2176,31 @@ Note `walkKey` is read from an anonymous inner class, so it must not be reassign
 Run: `./gradlew build`
 Expected: PASS. If `clean` was needed and failed with `Unable to delete directory`, run `./gradlew --stop`, wait, and retry — that is the known stale-daemon issue, not this change.
 
-- [ ] **Step 5: Hand off to the owner for manual verification**
+- [ ] **Step 5: Commit, stating plainly that the checklist has not been run**
 
-**STOP. This step is the owner's, not yours.** Report to the owner:
-
-> The Forge adapter is converted. Please run `docs/smoke-checklist-a2.md` against a real 1.7.10 client, including the portal step and the unbound-Forward-key step. Expect the usual `UnsatisfiedLinkError: org.lwjgl.openal.AL10...` sound noise, which is by design. An `IllegalAccessError` would mean the access transformer stopped taking effect and is a real failure.
-
-Do not proceed to Task 10 until the owner reports the result.
-
-- [ ] **Step 6: Commit**
-
-Only after the owner reports. Write what they actually reported into the commit body.
+Same as Task 8: the checklist is an owner action on a real client. **Do not write any claim about walk distance, the portal step, or the unbound-key step** — you have not observed any of it.
 
 ```bash
 git add build.gradle.kts adapters/adapter-forge-1.7.10/
-git commit -m "refactor(forge): delegate conformance to AdapterRuntime"
+git commit -F - <<'MSG'
+refactor(forge): delegate conformance to AdapterRuntime
+
+The adapter now registers the keybind, builds the context, and forwards
+four calls. All conformance state moves to the shared AdapterRuntime,
+which is the same code the 1.21.11 adapter runs.
+
+No clientStopping() call: 1.7.10 exposes no main-thread client-stopping
+event, and global rule 2 makes that clause MUST-where-available.
+
+NOT YET VERIFIED: docs/smoke-checklist-a2.md has not been run against a
+real 1.7.10 client for this change. `./gradlew build` is green, which
+covers compilation only.
+MSG
 ```
+
+- [ ] **Step 6: Report the outstanding checklist to the controller**
+
+State in your report that `docs/smoke-checklist-a2.md` is outstanding and must be run by the owner against a real 1.7.10 client, including the portal step and the unbound-Forward-key step. Note for the owner that the usual `UnsatisfiedLinkError: org.lwjgl.openal.AL10...` sound noise is by design, whereas an `IllegalAccessError` would mean the access transformer stopped taking effect and is a real failure.
 
 ---
 
