@@ -18,7 +18,7 @@ val allowedProjectDependencies: Map<String, Set<String>> = mapOf(
     // `allprojects` and must be listed or the direction check fails on it.
     ":adapters" to emptySet(),
     ":adapters:adapter-fabric-1.21.11" to setOf(":platform", ":core", ":runtime"),
-    ":adapters:adapter-forge-1.7.10" to setOf(":platform", ":core")
+    ":adapters:adapter-forge-1.7.10" to setOf(":platform", ":core", ":runtime")
 )
 
 val checkDependencyDirection = tasks.register("checkDependencyDirection") {
