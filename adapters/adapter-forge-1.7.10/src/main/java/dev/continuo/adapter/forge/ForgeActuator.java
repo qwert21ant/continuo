@@ -13,10 +13,15 @@ import net.minecraft.client.settings.KeyBinding;
  * in the core.
  *
  * <p>Writes {@code pressed} on the binding instance, which an access transformer makes
- * accessible. This is the per-instance equivalent of Fabric's {@code KeyMapping#setDown}, and
- * addressing the instance rather than a keycode is why an unbound key is not a failure mode
- * here: 1.7.10 reads movement through {@code keyBindForward.getIsKeyPressed()} rather than by
- * polling the keyboard.
+ * accessible. This is the per-instance equivalent of Fabric's {@code KeyMapping#setDown}; the
+ * instance is addressed, rather than a keycode, so that {@code setInput} affects one chosen
+ * binding regardless of what key (if any) the user has bound it to.
+ *
+ * <p>Reading the decompiled source, {@code MovementInputFromOptions.updatePlayerMoveState()}
+ * drives movement via each binding's {@code getIsKeyPressed()} rather than by polling the
+ * keyboard, which would suggest an unbound key is not a failure mode here. That conclusion is
+ * source-level reasoning, not an observed result, and is pending in-game confirmation (Task 4
+ * Step 7).
  */
 final class ForgeActuator implements IActuator {
 
