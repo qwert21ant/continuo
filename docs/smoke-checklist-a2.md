@@ -9,6 +9,16 @@ Run: `./gradlew :adapters:adapter-forge-1.7.10:runClient`
 Work through every step below, in order, and record pass/fail for each. Any failure blocks
 A2 sign-off — do not skip a step or assume it would have passed.
 
+**Expected log noise.** This dev client runs with sound disabled deliberately (`b762e99`
+removes the OpenAL natives before `runClient` to dodge a reproducible 1.7.10 paulscode
+sound-engine crash), so there is no audio at all — that is by design, not a defect. As a
+result, the log will always contain `java.lang.UnsatisfiedLinkError:
+org.lwjgl.openal.AL10.nalListenerf(IF)V` with a paulscode stack trace on a background
+thread during sound-system startup; this is expected and harmless on every run. **Do not
+confuse it with the `IllegalAccessError` step 4 warns about** — the OpenAL
+`UnsatisfiedLinkError` is normal noise, while an `IllegalAccessError` on `K` means the
+access transformer failed and is a real, reportable failure.
+
 1. **Startup log.** Watch the launcher/game log while the client boots, before you reach the
    main menu. It must contain the line:
    `Continuo core started on 1.7.10 / FORGE`
