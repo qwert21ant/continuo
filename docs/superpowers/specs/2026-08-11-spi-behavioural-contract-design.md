@@ -89,6 +89,10 @@ lifetime, before any other core method. `stop()` may be called any number of tim
 idempotent, and leaves the core reusable — no second `start()` follows it. An adapter MUST
 call `stop()` on world unload, on disconnect, and on client shutdown.
 
+**The client-shutdown clause above was narrowed in A2a to MUST-where-available; it is no
+longer unconditional. `dev.continuo.platform`'s `package-info` javadoc is normative — see its
+Rule 2 for the current text.**
+
 Note for readers of the test suite: `ContinuoCoreTest.startTwiceReplacesContext` asserts that
 the core *tolerates* a second `start()`. This rule binds adapters, not the core. The core's
 leniency is not licence for an adapter to rely on it.
@@ -120,7 +124,13 @@ is documented-as-unguaranteed by this rule, not fixed by it.
 
 ### 4.1 Caveats added during implementation
 
-Four caveats were added to the shipped javadoc after this section was approved. They are
+**Caveats 1–3 below were settled in A2a; the normative text is now `dev.continuo.platform`'s
+`package-info` javadoc, and `2026-08-12-a2a-legacy-adapter-design.md` records the reasoning.
+The three entries are left as written below — unsettled, approximate, and unbound-key-must-surface
+— until A2b's SPI v1 revision rewrites this section to match; rewriting them piecemeal here is
+out of scope for A2a.**
+
+Five caveats were added to the shipped javadoc after this section was approved. They are
 listed here by reference rather than restated, because §3's whole argument is that a rule
 copied into two documents drifts. Read the javadoc for the wording that binds.
 
@@ -137,6 +147,11 @@ copied into two documents drifts. Read the javadoc for the wording that binds.
    binding holds the keycode and silently no-ops on an unbound key. An unbound key is a real
    failure mode a conformant adapter must surface, not swallow.
 4. **§5's "both phases MUST be delivered" — one exception.** See §5 below.
+5. **`onClientTick`, ticks counted vs. ticks travelled.** The callback keeps firing while the
+   game is paused or the death screen is up — the tick loop, a world, and a local player all
+   still exist, but the level itself is frozen — so a core counting forty of these ticks can
+   cover less than forty ticks of ground. `IGameEvents#onClientTick`'s javadoc records this;
+   what happens to a held input across those screens is rule 4's subject, deferred to M5.
 
 ---
 
@@ -337,7 +352,7 @@ must not imply it exercises the fault path.
   view. M2 designs it once, for both.
 - Rule 4 constrains M2 concretely: keep 1.7.10's actuation mechanically identical to Fabric's,
   so M5 can change both together.
-- §4.1's four caveats are M2's opening agenda. Caveat 1 (what counts as a world unload) is the
+- §4.1's five caveats are M2's opening agenda. Caveat 1 (what counts as a world unload) is the
   one that must be decided before the Forge adapter's lifecycle wiring is written, because
   both adapters change together whichever way it goes.
 - The SPI v1 revision at the end of M2 revises this document alongside the code. The contract

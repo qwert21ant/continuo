@@ -101,10 +101,30 @@ that discipline is cheapest to apply and hardest to remember.
 Second toolchain, MCP mappings, Java 8 runtime. Deliverable: the **same unmodified core
 jar** from M1 produces the same 40-tick walk on 1.7.10.
 
-**Gate:** if the two adapters require materially *different* SPI shapes, stop and redesign.
-The SPI is revised to v1 here on the strength of what 1.7.10 taught, and nothing beyond
-this milestone starts until that revision is settled. This is the last cheap moment to
-change the SPI.
+**M2 is split into two sub-projects.** The split is not cosmetic: A2b's conformance suite has
+to be written with two implementations in front of it — writing it against one adapter risks
+encoding Fabric's accidents as the contract — so A2a is what generates the evidence A2b acts
+on.
+
+- **A2a — ✅ DONE 2026-08-13.** RetroFuturaGradle on a Java 25 daemon, one build,
+  `adapters/adapter-forge-1.7.10`, the three contract questions the adapter could not be
+  written without, and manual verification on both versions. Spec:
+  [`2026-08-12-a2a-legacy-adapter-design.md`](2026-08-12-a2a-legacy-adapter-design.md). The
+  deliverable holds: both adapters consume the identical `:core` artifact from one build
+  graph, so "the same unmodified core jar" is a property of the build rather than a claim,
+  and the owner measured the 40-tick walk at 8–9 blocks on a real 1.7.10 client
+  (`docs/smoke-checklist-a2.md`, verified 2026-08-13).
+- **A2b — remaining.** The injection seam, `platform-testkit`, and the SPI v1 revision. These
+  are the three items retargeted from "M2" below; nothing beyond M2 starts until the v1
+  revision is settled.
+
+**Gate: evaluated 2026-08-13 — NOT tripped.** The rule is *if the two adapters require
+materially different SPI shapes, stop and redesign*. They do not. Every difference between
+the two adapters is platform-forced translation; none is a difference in SPI shape. The full
+finding, with the evidence it rests on and what it deliberately does not cover, is in the
+carried-forward section below. The SPI is still revised to v1 on the strength of what 1.7.10
+taught — that is A2b's job — but as a refinement, not a redesign. This is the last cheap
+moment to change the SPI.
 
 ### Carried forward from M1 — read before starting M2
 
@@ -125,33 +145,128 @@ is what a correct 40-tick walk looks like — do not read it as 0.6 blocks short
 run is the *only* evidence the adapter conforms; it has no automated tests and cannot get
 any without Minecraft on the classpath.
 
-**What M2 still owes on this item:**
+**Verified again 2026-08-13, on both versions:** the owner ran `docs/smoke-checklist-a2.md`
+against a real 1.7.10 client and re-ran the full `docs/smoke-checklist-a1.md` against a real
+1.21.11 client, both including the new portal step. All steps passed on both. The 1.7.10 walk
+measured 8–9 blocks. Two specifically tracked risks closed: with the vanilla Forward key
+unbound the 1.7.10 bot still walked, and no `IllegalAccessError` occurred, so the access
+transformer takes effect at **runtime** and not merely at compile time. The owner reported a
+summary rather than a per-step table and gave no displacement figure for the Fabric re-run;
+the checklists record it that way deliberately. These remain the only evidence either adapter
+conforms.
 
-- **The `platform-testkit` conformance suite.** Deliberately deferred to M2, when two
-  implementations exist to generalise from — writing it against one adapter risks encoding
-  Fabric's accidents as the contract. Do not promise one case per numbered rule: rule 1's
-  "no implementation may block" is unfalsifiable as a test, and rules 2 and 3 bind
-  `start`/`stop`, which live on `ContinuoCore` in `core`, not in the SPI package at all.
-- **An injection seam.** `ContinuoFabricMod` hard-codes `new ContinuoCore()`, so there is no
+**Resolved by A2a — ✅ 2026-08-13.** Each was a question the 1.7.10 adapter could not be
+written without answering. Full reasoning in
+[`2026-08-12-a2a-legacy-adapter-design.md`](2026-08-12-a2a-legacy-adapter-design.md).
+
+- **Is a dimension change a world unload? — Yes.** The trigger is now stated as an observable
+  condition rather than as per-platform events: an adapter MUST call `stop()` on each of three
+  client level-instance transitions — to `null`, between two different non-`null` instances,
+  and from `null` to non-`null`. Both adapters run the identical `updateLevel` level-identity
+  watch, so they cannot diverge here. A2a spec §3.3 and §5.1; verified by the portal step on
+  both versions.
+- **Mechanism for `IActuator`'s unbound-key clause — dissolved, not chosen.** Both platforms
+  address the key binding *per instance* (`KeyMapping.setDown`; `KeyBinding.pressed` via the
+  access transformer), and movement reads that field rather than polling the keyboard, so an
+  unbound key is not a failure mode on the route either adapter takes. The clause was deleted
+  rather than satisfied. A2a spec §3.2 and §5.3; confirmed in-game 2026-08-13 with Forward
+  set to NONE.
+- **Client shutdown on 1.7.10 vs rule 1 — MUST-where-available.** `stop()` MUST be called on
+  world unload and on disconnect; on client shutdown it MUST be called where the platform
+  exposes a main-thread client-stopping event and MAY be omitted where none exists. `stop()`'s
+  only observable effects cannot outlive the process, so the obligation is hygiene, not a
+  defended failure mode, and rule 1 stays exception-free. A2a spec §5.2.
+- **Minor — the §4.1 caveat count.** The contract spec said "four caveats were added"; five
+  shipped. Corrected. A2a spec §5.4.
+
+**Still open — retargeted from M2 to A2b.** A2a deliberately did not attempt these; see the
+A2a spec's §1 "explicitly not in A2a" and its §7 ledger.
+
+- **An injection seam — A2b.** Both adapters hard-code `new ContinuoCore()`, so there is no
   way to substitute a recording `IGameEvents`. Without a seam the testkit cannot observe an
-  adapter at all. Solving this is M2's first testkit problem, and it must not be solved by
-  adding a type to `dev.continuo.platform`.
-- **Decide whether a dimension change is a world unload.** Global rule 2 requires `stop()` on
-  world unload. Fabric's `DISCONNECT` does not fire on a dimension change; 1.7.10's
-  `WorldEvent.Unload` does. Two defensibly conformant adapters therefore disagree observably
-  on walking through a portal — the exact divergence the contract exists to prevent. The
-  javadoc records the ambiguity and recommends the stricter reading (a dimension change *is*
-  an unload); M2 settles it.
-- **Pick a mechanism for `IActuator`'s unbound-key clause.** It says a conformant adapter
-  MUST surface an unbound key, while a neighbouring clause forbids throwing for a valid
-  `Input` constant. Logging satisfies both, but the contract does not say so.
-- **Minor:** the contract spec's §4.1 says "four caveats were added"; five shipped. The fifth
-  (ticks counted ≠ ticks travelled while paused) appears only as a §5 pointer.
+  adapter at all. This is A2b's first testkit problem, and it must not be solved by adding a
+  type to `dev.continuo.platform`.
+- **The `platform-testkit` conformance suite — A2b.** Deferred until two implementations
+  existed to generalise from; they now do, which is the precondition A2b was waiting on. Do
+  not promise one case per numbered rule: rule 1's "no implementation may block" is
+  unfalsifiable as a test, and rules 2 and 3 bind `start`/`stop`, which live on
+  `ContinuoCore` in `core`, not in the SPI package at all.
+- **The SPI v1 revision — A2b.** A2a produced the gate evidence; A2b acts on it. The gate did
+  not trip (below), so this is a refinement pass, not a redesign — but it is still the gate's
+  own condition that nothing beyond M2 starts until the revision is settled.
+
+**The M2 gate — evaluated 2026-08-13, NOT tripped.** The rule: *if the two adapters require
+materially different SPI shapes, stop and redesign.* Answered against both adapters as built,
+not predicted.
+
+Every difference between `dev.continuo.adapter.fabric` and `dev.continuo.adapter.forge` is
+platform-forced translation — a different API name, event bus, or logging framework expressing
+the same behaviour. The list, so none of it is mistaken later for a discovery: SLF4J vs log4j2;
+two tick callbacks vs one `TickEvent.ClientTickEvent` with a `phase` discriminator, on the FML
+bus; Fabric API callbacks vs `@SubscribeEvent`; Mojang vs MCP field names (`level`/`player` vs
+`theWorld`/`thePlayer`); GLFW vs LWJGL2 keycodes; a registered `KeyMapping.Category` vs a
+`String` category; `consumeClick()` vs `isPressed()`; `KeyMapping.setDown` vs a
+`KeyBinding.pressed` write enabled by an access transformer; `FabricLoader`'s `Optional` vs a
+null-guarded FML `Loader` lookup; and, at build level only, two toolchains plus a dev-run-only
+deletion of the OpenAL natives that dodges a 1.7.10 sound-engine race unrelated to any adapter
+or SPI code.
+
+What did *not* differ is what the gate actually asks about. The seven SPI types are unchanged
+by A2a — no type, method, signature, or enum constant was added, removed, or altered for
+1.7.10. All seven `Input` constants map on both versions (the dedicated sprint keybind landed
+in 1.7.2), closing the one possibility that would have been genuine SPI surgery. The tick
+machinery is the same code on both: the `inWorld` window, `guarded`/`faulted`, the
+`preDelivered` latch, and `drainClicks` on all three tick-start paths. The lifecycle condition
+is literally one condition, `updateLevel`, with the same fault-clear-before-`stop()` ordering
+on both.
+
+Two differences deserve their classification stated rather than assumed, because they are the
+ones that could be misread as shape:
+
+- *The access transformer* is a build-configuration fact. The Java it enables is a
+  per-instance write to the same conceptual field that `setDown` writes; `IActuator` is
+  untouched. It made the SPI **smaller**, not larger — the unbound-key clause was deleted
+  because the mechanism that needed it is not the one either adapter takes.
+- *No client-stopping event on 1.7.10* is the closest call, and it is still not shape. No SPI
+  type or signature changed; one contract clause was relaxed to a capability-conditional. The
+  two adapters do not *interpret* that clause differently — they conform to the same clause,
+  one with the capability and one without — and the obligation has no observable effect either
+  way, since `stop()`'s effects cannot outlive the process. This is the roadmap's own
+  "version differences are data, not branches" pattern applied to the contract. Calling that
+  relaxation "not a shape difference" is itself a judgement the verdict hinges on, not a
+  mechanical fact: `IGameEvents` states the project's anti-capability-check principle in
+  absolute terms, and rule 2's client-shutdown clause is now exactly the kind of
+  capability-conditional obligation that principle rules out elsewhere — defensible here only
+  because the obligation has no observable effect, which is where a disagreeing reader should
+  push.
+
+The strongest evidence runs the other way, and it is worth recording as the finding rather
+than as a footnote: **the one place where two defensibly conformant adapters genuinely would
+have diverged — rule 2's unload trigger across a dimension change — was closed by making the
+SPI more uniform, not by making it more accommodating.** Restating the trigger as level
+identity rather than as per-platform events gave both adapters the same code, and the portal
+step confirmed the same in-game behaviour on both versions. 1.7.10 tightened the SPI; it did
+not stretch it.
+
+**What this finding does not cover.** It is evidence about the surface the two adapters
+actually exercise: one input, tick delivery, the lifecycle condition, and platform info. It
+says nothing about the block model M3 will need, which is where the version spread is
+genuinely hard, and it is not a promise that the SPI will hold there. The standing SPI audit —
+H is a property, not a phase — re-asks this question after every sub-project, and M3 is the
+next time it is asked in earnest.
 
 **Known unverified, by design:** global rule 3 (fault handling) is implemented but untested —
 exercising it needs a deliberate throw, which is not something to leave in the tree, and the
-manual checklist cannot reach it. PRE/POST pairing is likewise unobservable while the core
-ignores `POST`. Both are the testkit's job. Do not treat a green smoke run as covering either.
+manual checklist cannot reach it. The click drain is likewise unreached: every
+tester-reachable moment with no world loaded also has a screen open, and Minecraft only
+accumulates key clicks while no screen is open, so no manual sequence queues a click for the
+drain to discard. PRE/POST pairing is unobservable while the core ignores `POST`. All three
+are the testkit's job. Do not treat a green smoke run as covering any of them.
+
+**The 2026-08-13 runs on both versions change nothing here.** Both checklists carry the
+disclaimers verbatim and both were recorded as passing *with* them. A future session must not
+read two green manual runs as having covered rule 3, the drain, or phase pairing; the runs did
+not and structurally could not.
 
 **2. Do NOT lock in edge- vs level-triggered actuation yet — it is an M5 decision.**
 Today the core sets `FORWARD` once at tick 1 and assumes it persists for 40 ticks. It does
@@ -175,7 +290,14 @@ Fabric's, so that whichever model M5 picks can be applied to both adapters in on
 Do not let one adapter quietly start re-asserting inputs while the other does not — that
 divergence is the thing that would actually be expensive.
 
-**3. Budget for a 1.7.10 `KeyBinding` workaround.** 1.7.10's `KeyBinding` has no
+**3. Budget for a 1.7.10 `KeyBinding` workaround — ✅ SPENT 2026-08-13.** The access
+transformer route was taken, not reflection; `META-INF/continuo_at.cfg` widens
+`KeyBinding.pressed` (`field_74513_e`), registered on both `deobfuscateMergedJarToSrg` and
+`applyJST`. Confirmed working at runtime, not merely at compile time — no `IllegalAccessError`
+on the 2026-08-13 run. The original note is kept below because it is the reasoning that ruled
+out the two rejected alternatives.
+
+1.7.10's `KeyBinding` has no
 per-instance setter — `pressed` is private, and the only public route is the static,
 keycode-addressed `KeyBinding.setKeyBindState(int keyCode, boolean)`. That silently does
 nothing when the movement key is unbound (keycode 0), and it addresses whichever binding
@@ -331,7 +453,7 @@ deliberately licensed compatibly.
 
 | Risk | Milestone | Mitigation |
 |---|---|---|
-| SPI cannot express both 1.7.10 and 1.21.11 without bloating | M2 | A2 is deliberately placed before anything depends on the SPI. The M2 gate stops everything if it happens |
+| SPI cannot express both 1.7.10 and 1.21.11 without bloating — **did not materialise at A2a** | M2 | A2 is deliberately placed before anything depends on the SPI. The M2 gate stops everything if it happens. **Evaluated 2026-08-13: gate not tripped** — no SPI type or signature changed for 1.7.10, and the contract got smaller, not larger (§3). Scope of that evidence is one input, ticks, lifecycle and platform info; the block model at M3 is where this risk is next live |
 | SPI v0 designed around 1.21-shaped assumptions during M1 | M1 | Design SPI v0 as if 1.7.10 already existed; explicit SPI v1 revision at the end of M2 |
 | Forge 1.7.10 dev environment proves hostile in 2026 | M2 | unimined first, RetroFuturaGradle as fallback. Discovered in month 1, not month 6 |
 | ~~Build plugin chosen at M1 cannot handle 1.7.10 at M2~~ **MATERIALIZED** | M1 | Unavoidable: unimined has no release supporting 1.21.11, so Loom was forced. M2 now needs RetroFuturaGradle as a second toolchain. Cost accepted, recorded in `docs/toolchain-decision.md` |

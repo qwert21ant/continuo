@@ -1,26 +1,39 @@
-# A1 manual smoke checklist — Fabric 1.21.11
+# A2 manual smoke checklist — Forge 1.7.10
 
 This is a manual, in-game verification. It cannot be automated or run in CI: it requires a
 graphical Minecraft client, a real keypress, and a human watching the result. Run it after
 `./gradlew clean build` is green.
 
-Run: `./gradlew :adapters:adapter-fabric-1.21.11:runClient`
+Run: `./gradlew :adapters:adapter-forge-1.7.10:runClient`
 
 Work through every step below, in order, and record pass/fail for each. Any failure blocks
-A1 sign-off — do not skip a step or assume it would have passed.
+A2 sign-off — do not skip a step or assume it would have passed.
+
+**Expected log noise.** This dev client runs with sound disabled deliberately (`b762e99`
+removes the OpenAL natives before `runClient` to dodge a reproducible 1.7.10 paulscode
+sound-engine crash), so there is no audio at all — that is by design, not a defect. As a
+result, the log will always contain `java.lang.UnsatisfiedLinkError:
+org.lwjgl.openal.AL10.nalListenerf(IF)V` with a paulscode stack trace on a background
+thread during sound-system startup; this is expected and harmless on every run. **Do not
+confuse it with the `IllegalAccessError` step 4 warns about** — the OpenAL
+`UnsatisfiedLinkError` is normal noise, while an `IllegalAccessError` on `K` means the
+access transformer failed and is a real, reportable failure.
 
 1. **Startup log.** Watch the launcher/game log while the client boots, before you reach the
    main menu. It must contain the line:
-   `Continuo core started on 1.21.11 / FABRIC`
+   `Continuo core started on 1.7.10 / FORGE`
    *Observe:* the exact line above (game version and loader name may vary only if you're on a
    different build — for this checklist expect exactly this).
    *If it's missing:* the mod did not load at all, or `IPlatformInfo` is not wired up.
    Check the log for earlier mod-loading errors first.
 
 2. **World.** Create a new Superflat world. It will start in whatever mode you chose at
-   creation; once you've spawned, switch to Survival with `/gamemode survival`.
+   creation; once you've spawned, switch to Survival with `/gamemode 0` (1.7.10 identifies
+   game modes by number rather than by name — `0` is Survival; there is no `/gamemode
+   survival` form here).
    *Observe:* the F3 debug screen (or the pause menu) confirms you are in Survival, not
-   Creative.
+   Creative. The command's own chat response ("Set own game mode to Survival Mode") is also
+   valid confirmation if the debug screen is ambiguous.
    *Why this matters:* Creative flight and Creative's movement differ from vanilla walking
    speed. If you're not in Survival, the distance measured in step 5 is meaningless and the
    checklist result is not valid — go back and fix the game mode before continuing.
@@ -34,11 +47,38 @@ A1 sign-off — do not skip a step or assume it would have passed.
 4. **Walk.** Press `K`. Expected: the player walks forward on its own, with no further input
    from you, and stops by itself after a short walk. The log should contain the line
    `Continuo walk requested`.
-   *If the player does not move at all:* the actuator is not reaching the key mapping, or the
-   keybind is bound to something other than `K` (check the Controls screen for
-   "key.continuo.walk" under the "continuo" category) — see step 5's "zero" case too.
+   *If the player does not move at all:* the actuator is not reaching the key binding, or the
+   keybind is bound to something other than `K` — check Options → Controls for the entry
+   named **"Walk Forward 40 Ticks"** under the **"Continuo"** category (this module ships a
+   language file, so the display name shows, unlike the Fabric adapter's raw
+   `key.continuo.walk`) — see step 5's "zero" case too.
    *If the player never stops walking:* do not wait indefinitely — this is a failure. See
    step 5's "never stopping" case.
+   *If pressing `K` produces an `IllegalAccessError` in the log/console instead of movement:*
+   this is a specific, known risk for this adapter, not an unexplained bug to puzzle over.
+   `ForgeActuator.setInput` writes the `pressed` field on the chosen `KeyBinding` instance
+   directly, which only compiles — and only works at runtime — because
+   `META-INF/continuo_at.cfg` widens that private field (`field_74513_e`) to public. The
+   access transformer is proven to work at compile time; whether it actually takes effect
+   under `runClient` has never been observed before this checklist is run. An
+   `IllegalAccessError` here means it did not take effect at runtime — record it as exactly
+   that finding, not as a generic "walk doesn't work."
+   *Sub-check — unbound Forward key.* Perform this after you have completed the walk above and
+   step 5's distance check. Open Options → Controls and unbind the vanilla **Forward** key
+   (set it to "Not bound"), leaving "Walk Forward 40 Ticks" still bound to `K`. Press F3 to
+   note your position, then press `K` and let the walk run to completion.
+   *Observe:* the player must still walk forward and stop after roughly the same distance as
+   the step 5 baseline. It does not need to be re-measured to step 5's precision — the point
+   under test is that movement happens at all with Forward unbound, not the exact figure.
+   *Why this result matters beyond a pass/fail tick:* `ForgeActuator` addresses the `Forward`
+   `KeyBinding` instance directly, rather than going through 1.7.10's keycode-addressed
+   `KeyBinding.setKeyBindState`, specifically so that movement does not depend on what (if
+   anything) the user has Forward bound to. A later task in this plan deletes a clause from
+   the SPI contract on the strength of this behaviour holding. **If the player does not move
+   with Forward unbound, that deletion must not happen** — flag this result explicitly rather
+   than recording a quiet fail and moving on.
+   Rebind Forward to its default key before continuing to step 6, so later steps' movement
+   isn't affected by a missing default control.
 
 5. **Distance.** Once the player has stopped, press F3 again and read the new XYZ. Compute
    the displacement along the facing axis you recorded in step 3 (the difference in X or Z,
@@ -47,12 +87,15 @@ A1 sign-off — do not skip a step or assume it would have passed.
    about 8.6 blocks, so this is the expected range, not exactly 8 or exactly 10.
    *Diagnostic interpretations if it's outside 8–9 blocks:*
    - Roughly double (~17 blocks) or roughly half (~4 blocks) means the core is acting on the
-     wrong number of ticks. Note that the adapter is *deliberately* registered on both client
-     tick phases (START_CLIENT_TICK -> PRE, END_CLIENT_TICK -> POST) and that is correct and
-     required by the SPI contract. The bug to look for is the core acting on POST as well as
-     PRE, or the hook being on server tick instead of client tick.
-   - Zero (player never moved) means the actuator is not reaching the key mapping — the W key
-     is not actually being pressed in-game even though the walk was requested.
+     wrong number of ticks. Note that the adapter is *deliberately* registered on both halves
+     of the client tick (`TickEvent.Phase.START` -> PRE, `TickEvent.Phase.END` -> POST) and
+     that is correct and required by the SPI contract. The bug to look for is the core acting
+     on `POST` as well as `PRE`, or the hook being on the server tick
+     (`TickEvent.ServerTickEvent`) instead of the client tick.
+   - Zero (player never moved) means the actuator is not reaching the key binding — the
+     `Forward` binding's `pressed` field is not actually being set even though the walk was
+     requested. If this is the very first `K` press of the session, check step 4's
+     `IllegalAccessError` note first.
    - Never stopping (movement continues past a reasonable point, e.g. well past 9 blocks and
      still going) means the tick counter is not advancing or the stop condition never fires.
 
@@ -91,9 +134,9 @@ A1 sign-off — do not skip a step or assume it would have passed.
    outside the tick window — a real defect, whatever its cause.
    *What this step does NOT verify — read before recording a pass:* it exercises neither the
    adapter's out-of-world click drain nor its in-world guard. Minecraft only accumulates
-   `KeyMapping` clicks while no `Screen` is open, and the title screen is a screen, so nothing
-   is queued — neither for the drain to discard nor for the guard to hold back. This step
-   therefore passes identically against a build with either mechanism deleted. It is a
+   `KeyBinding` clicks while no `GuiScreen` is open, and the title screen is a screen, so
+   nothing is queued — neither for the drain to discard nor for the guard to hold back. This
+   step therefore passes identically against a build with either mechanism deleted. It is a
    tripwire for a walk appearing from nowhere, not evidence that either mechanism works. The
    drain's only reachable path is the faulted one, which is in-world; see the coverage note
    below for why this checklist cannot reach it.
@@ -132,8 +175,8 @@ implemented and knowingly unverified until M2's `platform-testkit` covers it. Do
 this checklist as evidence that fault handling works.
 
 Also not covered: the adapter's click drain (`drainClicks`). Every tester-reachable moment
-with no world loaded also has a `Screen` open — the title screen, the world-selection list,
-the world-loading screens — and Minecraft only accumulates `KeyMapping` clicks while no screen
+with no world loaded also has a `GuiScreen` open — the title screen, the world-selection list,
+the world-loading screens — and Minecraft only accumulates `KeyBinding` clicks while no screen
 is open. No manual sequence available here queues a click that the out-of-world drain then has
 to discard, which is why step 9 explicitly disclaims it. The one drain path that is genuinely
 reachable in play is the *faulted* path, which happens in-world with no screen up; that is out
@@ -145,8 +188,8 @@ Also not covered: PRE/POST phase pairing across a mid-tick world change (dimensi
 a disconnect processed during the tick). The adapter delivers both phases deliberately, and
 includes a `preDelivered` latch to ensure `POST` is paired only when `PRE` was delivered in
 that same tick. The latch closes one direction only. In the other direction, `PRE` **can go
-unpaired**: if the tick window closes or a fault is set between `START_CLIENT_TICK` and
-`END_CLIENT_TICK` of the same tick, `PRE` has already been delivered and `POST` is then
+unpaired**: if the tick window closes or a fault is set between `TickEvent.Phase.START` and
+`TickEvent.Phase.END` of the same tick, `PRE` has already been delivered and `POST` is then
 correctly suppressed. That is the exception the SPI's `onClientTick` contract explicitly
 permits, not a defect — but it means a `PRE` without a `POST` is a state this adapter can
 reach, and nothing in this checklist observes it. The pairing is unobservable in practice
@@ -155,22 +198,29 @@ symptom to verify. It will become observable and worth a dedicated step as soon 
 behaviour starts acting on `POST`. Until then, do not record this checklist as evidence that
 phase pairing is correct in either direction.
 
-Record the result (pass/fail) of each step individually. Any single failure blocks A1
+Record the result (pass/fail) of each step individually. Any single failure blocks A2
 sign-off, even if every other step passed.
 
 ---
 
-**Verified 2026-08-13:** the owner re-ran this checklist in full against a real 1.21.11
-client, after A2a's level-identity change replaced the `JOIN`/`DISCONNECT` handlers. The
-report is that everything works and **all steps passed**, the new portal step (step 11)
-included. Changing keybindings behaved as expected.
+**Verified 2026-08-13:** the owner ran this checklist against a real 1.7.10 client. The
+report is that everything works and **all steps passed**, the portal step (step 11)
+included. On 1.7.10 the player walked **8–9 blocks**, inside the expected band. Changing
+keybindings behaved as expected.
 
-Two limits on this record, stated so a later session does not read more into it than was
-reported. First, the owner gave a summary rather than a per-step table, so this is the
-owner's statement that every step passed — not eleven individually transcribed results.
-Second, **no displacement figure was reported for this run**; the 8 blocks recorded on
-2026-08-11 remains the only measured Fabric figure, and nothing here should be taken as a
-second measurement.
+**Step 4's unbound-key sub-check passed, explicitly confirmed:** with the vanilla Forward
+key set to NONE (unbound), the bot still walked. This was the load-bearing sub-check — the
+deletion of `IActuator`'s unbound-key clause (A2a design §3.2, §5.3) rests on exactly this
+behaviour, and it holds in the live client, not only in theory.
+
+**The access transformer is thereby confirmed to work at runtime, not merely at compile
+time.** No `IllegalAccessError` occurred, so `META-INF/continuo_at.cfg`'s widening of
+`KeyBinding.pressed` (`field_74513_e`) took effect under `runClient` as well as under
+`compileJava`. Step 4 flagged this as a specific known risk that had never been observed
+before this run; it is now closed by observation.
+
+One limit on this record: the owner gave a summary rather than a per-step table, so this is
+the owner's statement that every step passed — not eleven individually transcribed results.
 
 This run covers **none** of the three items disclaimed above — global rule 3, the click
 drain, and PRE/POST pairing are all still unverified, and a green run of this checklist is

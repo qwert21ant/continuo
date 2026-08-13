@@ -15,7 +15,8 @@ val allowedProjectDependencies: Map<String, Set<String>> = mapOf(
     // build.gradle.kts and declares no dependencies, but it is still a real project in
     // `allprojects` and must be listed or the direction check fails on it.
     ":adapters" to emptySet(),
-    ":adapters:adapter-fabric-1.21.11" to setOf(":platform", ":core")
+    ":adapters:adapter-fabric-1.21.11" to setOf(":platform", ":core"),
+    ":adapters:adapter-forge-1.7.10" to setOf(":platform", ":core")
 )
 
 val checkDependencyDirection = tasks.register("checkDependencyDirection") {

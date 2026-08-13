@@ -1,0 +1,16 @@
+[
+{
+  "modid": "continuo",
+  "name": "Continuo",
+  "description": "Minecraft automation core - Forge 1.7.10 adapter.",
+  "version": "0.1.0",
+  "mcversion": "1.7.10",
+  "url": "",
+  "authorList": [],
+  "credits": "",
+  "logoFile": "",
+  "screenshots": [],
+  "parent": "",
+  "dependencies": []
+}
+]
