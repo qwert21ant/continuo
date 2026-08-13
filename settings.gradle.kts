@@ -20,5 +20,6 @@ rootProject.name = "continuo"
 include("platform")
 include("core")
 include("platform-testkit")
+include("runtime")
 include("adapters:adapter-fabric-1.21.11")
 include("adapters:adapter-forge-1.7.10")
