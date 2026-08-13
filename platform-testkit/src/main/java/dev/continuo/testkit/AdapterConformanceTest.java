@@ -328,4 +328,119 @@ public abstract class AdapterConformanceTest {
             "the contract permits an unpaired PRE exactly when the window closed or the "
                 + "runtime faulted before POST was due; here the window closed");
     }
+
+    // ---- The click drain ----
+
+    @Test
+    void aQueuedClickIsDispatchedInsideTheTickWindow() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+        subject.queueClick(2);
+
+        subject.tickStart(LEVEL_A, PLAYER);
+
+        assertEquals(2, subject.clicksHandled());
+    }
+
+    @Test
+    void aClickQueuedOutOfWorldIsDiscarded() {
+        startAndClear();
+        subject.queueClick(3);
+
+        subject.tickStart(null, null);
+        subject.tickStart(LEVEL_A, PLAYER);
+        subject.tickEnd(LEVEL_A, PLAYER);
+
+        assertEquals(0, subject.clicksHandled(),
+            "a title-screen keypress must not fire the instant the next world loads");
+    }
+
+    @Test
+    void aClickQueuedWhileFaultedIsDiscarded() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+        core.failOnPre(new RuntimeException("core bug"));
+        subject.tickStart(LEVEL_A, PLAYER);
+        core.stopFailing();
+
+        subject.queueClick(3);
+        subject.tickStart(LEVEL_A, PLAYER);
+
+        assertEquals(0, subject.clicksHandled(),
+            "a click must not survive to be replayed once the fault clears");
+    }
+
+    @Test
+    void clicksStillQueuedWhenTheHandlerThrowsAreDiscarded() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+        subject.queueClick(4);
+        subject.failClickNumber(2, new RuntimeException("handler bug"));
+
+        subject.tickStart(LEVEL_A, PLAYER);
+
+        assertEquals(2, subject.clicksHandled(),
+            "the loop aborts on the second click and the remaining two are drained, not handled");
+        assertEquals(1, core.count(RecordingCore.Event.STOP),
+            "a throw from the click handler faults exactly as a throw from the core does");
+        assertEquals(0, core.count(RecordingCore.Event.TICK_PRE),
+            "the fault aborts the tick before PRE is reached");
+    }
+
+    @Test
+    void clicksAreNotDrainedBetweenPreAndPost() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+
+        subject.tickStart(LEVEL_A, PLAYER);
+        subject.queueClick(1);
+        subject.tickEnd(LEVEL_A, PLAYER);
+        subject.tickStart(LEVEL_A, PLAYER);
+
+        assertEquals(1, subject.clicksHandled(),
+            "a keypress made between the two halves of a tick must survive to the next one");
+    }
+
+    // ---- Coverage gaps found in review ----
+
+    @Test
+    void theFaultClearOrderingSurvivesAStopThatThrowsOnTheWorldLoad() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+        core.failOnPre(new RuntimeException("core bug"));
+        subject.tickStart(LEVEL_A, PLAYER);
+
+        // The world-load stop() itself throws. updateLevel clears the fault BEFORE calling
+        // stop(), so guarded() must re-set it and it must stay set. Were the clear to happen
+        // after stop(), the fault handler would swallow its own fault and ticks would resume.
+        core.stopFailing();
+        core.failOnStop(new RuntimeException("stop is broken on the world load too"));
+        subject.tickStart(LEVEL_B, PLAYER);
+        core.stopFailing();
+        core.clear();
+
+        subject.tickStart(LEVEL_B, PLAYER);
+
+        assertEquals(0, core.count(RecordingCore.Event.TICK_PRE),
+            "a world-load stop() that throws must leave the runtime faulted, not recovered");
+    }
+
+    @Test
+    void postIsSuppressedWhenAFaultArrivesBetweenTheTwoHalvesOfATick() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+
+        subject.tickStart(LEVEL_A, PLAYER);
+        // A fault raised after PRE was delivered and the latch armed: clientStopping() is the
+        // reachable route, since it runs a guarded core call outside the tick handlers.
+        core.failOnStop(new RuntimeException("stop is broken"));
+        subject.clientStopping();
+        core.stopFailing();
+        core.clear();
+
+        subject.tickEnd(LEVEL_A, PLAYER);
+
+        assertEquals(0, core.count(RecordingCore.Event.TICK_POST),
+            "tickEnd's faulted check must suppress POST even with the latch armed");
+    }
 }

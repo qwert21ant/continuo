@@ -86,18 +86,31 @@ public final class AdapterRuntime {
         }
         updateLevel(level);
         if (!inWorld(level, player)) {
+            // Drain clicks made outside a world so a title-screen keypress cannot fire the
+            // instant the next world loads.
+            drainClicks();
             return;
         }
         if (faulted) {
+            // Same invariant while faulted: a click must not survive to be replayed once the
+            // fault clears on the next world load.
+            drainClicks();
             return;
         }
         guarded(new Runnable() {
             @Override
             public void run() {
+                while (clicks.consumeClick()) {
+                    onClick.run();
+                }
                 core.onClientTick(TickPhase.PRE);
                 preDelivered = true;
             }
         });
+        // If the block above ran to completion, the click source is already empty and this is
+        // a no-op. If the handler threw partway through the loop, this discards whatever
+        // clicks were still queued so they cannot leak into a tick after the fault clears.
+        drainClicks();
     }
 
     /** Call from the game's tick-end hook. */
@@ -179,6 +192,21 @@ public final class AdapterRuntime {
      */
     private static boolean inWorld(Object level, Object player) {
         return level != null && player != null;
+    }
+
+    /**
+     * Discards any queued clicks without dispatching them. Called on all three tick-start
+     * paths — out of world, faulted, and after a delivered {@code PRE} that may have aborted
+     * mid-loop.
+     *
+     * <p>Deliberately not called from {@link #tickEnd}: clicks are consumed only in the
+     * tick-start path, so that tick's queue was already dealt with, and draining again would
+     * swallow a keypress the user makes between the two halves of a tick.
+     */
+    private void drainClicks() {
+        while (clicks.consumeClick()) {
+            // discarded deliberately
+        }
     }
 
     /**
