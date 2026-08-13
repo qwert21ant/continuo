@@ -69,6 +69,14 @@ public final class ContinuoForgeMod {
      */
     private boolean preDelivered;
 
+    /**
+     * The client level instance last seen by the tick handler, compared by identity. Holding
+     * it does not leak an unloaded world: it is overwritten with the current level the moment
+     * a change is detected, so it only ever names the level that is loaded now, or
+     * {@code null}.
+     */
+    private Object lastLevel;
+
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
         walkKey = new KeyBinding("key.continuo.walk", Keyboard.KEY_K, "key.categories.continuo");
@@ -98,6 +106,7 @@ public final class ContinuoForgeMod {
 
     private void onTickStart() {
         Minecraft client = Minecraft.getMinecraft();
+        updateLevel(client.theWorld);
         if (!inWorld(client)) {
             // Drain clicks made outside a world so a title-screen keypress cannot fire a walk
             // the instant the next world loads.
@@ -137,6 +146,37 @@ public final class ContinuoForgeMod {
             @Override
             public void run() {
                 core.onClientTick(TickPhase.POST);
+            }
+        });
+    }
+
+    /**
+     * Global rule 2's world-unload trigger and global rule 3's recovery trigger, which are the
+     * same observable condition: the client level instance being replaced or becoming
+     * {@code null}. A dimension change replaces it without ending the session and counts.
+     */
+    private void updateLevel(Object level) {
+        if (level == lastLevel) {
+            return;
+        }
+        lastLevel = level;
+
+        // Clear the fault BEFORE stopping, never after. If stop() throws, guarded() sets
+        // faulted again and it must stay set — clearing afterwards would let the fault handler
+        // swallow its own fault, which rule 3 forbids.
+        if (level != null && faulted) {
+            LOGGER.info("Continuo fault cleared by world load");
+            faulted = false;
+        }
+
+        LOGGER.info("Continuo stopping: client level changed");
+        guarded(new Runnable() {
+            @Override
+            public void run() {
+                // Not redundant on a world load: in the ordinary case the core was already
+                // stopped by the transition to null and this is a no-op, but if that earlier
+                // stop() threw, this is what clears the stale state.
+                core.stop();
             }
         });
     }

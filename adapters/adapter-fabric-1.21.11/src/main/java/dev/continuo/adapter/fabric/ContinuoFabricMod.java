@@ -7,7 +7,6 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
@@ -29,6 +28,11 @@ import org.slf4j.LoggerFactory;
  * not prevented, and a {@code PRE} left unpaired that way is the exception the
  * {@code onClientTick} contract permits — and the click drain ({@link #drainClicks}) that
  * keeps a queued click from surviving a transition into or out of a ticked state.
+ *
+ * <p>Lifecycle is driven by a single level-identity condition ({@link #updateLevel}) rather
+ * than by connection events: global rule 2's world-unload and disconnect triggers and global
+ * rule 3's recovery are all the same observable transition, and expressing them one way is
+ * what keeps this adapter and the 1.7.10 one from diverging on a dimension change.
  */
 public final class ContinuoFabricMod implements ClientModInitializer {
 
@@ -56,6 +60,14 @@ public final class ContinuoFabricMod implements ClientModInitializer {
      */
     private boolean preDelivered;
 
+    /**
+     * The client level instance last seen by the tick handler, compared by identity. Holding
+     * it does not leak an unloaded world: it is overwritten with the current level the moment
+     * a change is detected, so it only ever names the level that is loaded now, or
+     * {@code null}.
+     */
+    private Object lastLevel;
+
     @Override
     public void onInitializeClient() {
         // 1.21.11 replaced the old String-literal keybind category with a registered
@@ -81,6 +93,7 @@ public final class ContinuoFabricMod implements ClientModInitializer {
         );
 
         ClientTickEvents.START_CLIENT_TICK.register(client -> {
+            updateLevel(client.level);
             if (!inWorld(client)) {
                 // Drain clicks made outside a world so a title-screen keypress cannot fire
                 // a walk the instant the next world loads.
@@ -116,22 +129,36 @@ public final class ContinuoFabricMod implements ClientModInitializer {
             guarded(() -> core.onClientTick(TickPhase.POST));
         });
 
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-            if (faulted) {
-                LOGGER.info("Continuo fault cleared by world load");
-                faulted = false;
-            }
-        });
-
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            LOGGER.info("Continuo stopping: disconnected");
-            guarded(core::stop);
-        });
-
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             LOGGER.info("Continuo stopping: client shutting down");
             guarded(core::stop);
         });
+    }
+
+    /**
+     * Global rule 2's world-unload trigger and global rule 3's recovery trigger, which are the
+     * same observable condition: the client level instance being replaced or becoming
+     * {@code null}. A dimension change replaces it without ending the session and counts.
+     */
+    private void updateLevel(Object level) {
+        if (level == lastLevel) {
+            return;
+        }
+        lastLevel = level;
+
+        // Clear the fault BEFORE stopping, never after. If stop() throws, guarded() sets
+        // faulted again and it must stay set — clearing afterwards would let the fault handler
+        // swallow its own fault, which rule 3 forbids.
+        if (level != null && faulted) {
+            LOGGER.info("Continuo fault cleared by world load");
+            faulted = false;
+        }
+
+        LOGGER.info("Continuo stopping: client level changed");
+        // Not redundant on a world load: in the ordinary case the core was already stopped by
+        // the transition to null and this is a no-op, but if that earlier stop() threw, this is
+        // what clears the stale state.
+        guarded(core::stop);
     }
 
     /**
