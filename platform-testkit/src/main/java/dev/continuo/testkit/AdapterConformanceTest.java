@@ -3,6 +3,9 @@ package dev.continuo.testkit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -155,5 +158,174 @@ public abstract class AdapterConformanceTest {
         subject.clientStopping();
 
         assertEquals(1, core.count(RecordingCore.Event.STOP));
+    }
+
+    // ---- Global rule 3 — Faults ----
+
+    @Test
+    void aThrowingPreStopsTheCore() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+        core.failOnPre(new RuntimeException("core bug"));
+
+        subject.tickStart(LEVEL_A, PLAYER);
+
+        assertEquals(1, core.count(RecordingCore.Event.TICK_PRE));
+        assertEquals(1, core.count(RecordingCore.Event.STOP),
+            "a faulting core must be stopped so it cannot leave a movement key held");
+    }
+
+    @Test
+    void nothingPropagatesOutOfTickStart() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+        core.failOnPre(new RuntimeException("core bug"));
+
+        // A bot bug must never crash the user's game.
+        assertDoesNotThrow(() -> subject.tickStart(LEVEL_A, PLAYER));
+    }
+
+    @Test
+    void nothingPropagatesOutOfTickEnd() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+        subject.tickStart(LEVEL_A, PLAYER);
+        core.failOnPost(new RuntimeException("core bug"));
+
+        assertDoesNotThrow(() -> subject.tickEnd(LEVEL_A, PLAYER));
+    }
+
+    @Test
+    void noTicksAreDeliveredWhileFaulted() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+        core.failOnPre(new RuntimeException("core bug"));
+        subject.tickStart(LEVEL_A, PLAYER);
+        core.stopFailing();
+        core.clear();
+
+        subject.tickStart(LEVEL_A, PLAYER);
+        subject.tickEnd(LEVEL_A, PLAYER);
+        subject.tickStart(LEVEL_A, PLAYER);
+        subject.tickEnd(LEVEL_A, PLAYER);
+
+        assertEquals(0, core.count(RecordingCore.Event.TICK_PRE));
+        assertEquals(0, core.count(RecordingCore.Event.TICK_POST));
+    }
+
+    @Test
+    void aThrowingStopInsideTheFaultHandlerStillLeavesTheRuntimeFaulted() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+        core.failOnPre(new RuntimeException("core bug"));
+        core.failOnStop(new RuntimeException("stop is broken too"));
+
+        subject.tickStart(LEVEL_A, PLAYER);
+        core.stopFailing();
+        core.clear();
+
+        subject.tickStart(LEVEL_A, PLAYER);
+
+        assertEquals(0, core.count(RecordingCore.Event.TICK_PRE),
+            "the fault handler must not be able to fault its way out of the faulted state");
+    }
+
+    @Test
+    void theFaultClearsOnTheNextWorldLoadAndTicksResume() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+        core.failOnPre(new RuntimeException("core bug"));
+        subject.tickStart(LEVEL_A, PLAYER);
+        core.stopFailing();
+
+        subject.tickStart(null, null);
+        core.clear();
+        subject.tickStart(LEVEL_B, PLAYER);
+        subject.tickEnd(LEVEL_B, PLAYER);
+
+        assertEquals(1, core.count(RecordingCore.Event.TICK_PRE),
+            "the next world load clears the fault and reopens the tick window");
+        assertEquals(1, core.count(RecordingCore.Event.TICK_POST));
+    }
+
+    // ---- IGameEvents.onClientTick — tick window and phase pairing ----
+
+    @Test
+    void preIsDeliveredBeforePostWithinATick() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+
+        subject.tickStart(LEVEL_A, PLAYER);
+        subject.tickEnd(LEVEL_A, PLAYER);
+
+        assertEquals(
+            Arrays.asList(RecordingCore.Event.TICK_PRE, RecordingCore.Event.TICK_POST),
+            core.events());
+    }
+
+    @Test
+    void noTicksAreDeliveredWithNoLevel() {
+        startAndClear();
+
+        subject.tickStart(null, null);
+        subject.tickEnd(null, null);
+
+        assertEquals(0, core.count(RecordingCore.Event.TICK_PRE));
+        assertEquals(0, core.count(RecordingCore.Event.TICK_POST));
+    }
+
+    @Test
+    void noTicksAreDeliveredWithNoLocalPlayer() {
+        startAndClear();
+
+        subject.tickStart(LEVEL_A, null);
+        subject.tickEnd(LEVEL_A, null);
+
+        assertEquals(0, core.count(RecordingCore.Event.TICK_PRE),
+            "the tick window requires a world AND a local player");
+        assertEquals(0, core.count(RecordingCore.Event.TICK_POST));
+    }
+
+    @Test
+    void postIsNeverDeliveredWithoutASameTickPre() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+
+        subject.tickEnd(LEVEL_A, PLAYER);
+
+        assertEquals(0, core.count(RecordingCore.Event.TICK_POST),
+            "the exception never runs this way: POST without a same-tick PRE is never conformant");
+    }
+
+    @Test
+    void theLatchDoesNotWedgeAcrossTicks() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+
+        // A PRE whose POST is suppressed by the window closing mid-tick.
+        subject.tickStart(LEVEL_A, PLAYER);
+        subject.tickEnd(null, null);
+        core.clear();
+
+        // The next tick's END must not fire a POST left over from the previous tick's PRE.
+        subject.tickEnd(LEVEL_A, PLAYER);
+
+        assertEquals(0, core.count(RecordingCore.Event.TICK_POST));
+    }
+
+    @Test
+    void unpairedPreIsPermittedOnlyWhenASuppressingConditionHeld() {
+        startAndClear();
+        enterWorld(LEVEL_A);
+
+        // A dimension change or disconnect processed inside the game's own tick closes the
+        // window between the two halves of one tick.
+        subject.tickStart(LEVEL_A, PLAYER);
+        subject.tickEnd(null, null);
+
+        assertEquals(1, core.count(RecordingCore.Event.TICK_PRE));
+        assertEquals(0, core.count(RecordingCore.Event.TICK_POST),
+            "the contract permits an unpaired PRE exactly when the window closed or the "
+                + "runtime faulted before POST was due; here the window closed");
     }
 }

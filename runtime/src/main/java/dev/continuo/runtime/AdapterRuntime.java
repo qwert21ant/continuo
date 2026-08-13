@@ -2,6 +2,7 @@ package dev.continuo.runtime;
 
 import dev.continuo.core.CoreApi;
 import dev.continuo.platform.IPlatformContext;
+import dev.continuo.platform.TickPhase;
 
 /**
  * Discharges the adapter-side obligations of the four global rules documented in
@@ -26,6 +27,24 @@ public final class AdapterRuntime {
      * {@code null}.
      */
     private Object lastLevel;
+
+    /**
+     * Set when a core call throws, per global rule 3. While set, no ticks are delivered.
+     * Cleared on the next world load.
+     */
+    private boolean faulted;
+
+    /**
+     * Set when {@code PRE} is delivered for the current tick; cleared the moment
+     * {@link #tickEnd} next runs, whether or not it goes on to deliver {@code POST}. The
+     * window and the fault state are re-read independently by each phase, so either can change
+     * between the two halves of one tick — a mid-tick dimension change, or a disconnect
+     * processed inside the game's own tick. This latch is what stops {@code POST} from ever
+     * firing without a same-tick {@code PRE}. It cannot wedge across ticks: it is
+     * unconditionally cleared on every {@link #tickEnd} call, so a {@code PRE} that loses its
+     * {@code POST} mid-tick never leaves the latch set for the next one.
+     */
+    private boolean preDelivered;
 
     /**
      * @param core    the core to drive
@@ -66,6 +85,19 @@ public final class AdapterRuntime {
             return;
         }
         updateLevel(level);
+        if (!inWorld(level, player)) {
+            return;
+        }
+        if (faulted) {
+            return;
+        }
+        guarded(new Runnable() {
+            @Override
+            public void run() {
+                core.onClientTick(TickPhase.PRE);
+                preDelivered = true;
+            }
+        });
     }
 
     /** Call from the game's tick-end hook. */
@@ -73,6 +105,17 @@ public final class AdapterRuntime {
         if (!started) {
             return;
         }
+        boolean deliverPost = preDelivered;
+        preDelivered = false;
+        if (!deliverPost || !inWorld(level, player) || faulted) {
+            return;
+        }
+        guarded(new Runnable() {
+            @Override
+            public void run() {
+                core.onClientTick(TickPhase.POST);
+            }
+        });
     }
 
     /**
@@ -86,7 +129,12 @@ public final class AdapterRuntime {
             return;
         }
         log.info("Continuo stopping: client shutting down");
-        core.stop();
+        guarded(new Runnable() {
+            @Override
+            public void run() {
+                core.stop();
+            }
+        });
     }
 
     /**
@@ -100,10 +148,56 @@ public final class AdapterRuntime {
         }
         lastLevel = level;
 
+        // Clear the fault BEFORE stopping, never after. If stop() throws, guarded() sets
+        // faulted again and it must stay set — clearing afterwards would let the fault handler
+        // swallow its own fault, which rule 3 forbids.
+        if (level != null && faulted) {
+            log.info("Continuo fault cleared by world load");
+            faulted = false;
+        }
+
         log.info("Continuo stopping: client level changed");
         // Not redundant on a world load: in the ordinary case the core was already stopped by
         // the transition to null and this is a no-op, but if that earlier stop() threw, this
         // is what clears the stale state.
-        core.stop();
+        guarded(new Runnable() {
+            @Override
+            public void run() {
+                core.stop();
+            }
+        });
+    }
+
+    /**
+     * The tick window from {@code IGameEvents.onClientTick}: ticks are delivered only while a
+     * world is loaded and a local player exists. Global rule 2 is lifecycle only and does not
+     * state this window.
+     *
+     * <p>It lives here rather than in each adapter so that two conformant adapters cannot
+     * drift on it — the same reason global rule 2's unload trigger is stated as one observable
+     * condition.
+     */
+    private static boolean inWorld(Object level, Object player) {
+        return level != null && player != null;
+    }
+
+    /**
+     * Runs a core call under global rule 3. Nothing the core throws reaches the game's tick
+     * loop, the core is stopped so it cannot leave a movement key held, and no further ticks
+     * are delivered until the next world load.
+     */
+    private void guarded(Runnable coreCall) {
+        try {
+            coreCall.run();
+        } catch (Throwable thrown) {
+            // Set before stopping: if stop() throws too, the faulted state must still hold.
+            faulted = true;
+            log.error("Continuo core faulted; no further ticks until the next world load", thrown);
+            try {
+                core.stop();
+            } catch (Throwable stopFailure) {
+                log.error("Continuo core.stop() also failed while handling a fault", stopFailure);
+            }
+        }
     }
 }
