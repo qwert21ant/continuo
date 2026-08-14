@@ -69,20 +69,24 @@ public final class BlockTableLoader {
      * @throws IllegalArgumentException if the document is malformed or names anything unknown
      */
     public static BlockTable parse(String json) {
-        Map<String, JsonValue> root = JsonValue.parse(json).asObject();
-        for (String key : root.keySet()) {
-            if (!TOP_LEVEL_KEYS.contains(key)) {
-                throw new IllegalArgumentException(
-                    "unknown top-level key \"" + key + "\"; expected one of " + TOP_LEVEL_KEYS);
+        try {
+            Map<String, JsonValue> root = JsonValue.parse(json).asObject();
+            for (String key : root.keySet()) {
+                if (!TOP_LEVEL_KEYS.contains(key)) {
+                    throw new IllegalArgumentException(
+                        "unknown top-level key \"" + key + "\"; expected one of " + TOP_LEVEL_KEYS);
+                }
             }
+            require(root, "version");
+            require(root, "blocks");
+            require(root, "states");
+            root.get("version").asString();
+            return new BlockTable(
+                parseSection(root.get("blocks").asObject()),
+                parseSection(root.get("states").asObject()));
+        } catch (IllegalStateException e) {
+            throw new IllegalArgumentException("malformed document: " + e.getMessage(), e);
         }
-        require(root, "version");
-        require(root, "blocks");
-        require(root, "states");
-        root.get("version").asString();
-        return new BlockTable(
-            parseSection(root.get("blocks").asObject()),
-            parseSection(root.get("states").asObject()));
     }
 
     private static void require(Map<String, JsonValue> root, String key) {

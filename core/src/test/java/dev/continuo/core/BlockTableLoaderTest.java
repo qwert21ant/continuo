@@ -119,4 +119,30 @@ class BlockTableLoaderTest {
     void anUnknownVersionYieldsAnEmptyTableRatherThanAnError() {
         assertNull(BlockTableLoader.forVersion("1.99.99").forBlock("minecraft:stone"));
     }
+
+    @Test
+    void rejectsVersionWhenItIsAnObjectInsteadOfAString() {
+        assertThrows(IllegalArgumentException.class, () ->
+            BlockTableLoader.parse("{\"version\": {}, \"blocks\": {}, \"states\": {}}"));
+    }
+
+    @Test
+    void rejectsBlocksWhenItIsAStringInsteadOfAnObject() {
+        assertThrows(IllegalArgumentException.class, () ->
+            BlockTableLoader.parse("{\"version\": \"test\", \"blocks\": \"oops\", \"states\": {}}"));
+    }
+
+    @Test
+    void rejectsTagsWhenItIsAStringInsteadOfAnArray() {
+        assertThrows(IllegalArgumentException.class, () ->
+            BlockTableLoader.parse(
+                "{\"version\": \"test\", \"blocks\": {\"a:b\": {\"tags\": \"SLOW\"}}, \"states\": {}}"));
+    }
+
+    @Test
+    void exceptionMessageFromMissingVersionIsUsefulAndNotMasked() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () ->
+            BlockTableLoader.parse("{\"blocks\": {}, \"states\": {}}"));
+        assertTrue(e.getMessage().contains("version"), "message should mention 'version': " + e.getMessage());
+    }
 }
