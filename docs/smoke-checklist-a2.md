@@ -171,6 +171,24 @@ access transformer failed and is a real, reportable failure.
     before the in-world guard, or the level instance is being compared by value rather than by
     identity.
 
+12. **Block dump.** This step does not exercise the walk behaviour above; it produces one of
+    the two per-version block dumps for B1's cross-adapter parity check. From the title screen,
+    create a **new** Superflat world in **Creative** mode (`/gamemode 1` once you've spawned, if
+    it did not start in Creative already — the walk steps above needed Survival; the dump only
+    reads block state and Creative is faster to build in). Build the 32-block fixture row from
+    `docs/parity/fixture-layout.md` — that file, not this one, is the source of truth for the
+    corridor's shape and its index-to-block table. Stand at index 0, the west end of the row
+    (bare air, per the fixture layout), and face **+X, east**, as the layout specifies. Press
+    `J`.
+    *Observe:* the log must contain a line reading `Continuo: wrote block dump to <path>`,
+    naming an absolute path ending in `continuo-block-dump.txt` inside the game's run directory
+    — that is a scratch location, not `docs/parity/`. Copy that file into the repository as
+    `docs/parity/blocks-1.7.10.txt`, overwriting whatever is already there.
+    *If the log line is missing:* look instead for `Continuo: could not write the block dump` —
+    the write is wrapped in a try/catch, so a failure is logged rather than crashing the client.
+    *What this step does NOT verify:* see the block-model disclaimer below, after the usual
+    three — it applies to this step specifically, not to the walk steps above.
+
 **Not covered by this checklist:** global rule 3 (fault handling). Exercising it requires
 deliberately making the core throw, which is not something to leave in the tree. Rule 3 is
 implemented; the shared logic is now exercised by the `platform-testkit` conformance suite
@@ -209,6 +227,21 @@ offline against the shared `AdapterRuntime`. **The suite and this checklist are 
 A green suite says nothing about whether this adapter passes the correct level or player
 object, whether `setInput` moves the player, or whether `PRE` precedes the game's input read —
 that is what the steps above are for. Neither is evidence about the other's subject.
+
+Also not covered — this one applies to step 12 specifically: whether the block model itself is
+correct. **A green dump does not prove the block model is correct, only that the two adapters
+agree.** Step 12 above writes only this version's half of a pair; the pair is compared by
+`BlockParityTest`, which is a diff, not a judgement — it can only ever show the two adapters
+agreeing or disagreeing with each other, never with the game. Both adapters could misreport the
+same block the same way — reading the wrong collision flag, say — and a cross-version diff
+would still come back green, because the diff cannot see past what both sides report. That is
+what the per-version goldens in `docs/parity/` (`golden-1.7.10.txt`, `golden-1.21.11.txt`) exist
+to catch: each is a human's line-by-line review of one version's dump, signed off as correct on
+its own terms, and checked in separately because 1.7.10 and 1.21.11 genuinely disagree on two of
+the thirty-two rows — carpet's collision box and farmland's depth — so no single golden could
+match both. A golden is only as good as the audit that produced it and the review that signed
+it off. Do not record step 12 as evidence the block model is right, only that this adapter and
+the other one currently say the same thing.
 
 Record the result (pass/fail) of each step individually. Any single failure blocks A2
 sign-off, even if every other step passed.

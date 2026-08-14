@@ -26,5 +26,17 @@
  * {@code docs/smoke-checklist-a2.md}. This suite covers the shared logic; the checklists cover
  * the platform binding. <b>Neither subsumes the other, and a green run of either is not
  * evidence about the other's subject.</b>
+ *
+ * <h2>B1 adds no conformance cases here, deliberately</h2>
+ *
+ * <p>This suite asserts {@code AdapterRuntime}, which both the Forge 1.7.10 and Fabric 1.21.11
+ * adapters delegate to. {@code IBlockView} is different: each adapter implements it directly,
+ * and asserting it needs a live world — the same structural reason the adapters themselves have
+ * no automated tests at all. {@code FakeBlockView} in this package is a fixture for headless
+ * core tests, <b>not</b> a conformance harness, and a green run of anything in this package says
+ * nothing about whether either adapter reports a block truthfully. The cross-adapter dump under
+ * {@code docs/parity/} is the substitute for that missing coverage, and it is a manual step —
+ * see {@code docs/smoke-checklist-a1.md} and {@code docs/smoke-checklist-a2.md} again, this
+ * time for the block-dump steps rather than the walk steps.
  */
 package dev.continuo.testkit;
