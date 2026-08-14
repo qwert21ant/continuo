@@ -6,7 +6,7 @@ package dev.continuo.platform;
  * <p>Bundled into one type so that adding a capability later changes one signature rather
  * than every call site.
  *
- * <p>Valid for the adapter's entire lifetime. Both accessors MUST NOT return {@code null},
+ * <p>Valid for the adapter's entire lifetime. All three accessors MUST NOT return {@code null},
  * and MUST return the same instance on every call — the core may therefore cache what they
  * return.
  */
