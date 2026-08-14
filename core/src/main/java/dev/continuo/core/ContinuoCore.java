@@ -7,9 +7,10 @@ import dev.continuo.platform.TickPhase;
 /**
  * The entire core, for now: on request, hold FORWARD for {@link #WALK_TICKS} ticks.
  *
- * <p>Deliberately has no static state and no knowledge of its owner. The adapter
- * constructs it and holds it, which is exactly why this class can be tested with no
- * Minecraft on the classpath.
+ * <p>Deliberately has no static state and no knowledge of its owner. The adapter constructs
+ * it and hands it to the shared {@code AdapterRuntime}, which is what holds it and drives it,
+ * and this class is none the wiser — which is exactly why it can be tested with no Minecraft
+ * on the classpath.
  */
 public final class ContinuoCore implements CoreApi {
 

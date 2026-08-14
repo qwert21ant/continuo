@@ -16,7 +16,10 @@
  *   <li>that {@code IActuator.setInput} moves the player;
  *   <li>that {@code PRE} genuinely precedes the game's own input read for that tick;
  *   <li>that the tick source is a tick and not a frame;
- *   <li>anything about global rule 1 or global rule 4, neither of which reduces to a test.
+ *   <li>anything about global rule 1 or global rule 4, neither of which reduces to a test;
+ *   <li>anything about {@code IGameEvents.onClientTick}'s "MUST NOT be delivered
+ *       re-entrantly" clause — that is a property of the adapter's event source, and a runtime
+ *       cannot stop its own caller from re-entering it, so the suite has no case for it.
  * </ul>
  *
  * <p>Those remain the job of {@code docs/smoke-checklist-a1.md} and

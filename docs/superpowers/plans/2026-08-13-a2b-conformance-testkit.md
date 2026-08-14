@@ -1679,6 +1679,12 @@ Append to `AdapterConformanceTest`, before the closing brace:
         subject.queueClick(3);
         subject.tickStart(LEVEL_A, PLAYER);
 
+        // The faulted tick returns before the dispatch loop, so a zero count here would hold
+        // whether the click was discarded or merely left sitting in the queue. Only clearing
+        // the fault tells the two apart: the world load to LEVEL_B reopens the dispatch loop,
+        // and a click the drain failed to discard is handled on that tick.
+        subject.tickStart(LEVEL_B, PLAYER);
+
         assertEquals(0, subject.clicksHandled(),
             "a click must not survive to be replayed once the fault clears");
     }
@@ -1698,6 +1704,15 @@ Append to `AdapterConformanceTest`, before the closing brace:
             "a throw from the click handler faults exactly as a throw from the core does");
         assertEquals(0, core.count(RecordingCore.Event.TICK_PRE),
             "the fault aborts the tick before PRE is reached");
+
+        // Those three are all decided inside the guard, before the trailing drain runs, so
+        // they cannot tell a discarded click from one still queued. Clearing the fault with a
+        // world load reopens the dispatch loop: the two clicks the aborted loop never reached
+        // are handled here, and the count reaches 4, unless they were drained.
+        subject.tickStart(LEVEL_B, PLAYER);
+
+        assertEquals(2, subject.clicksHandled(),
+            "the clicks left queued by the aborted loop must not leak into a later tick");
     }
 
     @Test
@@ -1714,6 +1729,25 @@ Append to `AdapterConformanceTest`, before the closing brace:
             "a keypress made between the two halves of a tick must survive to the next one");
     }
 ```
+
+**Amended in place after the Task 7 review** (ruling in the SDD ledger; same convention as
+`03f357f`). Two of the bodies above are not the ones this plan first carried. As originally
+written, `aClickQueuedWhileFaultedIsDiscarded` and
+`clicksStillQueuedWhenTheHandlerThrowsAreDiscarded` asserted nothing that depended on the drain:
+the faulted branch returns before the dispatch loop, and the trailing drain runs after
+`guarded()` has already decided every value the test read, so both stayed green with the
+`drainClicks()` call they name deleted. Each now clears the fault with a world load to
+`LEVEL_B` and re-checks the count, which is what actually observes the discard. Spec §5.2
+requires those two discards to be *asserted*, so the original bodies were defective against
+the spec rather than a plan-versus-review disagreement.
+
+**Two further cases were added in the same fix round, under a `// ---- Coverage gaps found in
+review ----` heading at the end of the class**, closing gaps the Tasks 5+6 review found:
+`theFaultClearOrderingSurvivesAStopThatThrowsOnTheWorldLoad` pins `updateLevel`'s
+clear-the-fault-*before*-`stop()` ordering, which no case had pinned, and
+`postIsSuppressedWhenAFaultArrivesBetweenTheTwoHalvesOfATick` covers `tickEnd`'s `|| faulted`
+term, which was deletable with no case failing. That is why the shipped suite is **28** cases
+and not the 26 Step 4 below first expected.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -1781,7 +1815,7 @@ Add after `inWorld`:
 - [ ] **Step 4: Run the whole build**
 
 Run: `./gradlew build`
-Expected: PASS. 16 core tests, 4 testkit tests, 26 runtime conformance tests. Both adapters still compile against the unchanged `ContinuoCore`.
+Expected: PASS. 16 core tests, 4 testkit tests, 26 runtime conformance tests — 28 as shipped, after the two coverage-gap cases noted under Step 1. Both adapters still compile against the unchanged `ContinuoCore`.
 
 - [ ] **Step 5: Write the testkit's `package-info`**
 

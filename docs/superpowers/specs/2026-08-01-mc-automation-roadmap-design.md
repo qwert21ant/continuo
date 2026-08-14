@@ -114,7 +114,11 @@ on.
   graph, so "the same unmodified core jar" is a property of the build rather than a claim,
   and the owner measured the 40-tick walk at 8–9 blocks on a real 1.7.10 client
   (`docs/smoke-checklist-a2.md`, verified 2026-08-13).
-- **A2b — ✅ DONE.** The injection seam, `platform-testkit`, and the SPI v1 revision. Spec:
+- **A2b — ✅ DONE (all three deliverables), with both smoke checklists owed a re-run.** Neither
+  `docs/smoke-checklist-a1.md` nor `docs/smoke-checklist-a2.md` has been run against a real
+  client since the adapters were converted to delegate; see "Neither checklist has been re-run
+  since the adapters were converted" below before reading this as fully verified. The injection
+  seam, `platform-testkit`, and the SPI v1 revision. Spec:
   [`2026-08-13-a2b-conformance-testkit-design.md`](2026-08-13-a2b-conformance-testkit-design.md).
   The seam **dissolved rather than got solved**: extracting both adapters' shared conformance
   machinery into `:runtime` made the runtime the object worth observing, and the testkit

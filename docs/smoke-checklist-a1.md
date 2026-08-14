@@ -90,7 +90,8 @@ A1 sign-off — do not skip a step or assume it would have passed.
    a walk starting on its own after the world loads, means something is driving the core
    outside the tick window — a real defect, whatever its cause.
    *What this step does NOT verify — read before recording a pass:* it exercises neither the
-   adapter's out-of-world click drain nor its in-world guard. Minecraft only accumulates
+   shared `AdapterRuntime`'s out-of-world click drain nor its in-world guard, which is where
+   both now live rather than in this adapter. Minecraft only accumulates
    `KeyMapping` clicks while no `Screen` is open, and the title screen is a screen, so nothing
    is queued — neither for the drain to discard nor for the guard to hold back. This step
    therefore passes identically against a build with either mechanism deleted. It is a
@@ -122,9 +123,10 @@ A1 sign-off — do not skip a step or assume it would have passed.
     exists. Both adapters implement this through one level-identity condition, so a failure
     here on either version means the two have diverged — the exact thing the contract exists
     to prevent.
-    *If the player keeps walking after the dimension change:* `updateLevel` is not being
-    reached before the in-world guard, or the level instance is being compared by value rather
-    than by identity.
+    *If the player keeps walking after the dimension change:* `AdapterRuntime.updateLevel` —
+    which is where that comparison now lives, not in this adapter — is not being reached
+    before the in-world guard, or the level instance is being compared by value rather than by
+    identity.
 
 **Not covered by this checklist:** global rule 3 (fault handling). Exercising it requires
 deliberately making the core throw, which is not something to leave in the tree. Rule 3 is
@@ -132,7 +134,8 @@ implemented; the shared logic is now exercised by the `platform-testkit` conform
 added in A2b, but this checklist remains the only check on whether this adapter's binding to
 that logic is correct. Do not record this checklist as evidence that fault handling works.
 
-Also not covered: the adapter's click drain (`drainClicks`). Every tester-reachable moment
+Also not covered: the click drain (`drainClicks`), which lives in the shared `AdapterRuntime`
+this adapter delegates to rather than in the adapter itself. Every tester-reachable moment
 with no world loaded also has a `Screen` open — the title screen, the world-selection list,
 the world-loading screens — and Minecraft only accumulates `KeyMapping` clicks while no screen
 is open. No manual sequence available here queues a click that the out-of-world drain then has
@@ -145,8 +148,9 @@ evidence that the drain works.
 
 Also not covered: PRE/POST phase pairing across a mid-tick world change (dimension change or
 a disconnect processed during the tick). The adapter delivers both phases deliberately, and
-includes a `preDelivered` latch to ensure `POST` is paired only when `PRE` was delivered in
-that same tick. The latch closes one direction only. In the other direction, `PRE` **can go
+the shared `AdapterRuntime` it forwards them to includes a `preDelivered` latch to ensure
+`POST` is paired only when `PRE` was delivered in that same tick. The latch closes one
+direction only. In the other direction, `PRE` **can go
 unpaired**: if the tick window closes or a fault is set between `START_CLIENT_TICK` and
 `END_CLIENT_TICK` of the same tick, `PRE` has already been delivered and `POST` is then
 correctly suppressed. That is the exception the SPI's `onClientTick` contract explicitly
@@ -167,6 +171,12 @@ Record the result (pass/fail) of each step individually. Any single failure bloc
 sign-off, even if every other step passed.
 
 ---
+
+**Scope of the record below — read it first.** This run predates A2b. It was made against the
+adapter as it stood before the conversion that moved the conformance machinery out of
+`ContinuoFabricMod` and into the shared `AdapterRuntime`, so it is evidence about an adapter
+this repository no longer contains. **A re-run against a real 1.21.11 client is owed and has
+not happened.** Nothing below should be read as covering the converted adapter.
 
 **Verified 2026-08-13:** the owner re-ran this checklist in full against a real 1.21.11
 client, after A2a's level-identity change replaced the `JOIN`/`DISCONNECT` handlers. The

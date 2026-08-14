@@ -4,8 +4,8 @@ plugins {
 
 /**
  * The only place module dependency direction is declared. A module may depend on exactly
- * the projects listed for it, and nothing else. Adapters may depend on platform and core;
- * nothing may depend on an adapter.
+ * the projects listed for it, and nothing else. Adapters may depend on platform, core and
+ * runtime; nothing may depend on an adapter.
  */
 val allowedProjectDependencies: Map<String, Set<String>> = mapOf(
     ":platform" to emptySet(),
