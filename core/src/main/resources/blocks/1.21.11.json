@@ -1,0 +1,15 @@
+{
+  "version": "1.21.11",
+  "blocks": {
+    "minecraft:water":       { "fluid": "WATER" },
+    "minecraft:lava":        { "fluid": "LAVA", "tags": ["AVOID"] },
+    "minecraft:soul_sand":   { "tags": ["SLOW"] },
+    "minecraft:cobweb":      { "tags": ["SLOW"] },
+    "minecraft:honey_block": { "tags": ["SLOW"] },
+    "minecraft:fire":        { "tags": ["AVOID"] },
+    "minecraft:soul_fire":   { "tags": ["AVOID"] },
+    "minecraft:cactus":      { "tags": ["AVOID"] },
+    "minecraft:magma_block": { "tags": ["AVOID"] }
+  },
+  "states": {}
+}
