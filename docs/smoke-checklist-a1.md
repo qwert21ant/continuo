@@ -172,11 +172,28 @@ sign-off, even if every other step passed.
 
 ---
 
-**Scope of the record below — read it first.** This run predates A2b. It was made against the
-adapter as it stood before the conversion that moved the conformance machinery out of
-`ContinuoFabricMod` and into the shared `AdapterRuntime`, so it is evidence about an adapter
-this repository no longer contains. **A re-run against a real 1.21.11 client is owed and has
-not happened.** Nothing below should be read as covering the converted adapter.
+**There are two records below.** The 2026-08-14 run covers the adapter as it stands today.
+The 2026-08-13 run predates A2b and is kept because it is the only source of some detail;
+read its own scope note before citing it for anything.
+
+**Verified 2026-08-14 — post-A2b:** the owner re-ran this checklist against a real 1.21.11
+client, after the A2b conversion moved the conformance machinery out of `ContinuoFabricMod`
+and into the shared `AdapterRuntime`. The report is that **everything is still working**.
+
+This closes A2b's done-criterion 3. It is the evidence that mattered most for A2b: the
+extraction preserved behaviour in a real client, not merely under the conformance suite,
+which by construction cannot see the platform binding at all.
+
+Two limits on this record, stated so a later session does not read more into it than was
+reported. The owner gave a one-line summary rather than a per-step table, so this is the
+owner's statement that the checklist passes — not eleven individually transcribed results.
+And **no displacement figure was reported for this run**; the 8 blocks measured on
+2026-08-11 remains the only measured Fabric figure.
+
+**Scope of the 2026-08-13 record below — read it first.** That run predates A2b. It was made
+against the adapter as it stood before the conversion, so it is evidence about an adapter this
+repository no longer contains. It is superseded by the 2026-08-14 record above for anything
+concerning the current adapter.
 
 **Verified 2026-08-13:** the owner re-ran this checklist in full against a real 1.21.11
 client, after A2a's level-identity change replaced the `JOIN`/`DISCONNECT` handlers. The

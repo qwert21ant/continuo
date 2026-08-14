@@ -114,11 +114,14 @@ on.
   graph, so "the same unmodified core jar" is a property of the build rather than a claim,
   and the owner measured the 40-tick walk at 8–9 blocks on a real 1.7.10 client
   (`docs/smoke-checklist-a2.md`, verified 2026-08-13).
-- **A2b — ✅ DONE (all three deliverables), with both smoke checklists owed a re-run.** Neither
-  `docs/smoke-checklist-a1.md` nor `docs/smoke-checklist-a2.md` has been run against a real
-  client since the adapters were converted to delegate; see "Neither checklist has been re-run
-  since the adapters were converted" below before reading this as fully verified. The injection
-  seam, `platform-testkit`, and the SPI v1 revision. Spec:
+- **A2b — ✅ DONE 2026-08-14.** All three deliverables, and both smoke checklists re-run green
+  against real clients *after* the conversion: the owner ran `docs/smoke-checklist-a1.md` on
+  1.21.11 and `docs/smoke-checklist-a2.md` on 1.7.10 and reported that everything is still
+  working. That is what closes the sub-project — the conformance suite cannot see the platform
+  binding, so only these runs can show the extraction preserved behaviour in a live client.
+  Both records note that the owner reported a summary rather than a per-step table and gave no
+  displacement figure, so the earlier measurements remain the only measured figures. The
+  injection seam, `platform-testkit`, and the SPI v1 revision. Spec:
   [`2026-08-13-a2b-conformance-testkit-design.md`](2026-08-13-a2b-conformance-testkit-design.md).
   The seam **dissolved rather than got solved**: extracting both adapters' shared conformance
   machinery into `:runtime` made the runtime the object worth observing, and the testkit
@@ -300,10 +303,13 @@ whether each adapter passes the correct level and player objects, and whether `s
 the player. A green smoke run still does not cover the three behaviours, and a green suite
 still does not cover the binding.
 
-**Neither checklist has been re-run since the adapters were converted.** Both were rewritten in
-A2b to delegate to `AdapterRuntime`, and the 2026-08-13 runs above predate that change. The
-suite is evidence that the extracted logic behaves; it is not evidence that either adapter is
-still wired to it correctly in a real client. Re-running both checklists is an outstanding item.
+**Both checklists were re-run on 2026-08-14, after the conversion, and passed.** Both adapters
+were rewritten in A2b to delegate to `AdapterRuntime`, which made the 2026-08-13 runs evidence
+about code the repository no longer contains. The owner re-ran both against real clients and
+reported that everything is still working. This closes the gap that mattered: the suite is
+evidence that the extracted logic behaves, and only these runs are evidence that each adapter
+is still wired to it correctly in a real client. Neither substitutes for the other, and that
+division is now permanent rather than a snapshot — every future adapter inherits it.
 
 **2. Do NOT lock in edge- vs level-triggered actuation yet — it is an M5 decision.**
 Today the core sets `FORWARD` once at tick 1 and assumes it persists for 40 ticks. It does
