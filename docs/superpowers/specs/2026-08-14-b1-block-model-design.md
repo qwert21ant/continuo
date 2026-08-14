@@ -452,8 +452,15 @@ than being skipped. A silently-ignored typo in a data table is precisely the fai
 design exists to avoid. Rows referring to blocks that do not exist on that version cannot be
 detected at load time; the dump walker reports them, which is one more reason it earns its place.
 
-Files ship as `:core` resources and are selected at runtime by `IPlatformInfo.version()` — not as
-adapter resources. The core owns classification, and the tables must be diffable and testable
+Files ship as `:core` resources and are selected at runtime by `IPlatformInfo.gameVersion()` — not
+as adapter resources.
+
+**This is not the version branching that `IPlatformInfo` forbids.** That javadoc says the version
+string *"is not for feature detection"* and that branching core behaviour on it is what capability
+negotiation exists for. Selecting a **data file** by version is the roadmap's own "version
+differences are data, not branches" rule working as intended: no core code path changes, one table
+is loaded instead of another, and a version with no table falls back to pure geometry rather than
+behaving differently. The core owns classification, and the tables must be diffable and testable
 headless, which they cannot be from behind a Minecraft toolchain.
 
 No JSON library is on the core classpath today and core is `--release 8`. The format is
