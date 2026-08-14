@@ -524,6 +524,144 @@ This is asked in earnest because the M2 gate explicitly does not cover it. The r
 genuinely hard, and it is not a promise that the SPI will hold there."* Do not cite the M2 gate as
 evidence the SPI is fine here.
 
+#### Audit results — 2026-08-14
+
+Read from the decompiled sources on disk: RetroFuturaGradle's
+`adapters/adapter-forge-1.7.10/build/rfg/minecraft-src/java` (MCP names) and Loom's cached
+1.21.11 Mojmap sources. Neither tree is in git.
+
+**How the boxes were obtained.** On 1.7.10, `addCollisionBoxesToList(world, x, y, z, mask, list,
+null)` with a mask large enough to admit every box — never `setBlockBoundsBasedOnState` followed by
+a bounds read (§3.3 explains why). On 1.21.11, `state.getCollisionShape(level, pos).toAabbs()` —
+never `getShape`. **All figures below are block-relative**, which is what the SPI carries: the
+1.7.10 adapter subtracts `x`/`y`/`z` from the absolute `AxisAlignedBB`, and `VoxelShape.toAabbs()`
+is already block-relative. A full cube is therefore `0,0,0 → 1,1,1` on both sides.
+
+Every box shown is for the state actually named in the fixture (§5.2) — for the neighbour-dependent
+blocks that means the connections the fixture corridor produces, not the isolated case.
+
+| Logical block | 1.7.10 class + boxes | 1.21.11 class + boxes | Expected `BlockShape` | Verdict |
+|---|---|---|---|---|
+| air | `BlockAir`; `getCollisionBoundingBoxFromPool` → `null`; no boxes | `AirBlock`; `getShape` → `Shapes.empty()`; no boxes | `AIR` | `geometry` |
+| stone | `Block`; `0,0,0 → 1,1,1` | `Block`; `Shapes.block()` → `0,0,0 → 1,1,1` | `FULL` | `geometry` |
+| bottom slab | `BlockSlab`/`BlockStoneSlab`; overrides `addCollisionBoxesToList`; `0,0,0 → 1,0.5,1` | `SlabBlock`; `Block.column(16,0,8)` → `0,0,0 → 1,0.5,1` | `SLAB_BOTTOM` | `geometry` |
+| top slab | `BlockSlab`; `0,0.5,0 → 1,1,1` | `SlabBlock`; `Block.column(16,8,16)` → `0,0.5,0 → 1,1,1` | `SLAB_TOP` | `geometry` |
+| stairs (bottom half, straight, no adjacent stair) | `BlockStairs`; overrides `addCollisionBoxesToList`; **2 boxes** — `0,0,0 → 1,0.5,1` then `0.5,0.5,0 → 1,1,1` (meta 0; the second box rotates with facing) | `StairBlock`; `Shapes.or(column(16,0,8), box(0,8,0,8,16,8))` + a Y-90 copy; `toAabbs` merges to **2 boxes** — `0,0,0 → 1,0.5,1` then `0,0.5,0 → 1,1,0.5` (facing north) | `STAIR` | `geometry` |
+| fence (connected N+S) | `BlockFence`; overrides `addCollisionBoxesToList`; `0.375,0,0 → 0.625,1.5,1` | `FenceBlock`→`CrossCollisionBlock`; post `column(4,0,24)` ∪ two `boxZ(4,0,24,0,8)` arms; `toAabbs` → `0.375,0,0 → 0.625,1.5,1` | `FENCE` | `geometry` |
+| wall (connected N+S) | `BlockWall`; `getCollisionBoundingBoxFromPool` forces `maxY = 1.5D`; `0.3125,0,0 → 0.6875,1.5,1` | `WallBlock`; `collisionShapes = makeShapes(24,24)`; `0.3125,0,0 → 0.6875,1.5,1` | `FENCE` | `geometry` |
+| glass pane (connected N+S) | `BlockPane`; overrides `addCollisionBoxesToList`; `0.4375,0,0 → 0.5625,1,1` | `IronBarsBlock`→`CrossCollisionBlock`; `0.4375,0,0 → 0.5625,1,1` | `PARTIAL`, top `1.0` | `geometry` |
+| ladder | `BlockLadder`; `f = 0.125F`; meta 2 → `0,0,0.875 → 1,1,1` | `LadderBlock`; `boxZ(16,13,16)` → `0,0,0.8125 → 1,1,1` | `PARTIAL`, top `1.0`, `CLIMBABLE` | `geometry` |
+| vine | `BlockVine`; `getCollisionBoundingBoxFromPool` → `null`; no boxes | `VineBlock`; `noCollision()` → no boxes | `AIR`, `CLIMBABLE` | `geometry` |
+| water (source) | `BlockStaticLiquid`→`BlockLiquid`; `null`; no boxes | `LiquidBlock`; with `CollisionContext.empty()` → `Shapes.empty()`; no boxes | `AIR`, fluid `WATER` | `table` |
+| water (flowing) | `BlockDynamicLiquid`→`BlockLiquid`; `null`; no boxes. **A distinct block id**, `minecraft:flowing_water` | `LiquidBlock`, same block id `minecraft:water`, `LEVEL > 0`; no boxes. **A distinct *fluid* id**, `minecraft:flowing_water` | `AIR`, fluid `WATER` | `table` |
+| lava | `BlockStaticLiquid`/`BlockDynamicLiquid`; `null`; no boxes | `LiquidBlock`; no boxes | `AIR`, fluid `LAVA`, `AVOID` | `table` |
+| gravel | `BlockGravel`→`BlockFalling`; `0,0,0 → 1,1,1` | `ColoredFallingBlock`→`FallingBlock`; `0,0,0 → 1,1,1` | `FULL`, `FALLING` | `geometry` |
+| sand | `BlockSand`→`BlockFalling`; `0,0,0 → 1,1,1` | `SandBlock`→`ColoredFallingBlock`→`FallingBlock`; `0,0,0 → 1,1,1` | `FULL`, `FALLING` | `geometry` |
+| cobweb | `BlockWeb`; `null`; no boxes | `WebBlock`; `noCollision()` → no boxes | `AIR`, `SLOW` | `table` |
+| soul sand | `BlockSoulSand`; `0,0,0 → 1,0.875,1` | `SoulSandBlock`; `column(16,0,14)` → `0,0,0 → 1,0.875,1` | `PARTIAL`, top `0.875`, `SLOW` | `table` |
+| ice | `BlockIce`→`BlockBreakable`; `0,0,0 → 1,1,1` | `IceBlock`→`HalfTransparentBlock`; `0,0,0 → 1,1,1` | `FULL` | `geometry` |
+| packed ice | `BlockPackedIce`; `0,0,0 → 1,1,1` | `Block`; `0,0,0 → 1,1,1` | `FULL` | `geometry` |
+| door (lower half, closed) | `BlockDoor`; `f = 0.1875F`; e.g. `0,0,0 → 1,1,0.1875` | `DoorBlock`; `boxZ(16,13,16)` → e.g. `0,0,0.8125 → 1,1,1` | `PARTIAL`, top `1.0` | `geometry` |
+| trapdoor (bottom half, closed) | `BlockTrapDoor`; `f = 0.1875F`; `0,0,0 → 1,0.1875,1` | `TrapDoorBlock`; `rotateAll(boxZ(16,13,16)).get(UP)` → `0,0,0 → 1,0.1875,1` | `THIN_LAYER` | `geometry` |
+| carpet | `BlockCarpet`; `getCollisionBoundingBoxFromPool` hardcodes `b0 = 0`, so `maxY = y`; **one degenerate box** `0,0,0 → 1,0,1` → discarded by rule 0 → no boxes | `CarpetBlock`/`WoolCarpetBlock`; `column(16,0,1)` → `0,0,0 → 1,0.0625,1` | **1.7.10 `AIR` / 1.21.11 `THIN_LAYER`** — genuine divergence, see below | `geometry` |
+| snow layer (2 layers) | `BlockSnow`; `maxY = (meta & 7) * 0.125`; `snow_layer#1` → `0,0,0 → 1,0.125,1` | `SnowLayerBlock`; `getCollisionShape` = `SHAPES[layers-1]` = `column(16,0,2)` → `0,0,0 → 1,0.125,1` | `THIN_LAYER` | `geometry` |
+| snow layer (1 layer) | `snow_layer#0` → `maxY = 0`; **one degenerate box**, discarded by rule 0 | `snow[layers=1]` → `column(16,0,0)`; `Shapes.create` collapses it to `empty()`; no boxes | `AIR` on both — **only because of rule 0** | `geometry` |
+| farmland | `BlockFarmland`; `getCollisionBoundingBoxFromPool` returns the **full cube** `0,0,0 → 1,1,1` (the `0.9375` in the constructor is render bounds only) | `FarmBlock`; `column(16,0,15)` → `0,0,0 → 1,0.9375,1` | **1.7.10 `FULL` / 1.21.11 `PARTIAL`, top `0.9375`** — genuine divergence, see below | `geometry` |
+| cactus | `BlockCactus`; `0.0625,0,0.0625 → 0.9375,0.9375,0.9375` | `CactusBlock`; `SHAPE_COLLISION = column(14,0,15)` → `0.0625,0,0.0625 → 0.9375,0.9375,0.9375` | `PARTIAL`, top `0.9375`, `AVOID` | `table` |
+| fire | `BlockFire`; `null`; no boxes | `FireBlock`→`BaseFireBlock`; `noCollision()` → no boxes | `AIR`, `AVOID` | `table` |
+| soul fire *(1.21 only)* | — | `SoulFireBlock`→`BaseFireBlock`; `noCollision()`; no boxes | `AIR`, `AVOID` | `table` |
+| magma block *(1.21 only)* | — | `MagmaBlock`; `0,0,0 → 1,1,1` | `FULL`, `AVOID` | `table` |
+| chest (single) | `BlockChest`; `0.0625,0,0.0625 → 0.9375,0.875,0.9375` | `ChestBlock`; `column(14,0,14)` → `0.0625,0,0.0625 → 0.9375,0.875,0.9375` | `PARTIAL`, top `0.875` | `geometry` |
+| leaves | `BlockLeaves`→`BlockLeavesBase`; `0,0,0 → 1,1,1` | `LeavesBlock`/`TintedParticleLeavesBlock`; `0,0,0 → 1,1,1` | `FULL` | `geometry` |
+| honey block *(1.21 only)* | — | `HoneyBlock`; `column(14,0,15)` → `0.0625,0,0.0625 → 0.9375,0.9375,0.9375` | `PARTIAL`, top `0.9375`, `SLOW` | `table` |
+| unrecognised / modded shape | any block whose boxes match no rule | same | `PARTIAL` with a truthful `collisionTop()` | `geometry` |
+
+**33 rows audited: 23 `geometry`, 10 `table`, 0 `neither`. The B1 gate (§6.1) does not trip on
+shape or on tags.** Option A survives the audit: nothing in the movement-relevant set needs a
+mechanism that does not already exist.
+
+##### Two genuine cross-version divergences
+
+These are not modelling failures. The two games really do behave differently, and the classifier
+reports each one truthfully:
+
+- **carpet.** 1.7.10 carpet has *no* collision — you stand at `y+0`. 1.21.11 carpet has a 1/16 box
+  — you stand at `y+0.0625`.
+- **farmland.** 1.7.10 farmland collides as a full cube. 1.21.11 farmland is 15/16 tall, which is
+  why a modern player visibly steps down onto it.
+
+Both are expressible as a table row (`minecraft:carpet` → `THIN_LAYER` on 1.7.10, or
+`minecraft:farmland` → `FULL` on 1.21.11), so neither is a `neither` verdict. **But a shape
+override would still leave `collisionTop()` disagreeing, and it would make the classifier lie about
+one version's physics to satisfy a test.** The recommendation, implemented in §5.2, is the opposite:
+leave the classifier truthful and mark these two fixture rows **divergent** — listed, dumped, and
+pinned by the per-version golden, but not asserted equal across versions. That is the same
+mechanism version-exclusive rows already use.
+
+##### Rule 0, new: discard degenerate boxes
+
+**Before any of §3.3's rules run, drop every box with zero extent on any axis**
+(`maxX - minX <= 1e-6`, or the same on Y or Z).
+
+This is not tidiness; without it the versions disagree on a block the owner will place by accident.
+1.21.11 canonicalises degenerate boxes away inside `Shapes.create` (`if (!(g - d < 1.0E-7) && …)`
+→ `empty()`), so a one-layer snow reports **no** boxes. 1.7.10 does not: `BlockSnow` emits a box
+with `maxY = y`, and `AxisAlignedBB.intersectsWith` still admits it against a mask that straddles
+`y`, so the adapter reports **one** box of zero height. Same block, same visible state, different
+box count. Rule 0 removes the difference at its source rather than papering over it per-block.
+
+##### The eight rules, checked against the sources
+
+| # | Rule as §3.3 states it | Verdict |
+|---|---|---|
+| 1 | no boxes → `AIR` | ✅ **Confirmed.** air, vine, cobweb, fire, water and lava all reach it on both versions |
+| 2 | any box with `maxY > 1.0` → `FENCE` | ✅ **Confirmed exactly.** Fence and wall are `1.5` on both versions, and by different routes — 1.7.10's fence through `addCollisionBoxesToList`, 1.7.10's wall through a `this.maxY = 1.5D` assignment inside `getCollisionBoundingBoxFromPool`. Nothing else in the audit set exceeds `1.0` |
+| 3 | single box, full footprint, `y 0..1` → `FULL` | ✅ **Confirmed** |
+| 4 | single box, full footprint, `y 0..0.5` → `SLAB_BOTTOM` | ✅ **Confirmed.** No table row is needed for slabs on either version — §3.5's illustrative `"minecraft:stone_slab#8": { "shape": "SLAB_TOP" }` is a format example, not a required row |
+| 5 | single box, full footprint, `y 0.5..1` → `SLAB_TOP` | ✅ **Confirmed** |
+| 6 | single box, full footprint, `y 0..h`, `h <= 0.25` → `THIN_LAYER` | ✅ **Confirmed**, and it also catches a **closed bottom trapdoor** (`h = 0.1875`) on both versions. Accepted: the two versions agree, and `THIN_LAYER` with a truthful `collisionTop()` is the right answer for something you stand on at 3/16 |
+| 7 | full-footprint `y 0..0.5` box **and** ≥1 non-full-footprint box with `y 0.5..1` → `STAIR` | ✅ **Confirmed as written** — the rule the spec doubted is the one that held. A bottom-half stair is **2 boxes** on 1.7.10 (`func_150147_e` then `func_150145_f`) and **2 boxes** on 1.21.11 after `toAabbs` greedy-merges the slab and the two quarters; an inner corner is **3** on 1.21.11 and a stair beside another stair is **3** on 1.7.10. All four cases match the rule. **Clarification, not a correction:** the rule deliberately does not match an *upside-down* stair, whose full-footprint box is `y 0.5..1`. Those classify `PARTIAL` with `collisionTop() == 1.0` on **both** versions, which is the behaviourally correct answer — from above an upside-down stair is a full block, not a step |
+| 8 | anything else with collision → `PARTIAL` | ✅ **Confirmed.** pane, ladder, door, soul sand, cactus, chest, honey block |
+
+Two further clarifications Task 8 must implement:
+
+- **"Exact match" means within `1e-6`, not `==`.** Every coordinate in the audit set is a
+  sixteenth, which is an exact binary fraction, so `==` would in fact work near the origin. An
+  epsilon is still specified because 1.7.10 builds its bounds in `float` from *absolute*
+  coordinates: `BlockCactus` computes `(float)x + 0.0625F`, and beyond about `|x| = 2^21` the
+  `float` ulp exceeds `1/16` and the inset vanishes entirely. The fixture must therefore be built
+  near the origin (§5.2), and the classifier must not depend on bit-exact equality.
+- **Box order is not significant.** 1.7.10 emits in the order the block's `addCollisionBoxesToList`
+  happens to run; 1.21.11 emits in `BitSetDiscreteVoxelShape.forAllBoxes` order, which iterates Y
+  outermost and merges along Z, then X, then Y. Rules 7 and 2 must scan the list, not index it.
+
+##### Findings that belong to other sections
+
+Recorded here because the audit is where they were found; each is a change the implementing task
+must make, not a change this amendment makes.
+
+1. **`§3.4` precedence rule 3 — the core must know *four* vanilla fluid ids, not two.** 1.21.11's
+   fluid registry names the flowing variants separately (`Fluids.FLOWING_WATER` is registered as
+   `"flowing_water"`), so a flowing water block's `fluidId()` is `minecraft:flowing_water`, not
+   `minecraft:water`. 1.7.10 has the same split at the *block* level. If the core hardcodes only
+   two ids, §3.3's promise that *"a missing table row cannot make water stop being water"* fails
+   for flowing water on **both** versions. Knowing all four — `water`, `flowing_water`, `lava`,
+   `flowing_lava` — makes the fluid rows in both tables redundant rather than load-bearing.
+2. **The 1.7.10 adapter must call `setBlockBoundsBasedOnState` *before*
+   `addCollisionBoxesToList`.** `Block.addCollisionBoxesToList` reads the block's mutable
+   `minX..maxZ` fields and does **not** refresh them; blocks such as `BlockChest` override
+   `setBlockBoundsBasedOnState` but neither `addCollisionBoxesToList` nor
+   `getCollisionBoundingBoxFromPool`, so without the priming call the adapter reads whatever the
+   last unrelated caller left in the fields. The order is safe for every audited block: the four
+   that override `addCollisionBoxesToList` (`BlockSlab`, `BlockStairs`, `BlockFence`, `BlockPane`)
+   set their own bounds afterwards, and the fence's `1.5F` is applied after the `1.0F` reset, not
+   before it.
+3. **Nothing in the model expresses slipperiness.** `ice` and `packed_ice` classify identically to
+   `stone`, and `BlockTag` has no member for it. Correct for B1 — no consumer exists — but M4's
+   `mv-walk` will want it, and it is a `describe`-field candidate under §7's budget: both versions
+   answer it natively (`Block.slipperiness` / `BlockBehaviour.Properties.friction`) and it covers
+   modded blocks. Recorded as an opened question in §6.3.
+
 ---
 
 ## 5. Verification
@@ -561,21 +699,94 @@ Defining it **positionally** — index 2 is "the top slab" on both versions — 
 trying to match registry names across fifteen years of renames.
 
 The fixture is a documented one-wide row of blocks at a fixed height, with an index-to-block
-mapping per version, derived from §4's audit. **The table below is an illustrative fragment
-showing the format, not the fixture itself** — the real one is written when the audit runs, in the
-same amendment:
+mapping per version, derived from §4's audit. **The layout below is the fixture**, written into
+this spec by the 2026-08-14 audit amendment. A later task reproduces it verbatim as
+`docs/parity/fixture-layout.md`, which is what the owner builds from; this section stays the
+source of truth.
 
-| # | Logical block | 1.7.10 | 1.21.11 |
-|---|---|---|---|
-| 0 | solid | `stone` | `stone` |
-| 1 | bottom slab | `stone_slab#0` | `smooth_stone_slab[type=bottom]` |
-| 2 | top slab | `stone_slab#8` | `smooth_stone_slab[type=top]` |
-| 3 | stair | `oak_stairs` | `oak_stairs` |
-| 4 | fence | `fence` | `oak_fence` |
-| n | *1.21-only* | — | `honey_block` |
+**Shape of the fixture.** A one-block-wide corridor 32 long, running **+X** from the player's feet
+at a fixed `Y`. The dump walks exactly those 32 positions — one high, one deep — so index `i` is at
+`(x0 + i, y0, z0)`. Everything else is scaffolding **outside** the dump volume and is never
+compared:
 
-The owner builds it once per version in creative. Version-exclusive rows are marked and the diff
-skips them, but they are still **listed**, so nothing is silently absent.
+- a **floor** at `y0 - 1` for the whole run: stone, except `netherrack` under index 28,
+  `sand` under index 31, and `soul_soil` under index 30 on 1.21.11;
+- **walls** of stone at `z0 - 1` and `z0 + 1` for **indices 0–29 only**. Indices 30 and 31 must
+  have air on both sides or the cactus at 31 breaks;
+- a `wheat` crop at `y0 + 1` above index 22 so the farmland does not revert to dirt;
+- the door's upper half at `y0 + 1` above index 18.
+
+The walls do the work that would otherwise need air gaps: they give the ladder and the vine
+something to attach to, they keep the two liquids from flowing, and — usefully — they make the
+fence, wall and pane connect **north and south on both versions**, which is the case where the two
+versions' boxes come out numerically identical.
+
+Build it **near the origin** (say `|x|, |z| < 1000`). §4 records why: 1.7.10 computes some bounds in
+`float` from absolute coordinates, and past roughly `2^21` a sixteenth-block inset rounds away.
+Build in a temperate or cold biome with no torches or other block-light sources adjacent to indices
+16, 17 and 21, or the ice and the snow layer melt.
+
+| # | Logical block | 1.7.10 | 1.21.11 | Diff |
+|---|---|---|---|---|
+| 0 | air (player stands here) | `air` | `air` | compare |
+| 1 | solid | `stone` | `stone` | compare |
+| 2 | water source | `water` (id 9) | `water[level=0]` | compare |
+| 3 | falling solid | `gravel` | `gravel` | compare |
+| 4 | lava source | `lava` | `lava[level=0]` | compare |
+| 5 | falling solid | `sand` | `sand` | compare |
+| 6 | bottom slab | `stone_slab#0` | `smooth_stone_slab[type=bottom]` | compare |
+| 7 | top slab | `stone_slab#8` | `smooth_stone_slab[type=top]` | compare |
+| 8 | stair, bottom half | `oak_stairs` (meta 0–3) | `oak_stairs[half=bottom,shape=straight]` | compare |
+| 9 | fence | `fence` | `oak_fence` | compare |
+| 10 | wall | `cobblestone_wall` | `cobblestone_wall` | compare |
+| 11 | glass pane | `glass_pane` | `glass_pane` | compare |
+| 12 | ladder | `ladder#2` (on the `z+1` wall) | `ladder[facing=north]` | compare |
+| 13 | vine | `vine` on the `z+1` face | `vine[south=true]` | compare |
+| 14 | cobweb | `web` | `cobweb` | compare |
+| 15 | soul sand | `soul_sand` | `soul_sand` | compare |
+| 16 | ice | `ice` | `ice` | compare |
+| 17 | packed ice | `packed_ice` | `packed_ice` | compare |
+| 18 | door, lower half, closed | `wooden_door` | `oak_door[half=lower,open=false]` | compare |
+| 19 | trapdoor, bottom half, closed | `trapdoor` | `oak_trapdoor[half=bottom,open=false]` | compare |
+| 20 | carpet | `carpet#0` | `white_carpet` | **divergent** |
+| 21 | snow layer, 2 layers | `snow_layer#1` | `snow[layers=2]` | compare |
+| 22 | farmland | `farmland` | `farmland` | **divergent** |
+| 23 | chest, single | `chest` | `chest[type=single]` | compare |
+| 24 | leaves | `leaves#0` | `oak_leaves` | compare |
+| 25 | *1.21-only* | — | `magma_block` | **exclusive** |
+| 26 | *1.21-only* | — | `honey_block` | **exclusive** |
+| 27 | air | `air` | `air` | compare |
+| 28 | fire | `fire` | `fire` | compare |
+| 29 | air | `air` | `air` | compare |
+| 30 | *1.21-only* | — | `soul_fire` | **exclusive** |
+| 31 | cactus | `cactus` | `cactus` | compare |
+
+The owner builds it once per version in creative. Three `Diff` values, and the dump lists **every**
+index on both versions regardless, so nothing is silently absent:
+
+- **compare** — the cross-version diff asserts the two `BlockData` are equal, and the golden pins
+  the value.
+- **exclusive** — the block does not exist on 1.7.10. The cross-version diff skips the index; the
+  golden still pins the 1.21.11 value, and the 1.7.10 dump must read `air` there.
+- **divergent** — the block exists on both and the two games genuinely behave differently (§4).
+  The cross-version diff skips the index; **the golden pins both versions' values separately**, so
+  the divergence is asserted rather than merely tolerated, and a change to either side fails the
+  test. Adding an index here is a spec amendment, not a test fix.
+
+Three audited entries are deliberately **not** in the fixture, because a one-wide row cannot hold
+them stably: **flowing water** (it will not stay put), **flowing lava**, and the **unrecognised
+modded-shaped block** (no mod is loaded on both versions). All three are covered by §4's table and
+by headless `BlockClassifier` tests instead, and the plan must not treat their absence as an
+oversight.
+
+Two consequences of the corridor worth stating so nobody "fixes" them later. Neither affects a
+`compare` row's verdict, because the diff compares `BlockData`, never the raw boxes:
+
+- **`stateKey` differs by design** between versions — that is §7's recorded, intended behaviour.
+- **Connection predicates differ.** A 1.21.11 wall connects to a glass pane and a 1.7.10 wall does
+  not, so indices 10 and 11 have different footprints across versions. Both still classify `FENCE`
+  and `PARTIAL` with the same `collisionTop()`, which is the whole point of `FENCE` being a
+  behavioural category (§3.2).
 
 ```java
 // :runtime
@@ -645,6 +856,14 @@ Newly opened by B1:
 - **Fluid height** for flowing water. Left out deliberately; M4 will probably want it.
 - **All of B2** — snapshot, section copying, cache, `isChunkLoaded`'s consumers.
 - **The `BlockData` naming amendment** to the roadmap's M3 line.
+
+Newly opened by the 2026-08-14 audit (§4):
+
+- **Slipperiness.** Nothing in `BlockData` distinguishes ice from stone. Deliberate for B1 — no
+  consumer exists — but M4's `mv-walk` will want it, and it meets §7's field budget on both counts.
+- **The two divergent fixture rows**, carpet and farmland (§5.2). They are pinned per version
+  rather than reconciled. If M4 finds the divergence matters behaviourally, the answer is a table
+  row, not a classifier change.
 
 ---
 
