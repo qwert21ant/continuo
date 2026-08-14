@@ -147,11 +147,31 @@ class BlockClassifierGeometryTest {
 
     @Test
     void aGenuineThinLayerSurvivesRuleZerosThreshold() {
-        // 0.0625 extent on Y is far above rule 0's 1e-6 degeneracy threshold. This is the test
-        // that would catch the two epsilons being merged into one: a merged 1e-4 epsilon applied
-        // as the degeneracy threshold would not swallow this either, but a merged epsilon used
-        // the other way (1e-6 for near()) would break toleratesFloatingPointNoiseFromSixteenthsArithmetic.
+        // 0.0625 is real 1/16 geometry, far from either epsilon's boundary in absolute terms.
+        // Worth asserting as ordinary behaviour, but it does NOT discriminate between the two
+        // epsilon constants being merged — see aBoxJustAboveDegenerateEpsSurvivesAsThinLayer and
+        // aBoxJustPastOneWithinEpsIsStillFull for the tests that actually guard the separation.
         assertEquals(BlockShape.THIN_LAYER, shapeOf(0, 0, 0, 1, 0.0625, 1));
+    }
+
+    @Test
+    void aBoxJustAboveDegenerateEpsSurvivesAsThinLayer() {
+        // Guards DEGENERATE_EPS against being loosened toward EPS. A Y extent of 5e-5 sits
+        // strictly between the two constants: 5e-5 > 1e-6 (today's DEGENERATE_EPS), so rule 0
+        // does not discard it and it classifies THIN_LAYER. If DEGENERATE_EPS were widened to
+        // 1e-4 (EPS's value), 5e-5 <= 1e-4 would hold, the box would be discarded by rule 0, and
+        // the result would flip to AIR.
+        assertEquals(BlockShape.THIN_LAYER, shapeOf(0, 0, 0, 1, 5e-5, 1));
+    }
+
+    @Test
+    void aBoxJustPastOneWithinEpsIsStillFull() {
+        // Guards EPS against being tightened toward DEGENERATE_EPS, and pins the FENCE boundary
+        // just above 1.0, which nothing else here exercises. maxY = 1.00005 is within today's
+        // EPS (1e-4) of 1.0, so near() matches and this is FULL; it is also not more than
+        // 1.0 + EPS, so the FENCE rule correctly does not fire. If EPS were tightened to 1e-6,
+        // near() would fail (5e-5 > 1e-6) and this would fall through to PARTIAL instead.
+        assertEquals(BlockShape.FULL, shapeOf(0, 0, 0, 1, 1.00005, 1));
     }
 
     @Test
