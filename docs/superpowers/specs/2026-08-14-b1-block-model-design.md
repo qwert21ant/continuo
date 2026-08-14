@@ -554,7 +554,8 @@ blocks that means the connections the fixture corridor produces, not the isolate
 | vine | `BlockVine`; `getCollisionBoundingBoxFromPool` → `null`; no boxes | `VineBlock`; `noCollision()` → no boxes | `AIR`, `CLIMBABLE` | `geometry` |
 | water (source) | `BlockStaticLiquid`→`BlockLiquid`; `null`; no boxes | `LiquidBlock`; with `CollisionContext.empty()` → `Shapes.empty()`; no boxes | `AIR`, fluid `WATER` | `table` |
 | water (flowing) | `BlockDynamicLiquid`→`BlockLiquid`; `null`; no boxes. **A distinct block id**, `minecraft:flowing_water` | `LiquidBlock`, same block id `minecraft:water`, `LEVEL > 0`; no boxes. **A distinct *fluid* id**, `minecraft:flowing_water` | `AIR`, fluid `WATER` | `table` |
-| lava | `BlockStaticLiquid`/`BlockDynamicLiquid`; `null`; no boxes | `LiquidBlock`; no boxes | `AIR`, fluid `LAVA`, `AVOID` | `table` |
+| lava (source) | `BlockStaticLiquid`→`BlockLiquid`; `null`; no boxes | `LiquidBlock`; no boxes | `AIR`, fluid `LAVA`, `AVOID` | `table` |
+| lava (flowing) | `BlockDynamicLiquid`→`BlockLiquid`; `null`; no boxes. **A distinct block id**, `minecraft:flowing_lava` | `LiquidBlock`, same block id `minecraft:lava`, `LEVEL > 0`; no boxes. **A distinct *fluid* id**, `minecraft:flowing_lava` | `AIR`, fluid `LAVA`, `AVOID` | `table` |
 | gravel | `BlockGravel`→`BlockFalling`; `0,0,0 → 1,1,1` | `ColoredFallingBlock`→`FallingBlock`; `0,0,0 → 1,1,1` | `FULL`, `FALLING` | `geometry` |
 | sand | `BlockSand`→`BlockFalling`; `0,0,0 → 1,1,1` | `SandBlock`→`ColoredFallingBlock`→`FallingBlock`; `0,0,0 → 1,1,1` | `FULL`, `FALLING` | `geometry` |
 | cobweb | `BlockWeb`; `null`; no boxes | `WebBlock`; `noCollision()` → no boxes | `AIR`, `SLOW` | `table` |
@@ -576,7 +577,7 @@ blocks that means the connections the fixture corridor produces, not the isolate
 | honey block *(1.21 only)* | — | `HoneyBlock`; `column(14,0,15)` → `0.0625,0,0.0625 → 0.9375,0.9375,0.9375` | `PARTIAL`, top `0.9375`, `SLOW` | `table` |
 | unrecognised / modded shape | any block whose boxes match no rule | same | `PARTIAL` with a truthful `collisionTop()` | `geometry` |
 
-**33 rows audited: 23 `geometry`, 10 `table`, 0 `neither`. The B1 gate (§6.1) does not trip on
+**34 rows audited: 23 `geometry`, 11 `table`, 0 `neither`. The B1 gate (§6.1) does not trip on
 shape or on tags.** Option A survives the audit: nothing in the movement-relevant set needs a
 mechanism that does not already exist.
 
@@ -640,13 +641,17 @@ Two further clarifications Task 8 must implement:
 Recorded here because the audit is where they were found; each is a change the implementing task
 must make, not a change this amendment makes.
 
-1. **`§3.4` precedence rule 3 — the core must know *four* vanilla fluid ids, not two.** 1.21.11's
+1. **The core must know *four* vanilla fluid ids, not two. Affects §3.2 and §3.4.** 1.21.11's
    fluid registry names the flowing variants separately (`Fluids.FLOWING_WATER` is registered as
    `"flowing_water"`), so a flowing water block's `fluidId()` is `minecraft:flowing_water`, not
-   `minecraft:water`. 1.7.10 has the same split at the *block* level. If the core hardcodes only
-   two ids, §3.3's promise that *"a missing table row cannot make water stop being water"* fails
-   for flowing water on **both** versions. Knowing all four — `water`, `flowing_water`, `lava`,
-   `flowing_lava` — makes the fluid rows in both tables redundant rather than load-bearing.
+   `minecraft:water`. 1.7.10 has the same split at the *block* level. Two places assert the
+   two-id model and both are falsified: **§3.4**'s precedence rule 3 (*"the two vanilla ids are
+   known to the core directly"*) and — more directly — **§3.2**'s promise that *"The core knows the
+   two vanilla ids directly, so a missing table row cannot make water stop being water"*, which is
+   simply untrue for flowing water on **both** versions. Knowing all four — `water`,
+   `flowing_water`, `lava`, `flowing_lava` — makes the fluid rows in both tables redundant rather
+   than load-bearing. The prose fix belongs to the implementing task; this amendment only flags the
+   contradiction and does not edit §3.2 or §3.4.
 2. **The 1.7.10 adapter must call `setBlockBoundsBasedOnState` *before*
    `addCollisionBoxesToList`.** `Block.addCollisionBoxesToList` reads the block's mutable
    `minX..maxZ` fields and does **not** refresh them; blocks such as `BlockChest` override
@@ -749,7 +754,7 @@ Build in a temperate or cold biome with no torches or other block-light sources 
 | 18 | door, lower half, closed | `wooden_door` | `oak_door[half=lower,open=false]` | compare |
 | 19 | trapdoor, bottom half, closed | `trapdoor` | `oak_trapdoor[half=bottom,open=false]` | compare |
 | 20 | carpet | `carpet#0` | `white_carpet` | **divergent** |
-| 21 | snow layer, 2 layers | `snow_layer#1` | `snow[layers=2]` | compare |
+| 21 | snow layer, 1 layer | `snow_layer#0` | `snow[layers=1]` | compare |
 | 22 | farmland | `farmland` | `farmland` | **divergent** |
 | 23 | chest, single | `chest` | `chest[type=single]` | compare |
 | 24 | leaves | `leaves#0` | `oak_leaves` | compare |
@@ -773,11 +778,28 @@ index on both versions regardless, so nothing is silently absent:
   the divergence is asserted rather than merely tolerated, and a change to either side fails the
   test. Adding an index here is a spec amendment, not a test fix.
 
-Three audited entries are deliberately **not** in the fixture, because a one-wide row cannot hold
-them stably: **flowing water** (it will not stay put), **flowing lava**, and the **unrecognised
-modded-shaped block** (no mod is loaded on both versions). All three are covered by §4's table and
-by headless `BlockClassifier` tests instead, and the plan must not treat their absence as an
-oversight.
+**The golden is two per-version files, not one file with per-version fields** — it mirrors the two
+dump files one-for-one, so `divergent` and `exclusive` need no special encoding at all (each side
+simply has its own line) and the cross-version comparison stays a separate assertion from the
+golden comparison, rather than one schema trying to be both.
+
+**Index 21 is one-layer snow deliberately, and it is the only row that exercises rule 0.** 1.7.10
+emits a degenerate zero-height box there and 1.21.11 emits none, and both must land on `AIR`; get
+rule 0 wrong and this index is the one that catches it. Two-layer snow is an ordinary `THIN_LAYER`
+case already covered by the closed bottom trapdoor at index 19 (`h = 0.1875`), so it earns no slot.
+The light constraint below still applies unchanged — a one-layer snow melts at block light > 11 on
+both versions exactly as a two-layer one does.
+
+**Four audited entries are deliberately not in the fixture**, and the plan must not read their
+absence as an oversight. All four are covered by §4's table and by headless `BlockClassifier` tests
+instead:
+
+| Entry | Why it is out |
+|---|---|
+| water, flowing | A one-wide row cannot hold it; it will not stay put |
+| lava, flowing | Same |
+| snow layer, 2 layers | Redundant — `THIN_LAYER` at `h = 0.125` adds nothing over index 19's `h = 0.1875`, and index 21 is spent on the rule-0 case instead |
+| unrecognised modded shape | No mod loads on both versions |
 
 Two consequences of the corridor worth stating so nobody "fixes" them later. Neither affects a
 `compare` row's verdict, because the diff compares `BlockData`, never the raw boxes:
