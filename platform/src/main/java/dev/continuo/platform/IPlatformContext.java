@@ -25,4 +25,16 @@ public interface IPlatformContext {
      * @return the platform info; never {@code null}, and the same instance on every call
      */
     IPlatformInfo info();
+
+    /**
+     * The block reader for this platform.
+     *
+     * <p>The returned instance is valid for the adapter's lifetime and internally reads
+     * whichever level is current, so the core may cache it — but its <em>methods</em> may only
+     * be called while {@link IGameEvents#onClientTick}'s delivery window is open. See
+     * {@link IBlockView}.
+     *
+     * @return the block view; never {@code null}, and the same instance on every call
+     */
+    IBlockView blocks();
 }
