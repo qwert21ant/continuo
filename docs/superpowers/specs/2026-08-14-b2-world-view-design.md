@@ -1,11 +1,18 @@
 # B2 — World view design
 
 **Date:** 2026-08-14
-**Status:** 🟡 **DRAFT — not approved.** Written directly, without a brainstorm dialogue, at the
-owner's request, to capture this session's decisions before they are lost. §2 marks which
-decisions are settled and which were made while drafting and need sign-off. **§9 asks whether
-this sub-project should exist at all.**
-**Milestone:** M3, sub-project B, second half
+**Status:** 🔵 **FOLDED INTO M4 — input, not a plan.** §9 argued that B2 has no consumer until
+M4 and that three of its five risks are unmeasurable before then; **the owner accepted that on
+2026-08-14 and bound this work to M4.** B2 is therefore not a sub-project and gets no
+implementation plan of its own.
+
+This document survives as **design input to M4's brainstorm**, not as an approved design. Every
+decision in §2.2 was made while drafting, without a brainstorm dialogue, and none has been signed
+off. **Re-open all four when M4 is designed** — by then A\* will exist to measure them against,
+which is the entire reason for folding this in.
+
+**M3 is therefore B1 alone.**
+**Milestone:** absorbed into M4 (pathfinder)
 **Depends on:** B1 (`2026-08-14-b1-block-model-design.md`) — hard dependency, see §3
 **Roadmap:** [`2026-08-01-mc-automation-roadmap-design.md`](2026-08-01-mc-automation-roadmap-design.md) §3, M3
 
@@ -290,3 +297,18 @@ writing a snapshot with no consumer risks encoding a guess as the design.
 **This draft's recommendation is to fold B2 into M4** and let B1 be the whole of M3. The
 counter-argument is real and the owner's call. If B2 stays separate, §4's D1 is the decision most
 worth challenging, because it is the one made furthest from any evidence.
+
+---
+
+### Resolution — 2026-08-14
+
+**The owner accepted the recommendation. B2 is bound to M4 and M3 is B1 alone.**
+
+Two consequences a later session must not lose:
+
+1. **§4's tension does not go away by being folded in — it gets easier to resolve.** Lazy section
+   filling and off-thread A\* remain incompatible, and the two-phase `FILLING`/`SEALED` design
+   (D1) is still the proposed answer. But inside M4 it can be decided with a real A\* in front of
+   it rather than as a guess, which is exactly why folding was the right call.
+2. **The pre-warm-before-seal obligation still lands on M5** if D1 survives. That must be carried
+   into M4's spec so it is not rediscovered.

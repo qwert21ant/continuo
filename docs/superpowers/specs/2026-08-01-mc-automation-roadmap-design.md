@@ -53,8 +53,8 @@ its own spec → plan → implementation cycle.
 |---|---|---|---|---|
 | **A1** | Walking skeleton | Gradle multi-module, modern toolchain, SPI v0, trivial core, `adapter-fabric-1.21.11` | — | A bot walks forward for 40 ticks (≈8–9 blocks) on 1.21.11, driven by a Java 8 core jar |
 | **A2** | Legacy adapter | `adapter-forge-1.7.10` against the same SPI; second toolchain; SPI v1 after the lessons | A1 | The *same unmodified core jar* produces the same 40-tick walk on 1.7.10 |
-| **B** | World abstraction | `IBlockView`/`IBlockData`, chunk snapshot cache, data-driven per-version block property registry | A2 | Fake-world unit tests pass; both adapters produce identical `IBlockData` for the same logical block |
-| **C** | Pathfinder | A*, segmentation, cost model, `IMovementRegistry`, capability negotiation, `mv-walk` | B | Headless tests find correct paths through fixture worlds, with zero MC on the classpath |
+| **B** | World abstraction | **Scoped to B1 on 2026-08-14:** `IBlockView`/`BlockDescription`, the core-side classifier, data-driven per-version block property registry. *The chunk snapshot cache moved to C* | A2 | Fake-world unit tests pass; both adapters produce identical `BlockData` for the same logical block |
+| **C** | Pathfinder | A*, segmentation, cost model, `IMovementRegistry`, capability negotiation, `mv-walk`, **plus the world snapshot/cache folded in from B** | B | Headless tests find correct paths through fixture worlds, with zero MC on the classpath |
 | **D** | Engine | Goals, `ProcessManager`, `PathExecutor`, tick loop, resync on `onPositionCorrection` | C | `goto <x,y,z>` works in-game on both adapters |
 | **E** | Bridge | `bridge-rpc` (WebSocket + protobuf: state stream + command channel), `bridge-config` (`Setting<T>` → JSON Schema, hot-reload), localhost bind + token auth | D | An external client can set a goal, stream A* nodes, and change settings |
 | **F** | Web UI | Separate repo: React, schema-generated config forms, path and A* visualisation, packet timeline | E | The bot is drivable end-to-end from the browser |
@@ -348,16 +348,46 @@ occupies that keycode, which may not be the intended one. A faithful adapter nee
 reflection on the private field or an access transformer. Roughly half a day — not a
 redesign, but not free either.
 
-### M3 · World abstraction (B)
+### M3 · World abstraction (B) — **scoped down to B1 on 2026-08-14**
 
 The block-property table is **data, not code** — a per-version JSON mapping
 (`soul_sand` on 1.21.11, `Block 88:0` on 1.7.10) to `BlockShape` + `BlockTag`. Cross-adapter
-parity test: both adapters must yield identical `IBlockData` for the same fixture world.
+parity test: both adapters must yield identical block data for the same fixture world.
 
-### M4 · Pathfinder (C)
+**M3 is now B1 — the block model — alone.** Full spec:
+[`2026-08-14-b1-block-model-design.md`](2026-08-14-b1-block-model-design.md).
+
+Three things a future session must not re-derive:
+
+- **The classification decision.** The adapter reports **raw physical facts**; a shared,
+  version-independent classifier in `:core` produces the block data; a small per-version JSON
+  table supplies the non-geometric exceptions. The consequence that matters: `BlockData`,
+  `BlockShape` and `BlockTag` live in **`:core`, not `dev.continuo.platform`**, so no future
+  adapter ever has to speak the core's classification vocabulary. M3 adds exactly two SPI types,
+  both of raw fact. This is the third time a tension has been resolved by keeping the SPI smaller
+  (after A2a's unbound keys and A2b's injection seam).
+- **`IBlockData` is now `BlockData`,** a final class in `:core`. One implementation, immutable,
+  constructed directly by fixtures. This paragraph is that rename.
+- **The world view (snapshot, chunk cache, section copying) moved to M4**, drafted as
+  [`2026-08-14-b2-world-view-design.md`](2026-08-14-b2-world-view-design.md) and kept as design
+  *input* to M4 rather than as an approved design. It has no consumer until A\* exists, and its
+  central choices — region size, storage layout, fill cost, and whether a two-phase
+  `FILLING`/`SEALED` snapshot is the right shape — are all things only M4 can measure. Same
+  reasoning that made A2b wait for two adapters before writing a conformance suite.
+
+**Carry into M4:** the draft's §4 found that **lazy section filling and off-thread A\* are
+incompatible** — a lazy fill from a worker thread would call `IBlockView` off the main thread and
+break global rule 1 in the one place the design exists to protect it. If M4 adopts the two-phase
+answer, the pre-warm-before-seal obligation lands on M5 and must be written there, not discovered.
+
+### M4 · Pathfinder (C) — **now also carries the world view, formerly B2**
 
 Pure, headless, no Minecraft anywhere. Fixture worlds expressed as text art; A* plus
 segmentation plus `mv-walk`; movement registry with capability filtering.
+
+Plus the world view folded in from B2: the immutable snapshot, section copying, and the chunk
+cache. Note the payoff B1 set up — M4's text-art fixture worlds implement `BlockSource` directly,
+so headless pathfinding tests need neither an `IBlockView`, nor the classifier, nor a table.
 
 Includes a **test-time path renderer** (ASCII/PNG of world, path, and expanded nodes). It
 costs almost nothing at this point and is the difference between debugging A* comfortably

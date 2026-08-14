@@ -20,13 +20,25 @@ same way:
   Done when both adapters yield identical `BlockData` for the same fixture world, which is the
   roadmap's stated criterion for B, unchanged.
 - **B2 — the world view.** The immutable snapshot, lazy per-section copying, the cache, and
-  `isChunkLoaded`'s consumers. Its own spec, after B1 lands.
+  `isChunkLoaded`'s consumers. **Folded into M4 on 2026-08-14 — see below.**
 
 The split runs in that direction for the same reason A1 and A2 were split: **B1 is where the
 risk is, and B2 builds on top of it.** B1 is the project's first genuinely hard version spread
 and the thing the M3 SPI audit judges. B2 is comparatively mechanical — copying and caching —
 and it cannot even be designed until B1 settles what a snapshot stores per block, which is a
 consequence of B1's interning model.
+
+**B2 was then folded into M4, so M3 is B1 alone.** Drafting B2
+([`2026-08-14-b2-world-view-design.md`](2026-08-14-b2-world-view-design.md), §9) made it clear
+that it has **no consumer** until M4: A\* is the first thing that reads a snapshot, sizes a
+region, or can measure whether the storage layout and fill cost are acceptable. Three of its five
+risks were some form of "unmeasurable until M4", and its central design decision — a two-phase
+`FILLING`/`SEALED` snapshot — would have been made with no evidence available.
+
+This is the same reasoning that put A2 before B, and that made A2b wait until two adapters existed
+before writing a conformance suite: *"writing it against one adapter risks encoding Fabric's
+accidents as the contract."* Writing a snapshot with no consumer risks encoding a guess as the
+design. The B2 draft is kept as **design input to M4's brainstorm**, not as an approved design.
 
 ---
 
@@ -76,9 +88,16 @@ What each version natively provides:
 | | Forge 1.7.10 | Fabric 1.21.11 |
 |---|---|---|
 | Identity | `Block` + metadata `int` (0–15) | interned `BlockState` |
-| Geometry | **one** AABB, via `setBlockBoundsBasedOnState` then `getCollisionBoundingBoxFromPool` | a `VoxelShape` — **a list of** AABBs |
-| Semantics | `Material`, `isOpaqueCube()`, Forge's `isLadder()` | data-driven block tags, `FluidState`, `blocksMotion()` |
+| Geometry | **a list of** AABBs, via `Block.addCollisionBoxesToList(World, x, y, z, mask, List, Entity)` | a `VoxelShape` — **a list of** AABBs |
+| Semantics | `Material`, `isOpaqueCube()`, Forge's `isLadder()`, `BlockFalling` | data-driven block tags, `FluidState`, `blocksMotion()`, `FallingBlock` |
 | State space | ~4096 blocks × 16 meta | ~1,100 blocks → ~26,000 states |
+| Vertical range | `0 .. 256`, fixed | dimension-dependent; `-64 .. 320` in the overworld |
+
+**Verified against decompiled sources on 2026-08-14** — see §9. The geometry row is narrower than
+it first appears: 1.7.10 is *not* limited to a single AABB. `addCollisionBoxesToList` is
+overridable per block and emits as many boxes as the block has, structurally matching 1.21.11's
+`VoxelShape`. `BlockFence` emits up to two. **Both versions natively produce a list of boxes**,
+which is a smaller version spread than this spec was originally written against.
 
 Two consequences. First, **both versions have a finite state space with a stable native
 integer key**, so classification is paid once per state and interned — 1.7.10 stores
@@ -243,8 +262,8 @@ public interface IBlockView {
     /** Cheap. Called per block, per pathfinding node. -1 if unreadable. */
     int stateId(int x, int y, int z);
 
-    /** Expensive. Called once per distinct state id. */
-    BlockDescription describe(int stateId);
+    /** Expensive. Called once per distinct state id, at the position that first produced it. */
+    BlockDescription describe(int x, int y, int z);
 
     boolean isChunkLoaded(int chunkX, int chunkZ);
 
@@ -264,6 +283,27 @@ anything, and the SPI is merely naming a flyweight that already exists on both. 
 considered was `BlockDescription getBlock(x, y, z)` with adapter-side interning; it was rejected
 because it makes every adapter implement a cache correctly forever, and that cache is adapter-side
 state — the same category of thing A2b spent a whole sub-project pulling *out* of adapters.
+
+**`describe` takes a position, not a state id — corrected 2026-08-14 after reading the sources.**
+The original signature was `describe(int stateId)`, which assumed geometry is a function of state
+alone. **On 1.7.10 it is not.** `addCollisionBoxesToList` takes a `World` and coordinates and
+consults neighbours — `BlockFence.setBlockBoundsBasedOnState` calls `canConnectFenceTo` on all
+four sides — and 1.7.10's metadata does not record connections the way a 1.21.11 `BlockState`
+does. An adapter handed only a state id could not produce a fence's geometry at all, because there
+is no canonical position to evaluate it at.
+
+Taking a position costs nothing: the core calls `describe` on a cache miss, and the miss always
+happens *at* a position. `at(x,y,z)` → `stateId(x,y,z)` → miss → `describe(x,y,z)`. No extra
+bookkeeping, and the memo is still keyed by state id.
+
+**The consequence, which must be stated rather than discovered:** for neighbour-dependent blocks
+on 1.7.10, the cached geometry is whatever the **first observed instance** had. A disconnected
+fence seen first defines the entry for every fence of that state id. This is sound only because
+`FENCE` is a behavioural category and every fence variant is 1.5 tall regardless of connections —
+the footprint differs, and the model deliberately does not use footprint. On 1.21.11 the same
+blocks have *different state ids* per connection, so they cache separately and exactly. That
+asymmetry is real, documented, and does not affect the parity test, because both versions classify
+every variant as `FENCE`.
 
 **`stateId` returns `-1` when the position is unreadable** — outside the vertical range, or in a
 chunk that is not loaded. One branch on the hot path instead of three, and one condition both
@@ -322,10 +362,18 @@ public enum Fluid { NONE, WATER, LAVA, OTHER }
 implementation, it is an immutable flyweight, and fake-world fixtures construct it directly rather
 than implementing it. The roadmap's M3 line needs a one-word amendment when this spec lands.
 
-**`FENCE` is geometrically detectable on both versions** rather than needing a table row: fences
-and walls report a collision box 1.5 blocks tall on 1.7.10 and 1.21.11 alike, because that is how
-Minecraft stops entities jumping them. The rule is simply "collision top above 1.0". This is a
-better outcome than expected — the one shape predicted to need hardcoding derives cleanly.
+**`FENCE` is geometrically detectable on both versions** rather than needing a table row — and
+this was checked against sources rather than assumed. The rule is "collision top above 1.0".
+
+- **1.21.11** — `FenceBlock` passes `24.0F` as its collision height to `CrossCollisionBlock`,
+  which is in sixteenths, so 24/16 = **1.5**. Note it is a *separate* shape from the visual one
+  (`16.0F` = 1.0), so the adapter must read `getCollisionShape`, never `getShape`.
+- **1.7.10** — `BlockFence.addCollisionBoxesToList` sets `maxY` to **1.5F** for every box it
+  emits. **But `setBlockBoundsBasedOnState` resets to 1.0F**, and
+  `getCollisionBoundingBoxFromPool` reads those reset fields. An adapter taking the
+  bounds-then-read route would see a 1.0-tall fence and classify it `FULL` — a silent wrong
+  answer on one version only, which is precisely the class of bug this sub-project exists to
+  prevent. **`addCollisionBoxesToList` is the only correct route on 1.7.10.**
 
 **`PARTIAL` is the escape hatch that makes modded blocks safe.** Unrecognised geometry classifies
 as `PARTIAL` with an honest `collisionTop()`, and M4's `mv-walk` can treat it conservatively
@@ -597,10 +645,11 @@ Newly opened by B1:
 
 | Risk | Severity | Mitigation / status |
 |---|---|---|
-| 1.7.10's neighbour-dependent geometry (fences, walls, panes) breaks the per-state flyweight. `setBlockBoundsBasedOnState` takes **world coordinates**, so the same `(Block, meta)` legitimately has different geometry at different positions, and 1.7.10's metadata does not record connections the way a 1.21 `BlockState` does | **Medium — the main structural risk** | `FENCE` is a behavioural category, not literal geometry; classification uses the canonical shape. `mv-walk` needs "cannot walk over it, cannot jump it", not the millimetres. Stated as a limit of the model so a later session does not read `shape()` as exact geometry. Residual risk if some block genuinely needs true position dependence — §4's audit is what finds out |
+| 1.7.10's neighbour-dependent geometry (fences, walls, panes) breaks the per-state flyweight. **Confirmed in source, not merely suspected:** `addCollisionBoxesToList` takes a `World` and coordinates, `BlockFence` calls `canConnectFenceTo` on four neighbours, and 1.7.10's metadata does not record connections | **Medium — the main structural risk** | Resolved as far as B1 needs: `describe` takes a position (§3.2), `FENCE` is a behavioural category, and the cached entry is the first observed instance. `mv-walk` needs "cannot walk over it, cannot jump it", not the millimetres. Residual risk if some block needs *footprint* accuracy per position — §4's audit is what finds out |
+| **The 1.7.10 AABB pool.** `getCollisionBoundingBoxFromPool`'s own javadoc says the returned box "can change after the pool has been cleared to be reused" | **Medium — a live correctness hazard** | The adapter MUST copy the six doubles out immediately and never retain the `AxisAlignedBB`. `BlockDescription` already copies its `double[]` on construction, so doing the read inline satisfies this — but it is easy to get wrong and produces corruption that looks like a classifier bug |
 | The audit turns up a block that is neither geometry-derivable nor tableable | **Medium** | The one outcome that threatens option A. It is also the B1 gate tripping, so it has a defined response rather than an improvised one |
 | `BlockDescription` accretes fields over M4–M8 until the boundary is soft | Medium | **Stated budget:** a field earns its place only if **both** versions answer it natively **and** it covers modded blocks. Otherwise it is a table row |
-| `Block.blockRegistry` on 1.7.10 may not yield `minecraft:`-prefixed names as this spec assumes | Low, but **unverified** | Asserted from knowledge, not checked. First thing the implementation confirms; if wrong, the 1.7.10 table keys change shape and §4's table needs rewriting |
+| ~~`Block.blockRegistry` on 1.7.10 may not yield `minecraft:`-prefixed names~~ | **Closed 2026-08-14** | Verified in source. `RegistryNamespaced.ensureNamespaced` prepends `minecraft:` to any unprefixed name, and FML's `FMLControlledNamespacedRegistry.add` *throws* on a name without a prefix. `getNameForObject` returns `minecraft:stone` |
 | No JSON parser on the core classpath; core is `--release 8` | Low | Format is deliberately flat enough for a small hand-written reader |
 | `stateKey` strings differ in shape between versions | Low | Intended. Tables are per-version; the parity diff compares `BlockData`, never `stateKey` across versions. Stated so nobody "fixes" it |
 | Dev-only dump code ships in the adapter jars | Low | Accepted. It lives in `:runtime`, is inert unless triggered, and the manual step is already the project's normal cost of doing business |
@@ -627,11 +676,25 @@ Newly opened by B1:
 
 ## 9. Honest uncertainties
 
-- **The Minecraft API specifics in §2.1 and §3.3 were asserted from knowledge, not verified
-  against source.** Specifically: that 1.7.10's `Block.blockRegistry` yields `minecraft:`-prefixed
-  names; that both versions report a 1.5-tall collision box for fences; that 1.21.11's block-state
-  registry id is reachable and stable within a session. Each is load-bearing. The implementation
-  plan should confirm all three before building on them.
+- **The three load-bearing Minecraft API assumptions were verified against decompiled sources on
+  2026-08-14**, and one of them was wrong. Sources read: RetroFuturaGradle's
+  `adapters/adapter-forge-1.7.10/build/rfg/minecraft-src` and Loom's cached 1.21.11 sources.
+
+  | # | Assumption | Verdict |
+  |---|---|---|
+  | 1 | 1.7.10's `Block.blockRegistry` yields `minecraft:`-prefixed names | ✅ **Confirmed.** `RegistryNamespaced.ensureNamespaced` prepends; FML's `add()` throws without a prefix |
+  | 2 | Both versions report a 1.5-tall fence collision box | ⚠️ **True, but not via the API this spec originally named.** 1.21.11: `FenceBlock` → `24.0F`/16 = 1.5 via `getCollisionShape`. 1.7.10: 1.5F, but only through `addCollisionBoxesToList` — `setBlockBoundsBasedOnState` resets to 1.0F. §3.2 and §3.3 corrected |
+  | 3 | 1.21.11's block-state registry id is reachable and session-stable | ✅ **Confirmed.** `Block.BLOCK_STATE_REGISTRY` is a `public static final IdMapper<BlockState>`, with `Block.getId(BlockState)` and `Block.stateById(int)` |
+
+  Assumption 2's correction cascaded into an SPI signature change (`describe` now takes a
+  position) and into the risk table (the AABB pool hazard). Both are recorded in place.
+
+  Confirmed in passing and now relied on: `World.chunkExists(cx, cz)` and `World.blockExists`
+  (which also pins 1.7.10's range at `0 .. 256`); Forge's
+  `Block.isLadder(IBlockAccess, x, y, z, EntityLivingBase)`; `BlockFalling` and `FallingBlock`;
+  `BlockTags.CLIMBABLE`; `BlockBehaviour.BlockStateBase.getFluidState`; and that 1.7.10 registers
+  `flowing_water` (id 8) and `water` (id 9) as **distinct blocks**, which is what makes §3.5's
+  table-based fluid normalisation necessary rather than merely tidy.
 - **The audit has not been run.** The design is believed sound, and §2.5 argues its risk is
   bounded, but the evidence that no block falls into "neither" does not yet exist. That is what
   §4 is for, and it is why §4 is the first task rather than a preliminary.
