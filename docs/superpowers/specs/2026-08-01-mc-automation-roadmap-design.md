@@ -117,8 +117,8 @@ on.
 - **A2b — ✅ DONE.** The injection seam, `platform-testkit`, and the SPI v1 revision. Spec:
   [`2026-08-13-a2b-conformance-testkit-design.md`](2026-08-13-a2b-conformance-testkit-design.md).
   The seam **dissolved rather than got solved**: extracting both adapters' shared conformance
-  machinery into `:runtime` made the object worth observing the runtime, which the testkit
-  constructs directly, so no substitution mechanism inside an adapter is needed and no type was
+  machinery into `:runtime` made the runtime the object worth observing, and the testkit
+  constructs it directly, so no substitution mechanism inside an adapter is needed and no type was
   added to `dev.continuo.platform`. Rule 3 fault handling, the click drain and PRE/POST pairing
   are now offline assertions. The SPI v1 revision was a documentation pass: **no SPI type,
   method, signature or enum constant changed.**

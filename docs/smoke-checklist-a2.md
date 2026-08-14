@@ -171,8 +171,9 @@ access transformer failed and is a real, reportable failure.
 
 **Not covered by this checklist:** global rule 3 (fault handling). Exercising it requires
 deliberately making the core throw, which is not something to leave in the tree. Rule 3 is
-implemented and knowingly unverified until M2's `platform-testkit` covers it. Do not record
-this checklist as evidence that fault handling works.
+implemented; the shared logic is now exercised by the `platform-testkit` conformance suite
+added in A2b, but this checklist remains the only check on whether this adapter's binding to
+that logic is correct. Do not record this checklist as evidence that fault handling works.
 
 Also not covered: the adapter's click drain (`drainClicks`). Every tester-reachable moment
 with no world loaded also has a `GuiScreen` open — the title screen, the world-selection list,
@@ -180,9 +181,10 @@ the world-loading screens — and Minecraft only accumulates `KeyBinding` clicks
 is open. No manual sequence available here queues a click that the out-of-world drain then has
 to discard, which is why step 9 explicitly disclaims it. The one drain path that is genuinely
 reachable in play is the *faulted* path, which happens in-world with no screen up; that is out
-of scope for the same reason rule 3 above is. The drain is implemented and knowingly
-unverified until M2's `platform-testkit` covers it. Do not record this checklist as evidence
-that the drain works.
+of scope for the same reason rule 3 above is. The drain is implemented; its shared logic is
+likewise exercised by the A2b `platform-testkit` suite, but again only this checklist can show
+whether this adapter's binding to that logic is correct. Do not record this checklist as
+evidence that the drain works.
 
 Also not covered: PRE/POST phase pairing across a mid-tick world change (dimension change or
 a disconnect processed during the tick). The adapter delivers both phases deliberately, and
