@@ -4,7 +4,6 @@ import dev.continuo.platform.BlockDescription;
 import dev.continuo.platform.IBlockView;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockFalling;
-import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.world.World;
@@ -105,11 +104,11 @@ final class ForgeBlockView implements IBlockView {
      * the block id, and the per-version table maps {@code minecraft:flowing_water} onto water.
      */
     private static String fluidId(Block block, String id) {
-        Material material = block.getMaterial();
-        if (material == Material.water || material == Material.lava) {
-            return id;
-        }
-        return null;
+        // isLiquid() rather than an enumerated (== water || == lava) check: the game already
+        // answers "is this a fluid" generically, and hardcoding the two vanilla materials here
+        // would be this adapter making a classification call instead of reporting one. A modded
+        // fluid on its own MaterialLiquid now correctly reports its own id instead of null.
+        return block.getMaterial().isLiquid() ? id : null;
     }
 
     @Override

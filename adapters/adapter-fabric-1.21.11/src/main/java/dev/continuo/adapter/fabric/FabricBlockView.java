@@ -107,6 +107,10 @@ final class FabricBlockView implements IBlockView {
     @Override
     public boolean isChunkLoaded(int chunkX, int chunkZ) {
         ClientLevel level = minecraft.level;
+        // Must go through getChunkSource().hasChunk(...), not level.hasChunk(...) directly:
+        // ClientLevel.hasChunk(int, int) (ClientLevel.java:405-408) is a hardcoded
+        // "return true;" stub. That shorter spelling reads as the obvious choice but silently
+        // reports every chunk as loaded on this version only.
         return level != null && level.getChunkSource().hasChunk(chunkX, chunkZ);
     }
 
