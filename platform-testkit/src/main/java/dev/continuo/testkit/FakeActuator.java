@@ -1,4 +1,4 @@
-package dev.continuo.core.fakes;
+package dev.continuo.testkit;
 
 import dev.continuo.platform.IActuator;
 import dev.continuo.platform.Input;
@@ -13,7 +13,7 @@ public final class FakeActuator implements IActuator {
         public final Input input;
         public final boolean pressed;
 
-        Call(Input input, boolean pressed) {
+        public Call(Input input, boolean pressed) {
             this.input = input;
             this.pressed = pressed;
         }

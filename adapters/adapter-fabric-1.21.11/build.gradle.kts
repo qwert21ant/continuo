@@ -25,6 +25,7 @@ dependencies {
 
     implementation(project(":platform"))
     implementation(project(":core"))
+    implementation(project(":runtime"))
 }
 
 tasks.processResources {

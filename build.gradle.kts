@@ -4,19 +4,21 @@ plugins {
 
 /**
  * The only place module dependency direction is declared. A module may depend on exactly
- * the projects listed for it, and nothing else. Adapters may depend on platform and core;
- * nothing may depend on an adapter.
+ * the projects listed for it, and nothing else. Adapters may depend on platform, core and
+ * runtime; nothing may depend on an adapter.
  */
 val allowedProjectDependencies: Map<String, Set<String>> = mapOf(
     ":platform" to emptySet(),
     ":core" to setOf(":platform"),
+    ":platform-testkit" to setOf(":platform", ":core"),
+    ":runtime" to setOf(":platform", ":core"),
     // ":adapters" itself is an implicit parent project created by the colon-segmented
     // `include("adapters:adapter-fabric-1.21.11")` in settings.gradle.kts. It has no
     // build.gradle.kts and declares no dependencies, but it is still a real project in
     // `allprojects` and must be listed or the direction check fails on it.
     ":adapters" to emptySet(),
-    ":adapters:adapter-fabric-1.21.11" to setOf(":platform", ":core"),
-    ":adapters:adapter-forge-1.7.10" to setOf(":platform", ":core")
+    ":adapters:adapter-fabric-1.21.11" to setOf(":platform", ":core", ":runtime"),
+    ":adapters:adapter-forge-1.7.10" to setOf(":platform", ":core", ":runtime")
 )
 
 val checkDependencyDirection = tasks.register("checkDependencyDirection") {

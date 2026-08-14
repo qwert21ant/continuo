@@ -133,7 +133,8 @@ access transformer failed and is a real, reportable failure.
    a walk starting on its own after the world loads, means something is driving the core
    outside the tick window — a real defect, whatever its cause.
    *What this step does NOT verify — read before recording a pass:* it exercises neither the
-   adapter's out-of-world click drain nor its in-world guard. Minecraft only accumulates
+   shared `AdapterRuntime`'s out-of-world click drain nor its in-world guard, which is where
+   both now live rather than in this adapter. Minecraft only accumulates
    `KeyBinding` clicks while no `GuiScreen` is open, and the title screen is a screen, so
    nothing is queued — neither for the drain to discard nor for the guard to hold back. This
    step therefore passes identically against a build with either mechanism deleted. It is a
@@ -165,29 +166,34 @@ access transformer failed and is a real, reportable failure.
     exists. Both adapters implement this through one level-identity condition, so a failure
     here on either version means the two have diverged — the exact thing the contract exists
     to prevent.
-    *If the player keeps walking after the dimension change:* `updateLevel` is not being
-    reached before the in-world guard, or the level instance is being compared by value rather
-    than by identity.
+    *If the player keeps walking after the dimension change:* `AdapterRuntime.updateLevel` —
+    which is where that comparison now lives, not in this adapter — is not being reached
+    before the in-world guard, or the level instance is being compared by value rather than by
+    identity.
 
 **Not covered by this checklist:** global rule 3 (fault handling). Exercising it requires
 deliberately making the core throw, which is not something to leave in the tree. Rule 3 is
-implemented and knowingly unverified until M2's `platform-testkit` covers it. Do not record
-this checklist as evidence that fault handling works.
+implemented; the shared logic is now exercised by the `platform-testkit` conformance suite
+added in A2b, but this checklist remains the only check on whether this adapter's binding to
+that logic is correct. Do not record this checklist as evidence that fault handling works.
 
-Also not covered: the adapter's click drain (`drainClicks`). Every tester-reachable moment
+Also not covered: the click drain (`drainClicks`), which lives in the shared `AdapterRuntime`
+this adapter delegates to rather than in the adapter itself. Every tester-reachable moment
 with no world loaded also has a `GuiScreen` open — the title screen, the world-selection list,
 the world-loading screens — and Minecraft only accumulates `KeyBinding` clicks while no screen
 is open. No manual sequence available here queues a click that the out-of-world drain then has
 to discard, which is why step 9 explicitly disclaims it. The one drain path that is genuinely
 reachable in play is the *faulted* path, which happens in-world with no screen up; that is out
-of scope for the same reason rule 3 above is. The drain is implemented and knowingly
-unverified until M2's `platform-testkit` covers it. Do not record this checklist as evidence
-that the drain works.
+of scope for the same reason rule 3 above is. The drain is implemented; its shared logic is
+likewise exercised by the A2b `platform-testkit` suite, but again only this checklist can show
+whether this adapter's binding to that logic is correct. Do not record this checklist as
+evidence that the drain works.
 
 Also not covered: PRE/POST phase pairing across a mid-tick world change (dimension change or
 a disconnect processed during the tick). The adapter delivers both phases deliberately, and
-includes a `preDelivered` latch to ensure `POST` is paired only when `PRE` was delivered in
-that same tick. The latch closes one direction only. In the other direction, `PRE` **can go
+the shared `AdapterRuntime` it forwards them to includes a `preDelivered` latch to ensure
+`POST` is paired only when `PRE` was delivered in that same tick. The latch closes one
+direction only. In the other direction, `PRE` **can go
 unpaired**: if the tick window closes or a fault is set between `TickEvent.Phase.START` and
 `TickEvent.Phase.END` of the same tick, `PRE` has already been delivered and `POST` is then
 correctly suppressed. That is the exception the SPI's `onClientTick` contract explicitly
@@ -198,10 +204,24 @@ symptom to verify. It will become observable and worth a dedicated step as soon 
 behaviour starts acting on `POST`. Until then, do not record this checklist as evidence that
 phase pairing is correct in either direction.
 
+Those three are covered by the `platform-testkit` conformance suite, added in A2b, which runs
+offline against the shared `AdapterRuntime`. **The suite and this checklist are complements.**
+A green suite says nothing about whether this adapter passes the correct level or player
+object, whether `setInput` moves the player, or whether `PRE` precedes the game's input read —
+that is what the steps above are for. Neither is evidence about the other's subject.
+
 Record the result (pass/fail) of each step individually. Any single failure blocks A2
 sign-off, even if every other step passed.
 
 ---
+
+**Scope of the record below — read it first.** This run predates A2b. It was made against the
+adapter as it stood before the conversion that moved the conformance machinery out of
+`ContinuoForgeMod` and into the shared `AdapterRuntime`, so it is evidence about an adapter
+this repository no longer contains. **A re-run against a real 1.7.10 client is owed and has
+not happened.** Nothing below should be read as covering the converted adapter — including
+the access-transformer confirmation, which the conversion did not touch but which this run
+did not observe on the converted build either.
 
 **Verified 2026-08-13:** the owner ran this checklist against a real 1.7.10 client. The
 report is that everything works and **all steps passed**, the portal step (step 11)

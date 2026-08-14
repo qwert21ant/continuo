@@ -305,7 +305,13 @@ area for the suite:
 - `PRE` is delivered before `POST` within a tick.
 - `POST` is never delivered without a same-tick `PRE`.
 - No delivery outside the tick window.
-- No re-entrant delivery.
+- No re-entrant delivery. **Not implemented, by decision — this bullet is the one case in this
+  section the suite does not assert.** Re-entrancy is a property of the adapter's *event
+  source* — whether the game can call `tickStart` again from inside a core call — and
+  `AdapterRuntime` cannot stop its own caller from re-entering it. Closing the gap would mean
+  adding a re-entrancy guard to the runtime, which exceeds the three behaviour changes §4.2
+  permits. The gap is recorded in `AdapterConformanceTest`'s javadoc, in both `package-info`s
+  and in the roadmap rather than left silent.
 - An unpaired `PRE` is handled as the javadoc explicitly instructs: the case asserts that one
   of the two suppressing conditions held — window closed, or faulted — rather than failing
   outright. The javadoc's sentence "A recording `IGameEvents` that observes `PRE` without

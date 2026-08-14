@@ -1,4 +1,4 @@
-package dev.continuo.core.fakes;
+package dev.continuo.testkit;
 
 import dev.continuo.platform.IActuator;
 import dev.continuo.platform.IPlatformContext;

@@ -1,7 +1,7 @@
 package dev.continuo.core;
 
-import dev.continuo.core.fakes.FakeActuator;
-import dev.continuo.core.fakes.FakePlatformContext;
+import dev.continuo.testkit.FakeActuator;
+import dev.continuo.testkit.FakePlatformContext;
 import dev.continuo.platform.Input;
 import dev.continuo.platform.TickPhase;
 import org.junit.jupiter.api.BeforeEach;
@@ -214,5 +214,18 @@ class ContinuoCoreTest {
         assertEquals(1, secondActuator.callCount());
         assertEquals(Input.FORWARD, secondActuator.calls().get(0).input);
         assertTrue(secondActuator.calls().get(0).pressed);
+    }
+
+    /**
+     * Pins the A2b seam: an adapter runtime holds the core through {@link CoreApi} so a
+     * recording fake can be substituted. If this stops compiling, the seam is gone and
+     * {@code platform-testkit} can no longer observe anything.
+     */
+    @Test
+    void continuoCoreIsUsableThroughTheCoreApiSeam() {
+        CoreApi seam = new ContinuoCore();
+        seam.start(new FakePlatformContext());
+        seam.onClientTick(TickPhase.PRE);
+        seam.stop();
     }
 }

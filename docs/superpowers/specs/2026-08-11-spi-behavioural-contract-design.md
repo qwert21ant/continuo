@@ -124,28 +124,34 @@ is documented-as-unguaranteed by this rule, not fixed by it.
 
 ### 4.1 Caveats added during implementation
 
-**Caveats 1–3 below were settled in A2a; the normative text is now `dev.continuo.platform`'s
-`package-info` javadoc, and `2026-08-12-a2a-legacy-adapter-design.md` records the reasoning.
-The three entries are left as written below — unsettled, approximate, and unbound-key-must-surface
-— until A2b's SPI v1 revision rewrites this section to match; rewriting them piecemeal here is
-out of scope for A2a.**
+**Caveats 1–3 were settled in A2a, and this section was rewritten to match in A2b's SPI v1
+revision. The normative text is `dev.continuo.platform`'s `package-info` javadoc;
+`2026-08-12-a2a-legacy-adapter-design.md` records the reasoning.**
 
 Five caveats were added to the shipped javadoc after this section was approved. They are
 listed here by reference rather than restated, because §3's whole argument is that a rule
 copied into two documents drifts. Read the javadoc for the wording that binds.
 
-1. **Rule 2, world unload — unsettled.** A dimension change replaces the client level without
-   ending the session. Fabric's `DISCONNECT` does not fire; 1.7.10's `WorldEvent.Unload` does.
-   Two defensibly conformant adapters therefore disagree observably on walking through a
-   portal. `package-info` records the ambiguity, recommends the stricter reading (a dimension
-   change *is* a world unload), and hands the decision to M2.
-2. **Rule 2, client shutdown on 1.7.10.** No client-stopping event exists there; the customary
-   JVM shutdown hook runs off the main thread and collides with rule 1. Recorded as a tension
-   an adapter may only satisfy approximately. The other two triggers are unaffected.
-3. **§5's `setInput` clauses on 1.7.10.** The only public route is the static,
-   keycode-addressed `KeyBinding.setKeyBindState(int, boolean)`, which addresses whichever
-   binding holds the keycode and silently no-ops on an unbound key. An unbound key is a real
-   failure mode a conformant adapter must surface, not swallow.
+1. **Rule 2, world unload — settled: a dimension change IS a world unload.** The trigger is
+   stated as an observable condition rather than as per-platform events: an adapter MUST call
+   `stop()` on each of three client level-instance transitions — to `null`, between two
+   different non-`null` instances, and from `null` to non-`null`. Both adapters now evaluate
+   that condition through the same `AdapterRuntime`, so they cannot diverge on walking through
+   a portal. Verified in-game on both versions 2026-08-13.
+2. **Rule 2, client shutdown on 1.7.10 — settled: MUST-where-available.** `stop()` MUST be
+   called on client shutdown where the platform exposes a main-thread client-stopping event,
+   and MAY be omitted where none exists. Forge 1.7.10 exposes none and is conformant by
+   omission: `stop()`'s effects cannot outlive the process, so the obligation is hygiene rather
+   than a defended failure mode, and rule 1 stays exception-free. **This remains the softest
+   point in the M2 gate verdict.** A2b did not resolve it and the runtime does not bear on it
+   — Forge simply never calls `AdapterRuntime.clientStopping()`, which moves the conditional
+   from adapter code into an uncalled method and is an argument neither way. Re-asked at M3's
+   SPI audit. See §6.1 of `2026-08-13-a2b-conformance-testkit-design.md`.
+3. **§5's `setInput` clauses on 1.7.10 — settled: the unbound-key clause was deleted.** Both
+   adapters address the key binding per instance rather than by keycode, and movement reads
+   that field rather than polling the keyboard, so an unbound key is not a failure mode on the
+   route either adapter takes. The clause was dissolved rather than satisfied. Confirmed
+   in-game 2026-08-13 with the vanilla Forward key set to NONE.
 4. **§5's "both phases MUST be delivered" — one exception.** See §5 below.
 5. **`onClientTick`, ticks counted vs. ticks travelled.** The callback keeps firing while the
    game is paused or the death screen is up — the tick loop, a world, and a local player all

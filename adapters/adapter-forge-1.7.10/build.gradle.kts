@@ -44,6 +44,7 @@ tasks.applyJST.configure {
 dependencies {
     implementation(project(":platform"))
     implementation(project(":core"))
+    implementation(project(":runtime"))
 }
 
 // --- Dev-run-only workaround: strip the OpenAL natives before runClient launches ---
