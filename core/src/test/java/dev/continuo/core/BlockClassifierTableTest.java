@@ -131,6 +131,15 @@ class BlockClassifierTableTest {
     }
 
     @Test
+    void aStateRowBeatsABlockRowOnFluid() {
+        BlockData d = with("{\"version\":\"t\","
+            + "\"blocks\":{\"a:f\":{\"fluid\":\"WATER\"}},"
+            + "\"states\":{\"a:f#8\":{\"fluid\":\"LAVA\"}}}")
+            .classify(new BlockDescription("a:f", "a:f#8", new double[0], null, false, false));
+        assertEquals(Fluid.LAVA, d.fluid());
+    }
+
+    @Test
     void theShipped1710TableClassifiesFlowingWaterAsWater() {
         BlockClassifier c = new BlockClassifier(BlockTableLoader.forVersion("1.7.10"));
         BlockData d = c.classify(new BlockDescription(
