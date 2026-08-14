@@ -79,6 +79,9 @@ class BlockLookupTest {
         lookup.at(0, 64, 0);
         assertEquals(1, view.describeCallCount());
 
+        lookup.at(0, 64, 0);
+        assertEquals(1, view.describeCallCount(), "the second read must come from the memo");
+
         lookup.clear();
         lookup.at(0, 64, 0);
 
