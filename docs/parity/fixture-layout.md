@@ -32,8 +32,8 @@ Scaffolding outside the dump volume, never itself compared:
 | 3 | falling solid | `gravel` | `gravel` | compare |
 | 4 | lava source | `lava` | `lava[level=0]` | compare |
 | 5 | falling solid | `sand` | `sand` | compare |
-| 6 | bottom slab | `stone_slab#0` | `smooth_stone_slab[type=bottom]` | compare |
-| 7 | top slab | `stone_slab#8` | `smooth_stone_slab[type=top]` | compare |
+| 6 | bottom slab | `stone_slab#0` | `stone_slab[type=bottom]` | compare |
+| 7 | top slab | `stone_slab#8` | `stone_slab[type=top]` | compare |
 | 8 | stair, bottom half | `oak_stairs` (meta 0-3) | `oak_stairs[half=bottom,shape=straight]` | compare |
 | 9 | fence | `fence` | `oak_fence` | compare |
 | 10 | wall | `cobblestone_wall` | `cobblestone_wall` | compare |
@@ -61,6 +61,25 @@ Scaffolding outside the dump volume, never itself compared:
 
 Every index is dumped on both versions regardless of `Diff`, so nothing is silently absent. An
 `exclusive` index does not exist on 1.7.10; the 1.7.10 dump must read `air` there.
+
+**Indices 6 and 7 corrected 2026-08-15 to match the committed evidence.** This table originally
+named `smooth_stone_slab` for 1.21.11, but `docs/parity/blocks-1.21.11.txt` and
+`docs/parity/golden-1.21.11.txt` both show `stone_slab` was the block actually placed. Harmless in
+fact — `SlabBlock` gives every slab variant the same shapes regardless of which slab it is, so
+classification is identical either way — but this file is what a human rebuilds the fixture from,
+and it must name what was actually placed rather than what was originally planned. Do not "correct"
+these two rows back to `smooth_stone_slab`; the dumps and goldens are the evidence of record and
+this file was wrong, not them.
+
+**The ladder (12), vine (13) and leaves (24) rows also differ from what is committed**, in facing or
+metadata rather than in block identity: the committed dumps show `ladder[facing=south]` /
+`ladder#3` rather than the `facing=north` / `#2` documented above, `vine[north=true]` rather than
+`vine[south=true]` / `vine#4` rather than an implied `z+1`-face variant, and `oak_leaves[distance=7,
+persistent=true]` / `leaves#4` rather than the metadata this table implies. This is fine and is not
+a discrepancy worth fixing: `BlockShape` and `BlockTag` are facing- and connection-independent for
+every audited block (§4, §5.2's connection-state note), so a different facing or metadata value at
+the same logical index still classifies identically, and the classifier being indifferent to it is
+the point of the design, not a gap in the fixture.
 
 ## The five excluded indices
 

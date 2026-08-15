@@ -16,7 +16,15 @@ import java.util.Set;
  */
 public final class BlockData {
 
-    /** The value for a position that could not be read. */
+    /**
+     * The value for a position that could not be read.
+     *
+     * <p>{@code collisionTop()} is {@code 0.0} here — indistinguishable from a genuinely empty
+     * position, even though unreadable is not the same fact as empty. Consumers MUST branch on
+     * {@link #shape()} (checking for {@link BlockShape#UNKNOWN}) before trusting
+     * {@code collisionTop()}; reading the number first will silently treat "unknown" as "safe to
+     * walk into".
+     */
     public static final BlockData UNKNOWN =
         new BlockData(BlockShape.UNKNOWN, 0.0, Fluid.NONE, EnumSet.noneOf(BlockTag.class));
 

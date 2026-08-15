@@ -252,6 +252,9 @@ class ContinuoCoreTest {
         core.blocks().at(0, 64, 0);
         assertEquals(1, ctx.fakeBlockView().describeCallCount());
 
+        core.blocks().at(0, 64, 0);
+        assertEquals(1, ctx.fakeBlockView().describeCallCount(), "the memo must still be live before stop()");
+
         core.stop();
         core.blocks().at(0, 64, 0);
 

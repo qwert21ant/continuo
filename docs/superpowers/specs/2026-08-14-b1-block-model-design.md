@@ -509,9 +509,9 @@ check each on both versions: **geometry-derivable, tableable, or neither.** "Nei
 answer that threatens the design, and it is the B1 gate tripping.
 
 Minimum list: air, stone, bottom slab, top slab, stairs, fence, wall, glass pane, ladder, vine,
-water (source and flowing), lava, gravel, sand, cobweb, soul sand, ice, packed ice, door,
-trapdoor, carpet, snow layer, farmland, cactus, fire, magma (1.21 only), chest, leaves, honey
-block (1.21 only), and one deliberately unrecognised modded-shaped block.
+water (source and flowing), lava (source and flowing), gravel, sand, cobweb, soul sand, ice,
+packed ice, door, trapdoor, carpet, snow layer, farmland, cactus, fire, magma (1.21 only), chest,
+leaves, honey block (1.21 only), and one deliberately unrecognised modded-shaped block.
 
 The result is a table with a verdict per block per version. It is **the evidence the whole design
 rests on**, and it doubles as the correspondence list the parity fixture is built from (§5.2). It
@@ -604,12 +604,28 @@ mechanism version-exclusive rows already use.
 **Before any of §3.3's rules run, drop every box with zero extent on any axis**
 (`maxX - minX <= 1e-6`, or the same on Y or Z).
 
-This is not tidiness; without it the versions disagree on a block the owner will place by accident.
+**Corrected 2026-08-15, against the fixture evidence: this is defensive, not a fix for an
+observed disagreement.** The original text here claimed one-layer snow demonstrates rule 0
+against a real client. It does not, and cannot, given the mask `ForgeBlockView` actually builds.
 1.21.11 canonicalises degenerate boxes away inside `Shapes.create` (`if (!(g - d < 1.0E-7) && …)`
-→ `empty()`), so a one-layer snow reports **no** boxes. 1.7.10 does not: `BlockSnow` emits a box
-with `maxY = y`, and `AxisAlignedBB.intersectsWith` still admits it against a mask that straddles
-`y`, so the adapter reports **one** box of zero height. Same block, same visible state, different
-box count. Rule 0 removes the difference at its source rather than papering over it per-block.
+→ `empty()`), so a one-layer snow reports **no** boxes there — that part is unchanged. On 1.7.10,
+`BlockSnow` at meta 0 does build a degenerate box (`maxY = y`), but `ForgeBlockView`'s mask has
+`minY` exactly `y` (`AxisAlignedBB.getBoundingBox(x, y, z, x + 1.0D, y + 2.0D, z + 1.0D)`), and
+`AxisAlignedBB.intersectsWith` requires the strict `other.maxY > this.minY`. `y > y` is false, so
+`Block.addCollisionBoxesToList`'s own guard (`if (box != null && mask.intersectsWith(box))`) never
+adds the box to the list. **The degenerate box never reaches the adapter's output. 1.7.10's
+`collisionBoxes` is already empty by the time the classifier runs, and rule 0 has nothing to
+discard.** One-layer snow reaches `AIR` on 1.7.10 via rule 1 ("no boxes"), the same rule 1.21.11
+reaches it by, for an unrelated reason. The identical argument applies to carpet at meta 0
+(`BlockCarpet.getCollisionBoundingBoxFromPool` also hardcodes `maxY = y` and also does not
+override `addCollisionBoxesToList`).
+
+Rule 0 stays anyway, and is worth having. It is real defence against a future mask change (a mask
+whose `minY` sat strictly below `y` *would* admit this box, and widening the mask downward is
+exactly the kind of change a later session could make without realising what it re-admits), against
+a block that overrides `addCollisionBoxesToList` directly and emits a degenerate box that bypasses
+the mask check entirely, and against other versions this spec does not audit. It is proved
+headlessly, by four dedicated `BlockClassifier` tests, not by this fixture.
 
 ##### The eight rules, checked against the sources
 
@@ -796,12 +812,19 @@ dump files one-for-one, so `divergent` and `exclusive` need no special encoding 
 simply has its own line) and the cross-version comparison stays a separate assertion from the
 golden comparison, rather than one schema trying to be both.
 
-**Index 21 is one-layer snow deliberately, and it is the only row that exercises rule 0.** 1.7.10
-emits a degenerate zero-height box there and 1.21.11 emits none, and both must land on `AIR`; get
-rule 0 wrong and this index is the one that catches it. Two-layer snow is an ordinary `THIN_LAYER`
-case already covered by the closed bottom trapdoor at index 19 (`h = 0.1875`), so it earns no slot.
-The light constraint below still applies unchanged — a one-layer snow melts at block light > 11 on
-both versions exactly as a two-layer one does.
+**Index 21 is one-layer snow deliberately.** **Corrected 2026-08-15: it does not exercise rule 0.**
+1.7.10's `BlockSnow` at meta 0 does build a degenerate zero-height box, but `ForgeBlockView`'s
+collision mask has `minY` exactly `y`, and `AxisAlignedBB.intersectsWith`'s strict `>` never admits
+it — `collisionBoxes` is already empty before the classifier runs, so 1.7.10 reaches `AIR` via rule
+1 ("no boxes"), not rule 0 (§4). 1.21.11 reaches the same `AIR` because `Shapes.create`
+canonicalises the degenerate shape away independently, before the adapter ever sees a box. **Rule 0
+is not exercised by this fixture at all** — it is proved headlessly, by four dedicated
+`BlockClassifier` tests. Index 21 is still worth keeping: it is a real cross-version agreement at a
+block that reaches `AIR` on the two versions by two structurally different routes, which is exactly
+the kind of thing a fixture should pin. Two-layer snow is an ordinary `THIN_LAYER` case already
+covered by the closed bottom trapdoor at index 19 (`h = 0.1875`), so it earns no slot. The light
+constraint below still applies unchanged — a one-layer snow melts at block light > 11 on both
+versions exactly as a two-layer one does.
 
 **Four audited entries are deliberately not in the fixture**, and the plan must not read their
 absence as an oversight. All four are covered by §4's table and by headless `BlockClassifier` tests
@@ -896,10 +919,13 @@ compared indices (32 fixture rows minus the five excluded — carpet, farmland, 
 `docs/parity/blocks-1.21.11.txt`; and the five differing indices are exactly the five predicted
 from decompiled sources before either client ran. Two of those are worth naming directly because
 each is exactly the kind of failure the gate exists to catch: index 21 (one-layer snow) classifies
-`AIR` on both versions, which is rule 0 discarding a degenerate box on 1.7.10 and 1.21.11's own
-shape canonicaliser agreeing independently; index 9 (fence) classifies `FENCE top=1.5` on both,
-which is the failure the original bounds-field design would have shipped — `FULL` on 1.7.10 alone
-— had `addCollisionBoxesToList` not been used instead.
+`AIR` on both versions — **not** because rule 0 fired on either side (corrected 2026-08-15; see §4).
+1.7.10's degenerate box is excluded by the adapter's own collision mask before rule 0 would ever see
+it, and 1.21.11's shape canonicaliser drops the same degenerate box independently, so the two
+versions reach `AIR` by different routes rather than by rule 0 catching a real disagreement here;
+rule 0 itself is proved by four headless `BlockClassifier` tests, not by this index. Index 9 (fence)
+classifies `FENCE top=1.5` on both, which is the failure the original bounds-field design would have
+shipped — `FULL` on 1.7.10 alone — had `addCollisionBoxesToList` not been used instead.
 
 **What this finding does not cover**, following the M2 gate's own paragraph as the model:
 
@@ -1011,6 +1037,23 @@ Newly opened by the 2026-08-14 audit (§4):
 - **The two divergent fixture rows**, carpet and farmland (§5.2). They are pinned per version
   rather than reconciled. If M4 finds the divergence matters behaviourally, the answer is a table
   row, not a classifier change.
+
+Newly opened by the task-19 fix wave (2026-08-15):
+
+- **Waterlogging is a model asymmetry.** On 1.21.11 a waterlogged slab reports `Fluid.WATER` with a
+  solid shape — a block can be both `FULL`/`SLAB_*` and wet. 1.7.10 has no `waterlogged` property at
+  all and cannot express this state; a waterlogged slab is simply not representable there. This is
+  in no document to date and not in the fixture. Not a gate concern — the gate asks whether a field
+  can be answered honestly on both versions, and neither version is asked a dishonest question here
+  — but the next milestone that reasons about "is this position wet" needs to know the asymmetry
+  exists before it assumes `Fluid.WATER` and solid collision are mutually exclusive.
+- **The audit's block set is not exhaustive.** `powder_snow`, `sweet_berry_bush`, `bubble_column`
+  and `lily_pad` were not in §4's 34-row audit. Each classifies as untagged `AIR` or `PARTIAL` on
+  1.21.11 today — geometrically plausible but not individually checked against source the way the
+  audited set was — and each is a one-line table/audit row for whoever picks this up later. Not a
+  gate concern; the audit's own scope note already says it is strong evidence for the audited set,
+  not a claim about every block either game defines. Recorded here so the next milestone sees it
+  rather than rediscovering it while debugging a berry bush.
 
 ---
 

@@ -70,12 +70,25 @@ final class ForgeBlockView implements IBlockView {
      * The block's collision boxes, in block-relative coordinates.
      *
      * <p>The mask reaches two blocks above the target because fences and walls emit boxes 1.5
-     * tall, and {@code addCollisionBoxesToList} only adds a box that intersects the mask.
+     * tall, and {@code addCollisionBoxesToList} only adds a box that intersects the mask. The
+     * mask's {@code minY} is exactly {@code y}, so a zero-height box sitting at the block floor
+     * (a one-layer snow or a carpet computed at meta 0) is silently dropped here, before the
+     * classifier's rule 0 ever gets a chance to see it — {@code AxisAlignedBB.intersectsWith}
+     * requires strict {@code other.maxY > this.minY}, and {@code y > y} is false. Widening this
+     * mask downward would change which boxes reach the core.
      */
     private static double[] collisionBoxes(World world, Block block, int x, int y, int z) {
         // Base Block.addCollisionBoxesToList reads the bounds fields, and vanilla does not set
         // them first. Setting them here is strictly more correct, and harmless for the blocks
         // that override the method, since those set their own bounds internally.
+        //
+        // This writes minX..maxZ on the shared Block singleton -- one instance per block type,
+        // not per position -- so it mutates state visible to any other code that reads those
+        // fields off the same Block object. Inert today because nothing calls this lookup more
+        // than once per distinct state per session. It will not stay inert: once a pathfinder
+        // calls describe()/collisionBoxes() every tick, this leaves the singleton primed for
+        // whatever coordinate the pathfinder last evaluated, which vanilla collision code
+        // running on the same tick may then read.
         block.setBlockBoundsBasedOnState(world, x, y, z);
 
         AxisAlignedBB mask = AxisAlignedBB.getBoundingBox(x, y, z, x + 1.0D, y + 2.0D, z + 1.0D);

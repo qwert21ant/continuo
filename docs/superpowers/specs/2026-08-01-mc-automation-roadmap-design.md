@@ -404,8 +404,12 @@ confirms the fix holds and nothing else regressed it.
 The real-client parity run corroborates this: `BlockParityTest` reports 8 tests, 0 skipped, 0
 failures; 27 of 27 compared indices match exactly between the two dump files; the five excluded
 indices are exactly the five predicted from decompiled sources before either client ran; index 21
-(one-layer snow) classifies `AIR` on both, which is rule 0 working in a real client rather than
-only in a synthetic test; and index 9 (fence) classifies `FENCE top=1.5` on both, which is the
+(one-layer snow) classifies `AIR` on both — **corrected 2026-08-15: not because rule 0 fired in a
+real client.** 1.7.10 reaches `AIR` because the adapter's own collision mask excludes the
+degenerate box before rule 0 ever runs, and 1.21.11 reaches it because its shape canonicaliser
+drops the same degenerate box independently; the two versions agree by different routes, not by
+rule 0 catching a disagreement. Rule 0 itself is proved by four headless `BlockClassifier` tests,
+not by this fixture (B1 spec §4). Index 9 (fence) classifies `FENCE top=1.5` on both, which is the
 silent-`FULL`-on-1.7.10-alone failure the original bounds-field design would have shipped.
 
 **What this finding does not cover**, following the M2 gate's own paragraph as the model: the
