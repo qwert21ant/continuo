@@ -248,10 +248,37 @@ sign-off, even if every other step passed.
 
 ---
 
-**There are two records below.** The 2026-08-14 run covers the adapter as it stands today.
-The 2026-08-13 run predates A2b and is kept because it is the only source of the
-unbound-key and access-transformer sub-checks in transcribed detail; read its own scope note
-before citing it.
+**There are three records below.** The 2026-08-15 run covers the adapter as it stands today.
+The 2026-08-14 run predates B1. The 2026-08-13 run predates A2b and is kept because it is the
+only source of the unbound-key and access-transformer sub-checks in transcribed detail; read
+each one's own scope note before citing it.
+
+**Verified 2026-08-15 — post-B1:** the owner re-ran this checklist against a real 1.7.10
+client, after B1 added `blocks()` to `IPlatformContext`, gave this adapter a `ForgeBlockView`,
+and added the step 12 block-dump keybind. The report is that **everything is OK**.
+
+This matters for the same structural reason the A2b record did: B1 changed the SPI and this
+adapter, and the conformance suite cannot see the platform binding at all.
+
+The same run produced the block dump. The owner built the fixture, pressed **J**, reviewed the
+output by eye, and signed it off; `docs/parity/blocks-1.7.10.txt` and `golden-1.7.10.txt` are
+that artefact. `BlockParityTest` now runs 8 tests with **0 skipped**, and the two adapters agree
+on all 27 compared indices.
+
+Because the run passed as a whole, no `IllegalAccessError` occurred, so the access transformer
+still takes effect at runtime. As with the 2026-08-14 record, that follows from the summary
+rather than from a separately reported observation.
+
+Three limits on this record. The owner gave a one-line summary rather than a per-step table, so
+this is the owner's statement that the checklist passes — **not twelve individually transcribed
+results**, and no sub-check is separately attested. **No displacement figure was reported**; the
+8–9 blocks recorded on 2026-08-13 remains the only measured 1.7.10 figure. And per the step 12
+disclaimer, a green dump shows the two adapters *agree*, not that the block model is *right* —
+the goldens and the audit behind them carry that claim, not this run.
+
+**Scope of the 2026-08-14 record below.** It predates B1, so it is evidence about an adapter
+without `blocks()` or the dump keybind. It is superseded by the 2026-08-15 record above for
+anything concerning the current adapter.
 
 **Verified 2026-08-14 — post-A2b:** the owner re-ran this checklist against a real 1.7.10
 client, after the A2b conversion moved the conformance machinery out of `ContinuoForgeMod`

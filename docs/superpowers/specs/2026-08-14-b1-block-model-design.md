@@ -722,9 +722,22 @@ compared:
 - the door's upper half at `y0 + 1` above index 18.
 
 The walls do the work that would otherwise need air gaps: they give the ladder and the vine
-something to attach to, they keep the two liquids from flowing, and — usefully — they make the
-fence, wall and pane connect **north and south on both versions**, which is the case where the two
-versions' boxes come out numerically identical.
+something to attach to, and they keep the two liquids from flowing. Both of those are load-bearing
+— without them indices 12, 13, 2 and 4 cannot be built as specified.
+
+**A third rationale was claimed here and the first real run disproved it.** The original text said
+the walls also make the fence, wall and pane connect north and south on both versions, "which is
+the case where the two versions' boxes come out numerically identical" — implying parity at indices
+9, 10 and 11 depended on that connection. The 2026-08-15 run shows otherwise: the 1.21.11 fence
+came out **fully unconnected** (`north=false, south=false, east=false, west=false`), and the wall
+and pane connected to **each other along the corridor** (`east=low` / `west=true`) rather than to
+the side walls. All three still classified identically on both versions — `FENCE top=1.5`,
+`FENCE top=1.5`, `PARTIAL top=1.0`.
+
+That is a fact worth keeping rather than a disappointment: the shape categories are **behavioural,
+not literal**, so they are robust to exactly the connection state a human is least likely to
+reproduce by hand. Do not treat a specific connection state as a fixture requirement, and do not
+"fix" a dump whose state keys differ from a previous run's while its classifications match.
 
 Build it **near the origin** (say `|x|, |z| < 1000`). §4 records why: 1.7.10 computes some bounds in
 `float` from absolute coordinates, and past roughly `2^21` a sixteenth-block inset rounds away.
