@@ -414,18 +414,31 @@ either version, so the argument that the generic APIs reach modded blocks correc
 APIs' shape, not a demonstration; carpet and farmland are asserted as genuine divergences from a
 single-version reading of decompiled sources, not cross-checked by an independent second observer;
 slipperiness is inexpressible in the current `BlockTag` set, so "faithful" means faithful to the
-six fields the SPI asks for today, not to everything a future consumer will want; and a green dump
+six fields the SPI asks for today, not to everything a future consumer will want; a green dump
 shows the adapters *agree*, not that the classifier's own rules are *right* — agreement between two
 independently-read games is strong evidence against a version-specific bug, not proof the model is
-correct.
+correct; and **`collisionBoxes` fidelity at far coordinates is untested, on 1.7.10 only.** §4
+documents why: `BlockCactus` and at least eight other 1.7.10 block classes build their bounds as
+`(float)x + inset` — float arithmetic on the *absolute* coordinate — so the 1/16 inset degrades
+starting around `|x| = 2^20` and is gone by `2^21`, well inside the ~30M-block world border. The
+fixture was built near the origin as `fixture-layout.md` instructs, but the dumps record no
+absolute position, so nothing committed attests to where. **This does not trip the gate:** the
+adapter still answers honestly at far coordinates — it reports exactly what
+`getCollisionBoundingBoxFromPool` returns, which is the same value 1.7.10's own engine uses to
+resolve collision there, so the imprecision belongs to the engine, not to a dishonest adapter. The
+gate binds the adapter's fidelity to its engine, not the engine's own numerical precision. Tracked
+as a risk in B1 spec §7, since M4 is the first consumer reading blocks at whatever coordinate the
+player actually occupies rather than near the origin by construction.
 
 **The standing SPI audit — run 2026-08-15.** `wc -l adapters/*/src/main/java/dev/continuo/adapter/*/*.java`
 puts B1's new adapter surface at `FabricBlockView.java` (132 lines) and `ForgeBlockView.java` (129
 lines), against 373 total lines in the Fabric adapter module and 434 in the Forge one. Both files
-were read line by line for this audit. Every conditional in either is a null level/world guard, a
-vertical-range or chunk-loaded guard, or (Fabric only) a formatting branch over an empty-or-not
-property map — translation, all of it. **Zero conditionals about block identity were found in
-either adapter.** Full accounting: B1 spec §6.2.
+were read line by line for this audit, and every conditional was counted rather than sampled:
+**fourteen total, nine in Fabric and five in Forge.** Each is a null level/world guard, a
+vertical-range or chunk-loaded guard, `isChunkLoaded`'s own null-then-query check, a generic
+fluid-presence or is-liquid ternary, or (Fabric's `stateKey` builder and its `minY()`/`maxY()`
+only) a formatting or null-guard ternary — translation, all of it. **Zero of the fourteen are about
+block identity.** Full accounting: B1 spec §6.2.
 
 ### Carried forward from M2 — read before starting M4
 

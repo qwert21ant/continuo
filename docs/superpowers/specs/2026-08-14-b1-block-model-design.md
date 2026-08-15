@@ -880,9 +880,14 @@ recording gaps rather than leaving them silent.
 | `gravity` | `state.getBlock() instanceof FallingBlock` | `block instanceof BlockFalling` | Yes — a type check against the abstraction the game itself uses to mark "this block falls", not a check against any specific block, and it covers modded falling blocks for free |
 
 No field required either adapter to write judgement logic to answer it, and no field is answerable
-on only one version. The only conditionals in either `IBlockView` are a null level/world check, a
-vertical-bounds check, a chunk-loaded check, and (Fabric only) two formatting branches over
-`state.getValues()` — none is about block identity. §6.2 is the line-by-line accounting.
+on only one version. Counted in full, not summarised: `IBlockView` has fourteen conditionals across
+the two adapters — nine in Fabric, five in Forge. Both share the same five-conditional shape: a
+null level/world guard, a vertical-bounds guard, and a chunk-loaded guard in `stateId`;
+`isChunkLoaded`'s own null-then-query check; and a generic fluid-presence or is-liquid ternary
+(`fluid.isEmpty() ? null : …` on Fabric, `isLiquid() ? id : null` on Forge). Fabric alone has four
+more: two `stateKey` formatting branches over `state.getValues()`, and two null-guard ternaries in
+`minY()`/`maxY()`. None of the fourteen is about block identity. §6.2 is the line-by-line
+accounting.
 
 The parity evidence corroborates the field-by-field reading rather than substituting for it: the
 2026-08-15 real-client run produced `BlockParityTest` at 8 tests, 0 skipped, 0 failures; 27 of 27
@@ -922,6 +927,29 @@ which is the failure the original bounds-field design would have shipped — `FU
   versions' geometry satisfies identically (a mis-set threshold, say), agreement would not surface
   it. The audit's `PARTIAL` rows exist for exactly this kind of humility, not this specific gap,
   but the distinction is worth stating plainly: agreement is not correctness.
+- **`collisionBoxes` fidelity is untested at far coordinates, on 1.7.10 only, and nothing
+  committed attests to where the fixture was built.** §4 documents why this matters:
+  `BlockCactus.getCollisionBoundingBoxFromPool` and at least eight other 1.7.10 block classes
+  build their bounds as `(float)x + inset` — float arithmetic on the block's *absolute*
+  coordinate, not the block-relative one the SPI carries. A 24-bit float mantissa means the 1/16
+  inset starts degrading around `|x| = 2^20` (roughly 1.05 million) and has vanished entirely by
+  `2^21` (roughly 2.1 million) — well inside Minecraft's ~30-million-block world border, so this is
+  ordinary reachable play, not a theoretical edge. The fixture was built near the origin, exactly
+  as `fixture-layout.md` instructs, but the dump format records no absolute position, so nothing
+  in the committed evidence attests that it was. This finding is silent on `collisionBoxes`
+  fidelity away from spawn.
+
+  **This does not trip the gate.** The gate's second clause fires when a field can be answered
+  honestly on only one version. At far coordinates `collisionBoxes` does degrade on 1.7.10 and not
+  on 1.21.11 — but the adapter is still being honest: it reports exactly what
+  `getCollisionBoundingBoxFromPool` returns, and that is the same value 1.7.10's own engine uses to
+  resolve collision at that position, so a player really would meet a full-cube cactus there. The
+  imprecision belongs to the *engine*, not to the adapter's report of it — the adapter did not
+  invent the float arithmetic, it faithfully surfaced what the game computes. The gate binds the
+  adapter's fidelity to its engine, not the engine's own numerical precision, and by that standard
+  both adapters still pass. Tracked as a risk in §7, because M4 is the first consumer that will
+  read blocks at whatever coordinate the player actually occupies rather than near the origin by
+  construction.
 
 ### 6.2 The standing SPI audit
 
@@ -947,11 +975,13 @@ failing, not a detail.
 surface in the adapters; the rest of each module is pre-existing tick/input/lifecycle plumbing the
 M2 gate already audited.
 
-Both were read line by line for this task. Every conditional in each is one of: a null
-level/world guard, a vertical-range or chunk-loaded guard, or (Fabric's `stateKey` builder only) a
-formatting branch over an empty-or-not property map — all translation, all fine by the rule stated
-above. **Zero conditionals about block identity were found in either file.** The one that
-previously existed — `ForgeBlockView.fluidId()`'s `material == Material.water || material ==
+Both were read line by line for this task, and every conditional was counted rather than sampled:
+**fourteen total, nine in Fabric and five in Forge.** Each one is a null level/world guard, a
+vertical-range or chunk-loaded guard, `isChunkLoaded`'s own null-then-query check, a generic
+fluid-presence or is-liquid ternary, or (Fabric's `stateKey` builder and its `minY()`/`maxY()`
+only) a formatting or null-guard ternary — all translation, all fine by the rule stated above.
+**Zero of the fourteen are about block identity.** The one that previously existed —
+`ForgeBlockView.fluidId()`'s `material == Material.water || material ==
 Material.lava` — was already caught and replaced with `block.getMaterial().isLiquid()` before this
 task; re-reading the current source confirms the fix is in place and nothing has regressed it.
 
@@ -996,6 +1026,7 @@ Newly opened by the 2026-08-14 audit (§4):
 | No JSON parser on the core classpath; core is `--release 8` | Low | Format is deliberately flat enough for a small hand-written reader |
 | `stateKey` strings differ in shape between versions | Low | Intended. Tables are per-version; the parity diff compares `BlockData`, never `stateKey` across versions. Stated so nobody "fixes" it |
 | Dev-only dump code ships in the adapter jars | Low | Accepted. It lives in `:runtime`, is inert unless triggered, and the manual step is already the project's normal cost of doing business |
+| **1.7.10's `float`-based absolute-coordinate bounds degrade far from spawn.** `BlockCactus` and at least eight other block classes compute bounds as `(float)x + inset`; the 1/16 inset starts degrading around `\|x\| = 2^20` and vanishes entirely by `2^21` — well inside the ~30M-block world border, so this is reachable play, not a theoretical edge. Confirmed against decompiled source, §4 | **Medium — silent, one-version-only, exactly the divergence class B1 exists to catch** | Not a B1 defect: the adapter faithfully reports what the engine computes there, so this is the *engine's* imprecision, correctly surfaced, not a misreport (§6.1). The parity fixture cannot exercise it — it is built near the origin by design (§5.2) — so it is untested rather than passing. Open for M4, the first consumer that reads blocks at whatever coordinate the player actually occupies |
 
 ---
 
