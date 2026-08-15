@@ -24,6 +24,7 @@ public final class ContinuoCore implements CoreApi {
     private IPlatformContext context;
     private boolean walking;
     private int tick;
+    private BlockLookup blocks;
 
     /** Called once by the adapter, before any other method. */
     @Override
@@ -32,6 +33,9 @@ public final class ContinuoCore implements CoreApi {
             throw new IllegalArgumentException("context must not be null");
         }
         this.context = context;
+        this.blocks = new BlockLookup(
+            context.blocks(),
+            new BlockClassifier(BlockTableLoader.forVersion(context.info().gameVersion())));
     }
 
     /**
@@ -50,6 +54,9 @@ public final class ContinuoCore implements CoreApi {
         }
         if (walking) {
             context.actuator().setInput(Input.FORWARD, false);
+        }
+        if (blocks != null) {
+            blocks.clear();
         }
         walking = false;
         tick = 0;
@@ -80,5 +87,23 @@ public final class ContinuoCore implements CoreApi {
             walking = false;
             tick = 0;
         }
+    }
+
+    /**
+     * Classified block reads for the current level.
+     *
+     * <p>Nothing in the core consumes this yet — M4's pathfinder is its first reader. It is
+     * wired now so the whole chain, from an adapter's raw facts through the shared classifier
+     * to a memoised {@link BlockData}, is exercised and its lifecycle is real rather than
+     * hypothetical.
+     *
+     * @return the lookup; never {@code null} after {@code start}
+     * @throws IllegalStateException if {@code start} has not been called
+     */
+    public BlockLookup blocks() {
+        if (blocks == null) {
+            throw new IllegalStateException("start(IPlatformContext) must be called first");
+        }
+        return blocks;
     }
 }

@@ -6,7 +6,7 @@ package dev.continuo.platform;
  * <p>Bundled into one type so that adding a capability later changes one signature rather
  * than every call site.
  *
- * <p>Valid for the adapter's entire lifetime. Both accessors MUST NOT return {@code null},
+ * <p>Valid for the adapter's entire lifetime. All three accessors MUST NOT return {@code null},
  * and MUST return the same instance on every call — the core may therefore cache what they
  * return.
  */
@@ -25,4 +25,16 @@ public interface IPlatformContext {
      * @return the platform info; never {@code null}, and the same instance on every call
      */
     IPlatformInfo info();
+
+    /**
+     * The block reader for this platform.
+     *
+     * <p>The returned instance is valid for the adapter's lifetime and internally reads
+     * whichever level is current, so the core may cache it — but its <em>methods</em> may only
+     * be called while {@link IGameEvents#onClientTick}'s delivery window is open. See
+     * {@link IBlockView}.
+     *
+     * @return the block view; never {@code null}, and the same instance on every call
+     */
+    IBlockView blocks();
 }

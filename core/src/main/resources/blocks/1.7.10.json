@@ -1,0 +1,14 @@
+{
+  "version": "1.7.10",
+  "blocks": {
+    "minecraft:flowing_water": { "fluid": "WATER" },
+    "minecraft:water":         { "fluid": "WATER" },
+    "minecraft:flowing_lava":  { "fluid": "LAVA", "tags": ["AVOID"] },
+    "minecraft:lava":          { "fluid": "LAVA", "tags": ["AVOID"] },
+    "minecraft:soul_sand":     { "tags": ["SLOW"] },
+    "minecraft:web":           { "tags": ["SLOW"] },
+    "minecraft:fire":          { "tags": ["AVOID"] },
+    "minecraft:cactus":        { "tags": ["AVOID"] }
+  },
+  "states": {}
+}

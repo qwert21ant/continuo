@@ -128,6 +128,23 @@ A1 sign-off — do not skip a step or assume it would have passed.
     before the in-world guard, or the level instance is being compared by value rather than by
     identity.
 
+12. **Block dump.** This step does not exercise the walk behaviour above; it produces one of
+    the two per-version block dumps for B1's cross-adapter parity check. From the title screen,
+    create a **new** Superflat world in **Creative** mode (the walk steps above needed Survival;
+    the dump only reads block state and Creative is faster to build in). Build the 32-block
+    fixture row from `docs/parity/fixture-layout.md` — that file, not this one, is the source of
+    truth for the corridor's shape and its index-to-block table. Stand at index 0, the west end
+    of the row (bare air, per the fixture layout), and face **+X, east**, as the layout
+    specifies. Press `J`.
+    *Observe:* the log must contain a line reading `Continuo: wrote block dump to <path>`,
+    naming an absolute path ending in `continuo-block-dump.txt` inside the game's run directory
+    — that is a scratch location, not `docs/parity/`. Copy that file into the repository as
+    `docs/parity/blocks-1.21.11.txt`, overwriting whatever is already there.
+    *If the log line is missing:* look instead for `Continuo: could not write the block dump` —
+    the write is wrapped in a try/catch, so a failure is logged rather than crashing the client.
+    *What this step does NOT verify:* see the block-model disclaimer below, after the usual
+    three — it applies to this step specifically, not to the walk steps above.
+
 **Not covered by this checklist:** global rule 3 (fault handling). Exercising it requires
 deliberately making the core throw, which is not something to leave in the tree. Rule 3 is
 implemented; the shared logic is now exercised by the `platform-testkit` conformance suite
@@ -167,14 +184,52 @@ A green suite says nothing about whether this adapter passes the correct level o
 object, whether `setInput` moves the player, or whether `PRE` precedes the game's input read —
 that is what the steps above are for. Neither is evidence about the other's subject.
 
+Also not covered — this one applies to step 12 specifically: whether the block model itself is
+correct. **A green dump does not prove the block model is correct, only that the two adapters
+agree.** Step 12 above writes only this version's half of a pair; the pair is compared by
+`BlockParityTest`, which is a diff, not a judgement — it can only ever show the two adapters
+agreeing or disagreeing with each other, never with the game. Both adapters could misreport the
+same block the same way — reading the wrong collision flag, say — and a cross-version diff
+would still come back green, because the diff cannot see past what both sides report. That is
+what the per-version goldens in `docs/parity/` (`golden-1.7.10.txt`, `golden-1.21.11.txt`) exist
+to catch: each is a human's line-by-line review of one version's dump, signed off as correct on
+its own terms, and checked in separately because 1.7.10 and 1.21.11 genuinely disagree on two of
+the thirty-two rows — carpet's collision box and farmland's depth — so no single golden could
+match both. A golden is only as good as the audit that produced it and the review that signed
+it off. Do not record step 12 as evidence the block model is right, only that this adapter and
+the other one currently say the same thing.
+
 Record the result (pass/fail) of each step individually. Any single failure blocks A1
 sign-off, even if every other step passed.
 
 ---
 
-**There are two records below.** The 2026-08-14 run covers the adapter as it stands today.
-The 2026-08-13 run predates A2b and is kept because it is the only source of some detail;
-read its own scope note before citing it for anything.
+**There are three records below.** The 2026-08-15 run covers the adapter as it stands today.
+The 2026-08-14 and 2026-08-13 runs predate B1 and A2b respectively, and each is kept because
+it is the only source of some detail; read each one's own scope note before citing it.
+
+**Verified 2026-08-15 — post-B1:** the owner re-ran this checklist against a real 1.21.11
+client, after B1 added `blocks()` to `IPlatformContext`, gave this adapter a `FabricBlockView`,
+and added the step 12 block-dump keybind. The report is that **everything is OK**.
+
+This matters for the same structural reason the A2b record did: B1 changed the SPI and this
+adapter, and the conformance suite cannot see the platform binding at all.
+
+The same run produced the block dump. The owner built the fixture, pressed **J**, reviewed the
+output by eye, and signed it off; `docs/parity/blocks-1.21.11.txt` and `golden-1.21.11.txt` are
+that artefact. `BlockParityTest` now runs 8 tests with **0 skipped**, and the two adapters agree
+on all 27 compared indices.
+
+Three limits on this record. The owner gave a one-line summary rather than a per-step table, so
+this is the owner's statement that the checklist passes — **not twelve individually transcribed
+results**, and no sub-check is separately attested. **No displacement figure was reported**; the
+8 blocks measured on 2026-08-11 remains the only measured Fabric figure. And per the step 12
+disclaimer, a green dump shows the two adapters *agree*, not that the block model is *right* —
+the goldens and the audit behind them carry that claim, not this run.
+
+**Scope of the 2026-08-14 record below.** It predates B1, so it is evidence about an adapter
+without `blocks()` or the dump keybind. It is superseded by the 2026-08-15 record above for
+anything concerning the current adapter.
 
 **Verified 2026-08-14 — post-A2b:** the owner re-ran this checklist against a real 1.21.11
 client, after the A2b conversion moved the conformance machinery out of `ContinuoFabricMod`

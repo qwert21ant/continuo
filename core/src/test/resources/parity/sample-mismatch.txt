@@ -1,0 +1,3 @@
+0	minecraft:stone	minecraft:stone	FULL top=1.0 fluid=NONE tags=[]
+1	minecraft:fence	minecraft:fence#0	FULL top=1.0 fluid=NONE tags=[]
+2	-	-	UNKNOWN top=0.0 fluid=NONE tags=[]

@@ -2,12 +2,14 @@ package dev.continuo.core;
 
 import dev.continuo.testkit.FakeActuator;
 import dev.continuo.testkit.FakePlatformContext;
+import dev.continuo.platform.BlockDescription;
 import dev.continuo.platform.Input;
 import dev.continuo.platform.TickPhase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -227,5 +229,42 @@ class ContinuoCoreTest {
         seam.start(new FakePlatformContext());
         seam.onClientTick(TickPhase.PRE);
         seam.stop();
+    }
+
+    @Test
+    void exposesAClassifyingLookupOverThePlatformsBlockView() {
+        ctx.fakeBlockView().put(0, 64, 0, new BlockDescription(
+            "minecraft:stone", "minecraft:stone", new double[]{0, 0, 0, 1, 1, 1}, null, false, false));
+
+        assertEquals(BlockShape.FULL, core.blocks().at(0, 64, 0).shape());
+    }
+
+    @Test
+    void theLookupIsTheSameInstanceAcrossCalls() {
+        assertSame(core.blocks(), core.blocks());
+    }
+
+    @Test
+    void stopClearsTheBlockMemoSoStateIdsCannotOutliveTheirLevel() {
+        ctx.fakeBlockView().put(0, 64, 0, new BlockDescription(
+            "minecraft:stone", "minecraft:stone", new double[]{0, 0, 0, 1, 1, 1}, null, false, false));
+
+        core.blocks().at(0, 64, 0);
+        assertEquals(1, ctx.fakeBlockView().describeCallCount());
+
+        core.blocks().at(0, 64, 0);
+        assertEquals(1, ctx.fakeBlockView().describeCallCount(), "the memo must still be live before stop()");
+
+        core.stop();
+        core.blocks().at(0, 64, 0);
+
+        assertEquals(2, ctx.fakeBlockView().describeCallCount(),
+            "global rule 2 requires stop() on every level transition, and state ids are session-scoped");
+    }
+
+    @Test
+    void blocksBeforeStartIsAnError() {
+        ContinuoCore fresh = new ContinuoCore();
+        assertThrows(IllegalStateException.class, fresh::blocks);
     }
 }
