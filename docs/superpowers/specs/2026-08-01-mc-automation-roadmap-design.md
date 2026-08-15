@@ -348,7 +348,7 @@ occupies that keycode, which may not be the intended one. A faithful adapter nee
 reflection on the private field or an access transformer. Roughly half a day — not a
 redesign, but not free either.
 
-### M3 · World abstraction (B) — **scoped down to B1 on 2026-08-14**
+### M3 · World abstraction (B) — **scoped down to B1 on 2026-08-14 — ✅ DONE 2026-08-15**
 
 The block-property table is **data, not code** — a per-version JSON mapping
 (`soul_sand` on 1.21.11, `Block 88:0` on 1.7.10) to `BlockShape` + `BlockTag`. Cross-adapter
@@ -379,6 +379,78 @@ Three things a future session must not re-derive:
 incompatible** — a lazy fill from a worker thread would call `IBlockView` off the main thread and
 break global rule 1 in the one place the design exists to protect it. If M4 adopts the two-phase
 answer, the pre-warm-before-seal obligation lands on M5 and must be written there, not discovered.
+
+**The world view is confirmed bound to M4, not reopened here.** §351's bullet already states the
+move; this line exists only so a future reader does not have to infer it — B2's draft is design
+input to M4's brainstorm, nothing in M3's closeout reopens where the snapshot, cache, or section
+copying live.
+
+**The B1 gate — evaluated 2026-08-15, NOT tripped.** The rule: *if either adapter cannot produce a
+faithful `BlockDescription` without judgement logic, or if any field can be answered honestly on
+only one version, stop and redesign.* Answered against both adapters as built, not predicted — the
+same standard the M2 gate above was held to. Full finding:
+[`2026-08-14-b1-block-model-design.md`](2026-08-14-b1-block-model-design.md) §6.1.
+
+Every one of `BlockDescription`'s six fields — `id`, `stateKey`, `collisionBoxes`, `fluidId`,
+`climbable`, `gravity` — is answered on both adapters through a native, generic API the version
+already exposes for every block (registry lookup, collision-geometry query, a data-driven tag or a
+type check against the game's own "this falls" abstraction), never through a table of specific
+blocks written into the adapter. The one field worth naming directly: `ForgeBlockView.fluidId()`
+originally tested `material == Material.water || material == Material.lava`, a block-identity
+conditional; review caught it before this evaluation and it now reads `block.getMaterial()
+.isLiquid()`, the question the game already answers generically. Re-reading the current source
+confirms the fix holds and nothing else regressed it.
+
+The real-client parity run corroborates this: `BlockParityTest` reports 8 tests, 0 skipped, 0
+failures; 27 of 27 compared indices match exactly between the two dump files; the five excluded
+indices are exactly the five predicted from decompiled sources before either client ran; index 21
+(one-layer snow) classifies `AIR` on both, which is rule 0 working in a real client rather than
+only in a synthetic test; and index 9 (fence) classifies `FENCE top=1.5` on both, which is the
+silent-`FULL`-on-1.7.10-alone failure the original bounds-field design would have shipped.
+
+**What this finding does not cover**, following the M2 gate's own paragraph as the model: the
+fixture is one 32-block row, not an exhaustive block set; no modded blocks were exercised on
+either version, so the argument that the generic APIs reach modded blocks correctly is from the
+APIs' shape, not a demonstration; carpet and farmland are asserted as genuine divergences from a
+single-version reading of decompiled sources, not cross-checked by an independent second observer;
+slipperiness is inexpressible in the current `BlockTag` set, so "faithful" means faithful to the
+six fields the SPI asks for today, not to everything a future consumer will want; and a green dump
+shows the adapters *agree*, not that the classifier's own rules are *right* — agreement between two
+independently-read games is strong evidence against a version-specific bug, not proof the model is
+correct.
+
+**The standing SPI audit — run 2026-08-15.** `wc -l adapters/*/src/main/java/dev/continuo/adapter/*/*.java`
+puts B1's new adapter surface at `FabricBlockView.java` (132 lines) and `ForgeBlockView.java` (129
+lines), against 373 total lines in the Fabric adapter module and 434 in the Forge one. Both files
+were read line by line for this audit. Every conditional in either is a null level/world guard, a
+vertical-range or chunk-loaded guard, or (Fabric only) a formatting branch over an empty-or-not
+property map — translation, all of it. **Zero conditionals about block identity were found in
+either adapter.** Full accounting: B1 spec §6.2.
+
+### Carried forward from M2 — read before starting M4
+
+**B1 did not resolve any of the three items the B1 spec's §6.3 carried in from A2b.** Recorded
+explicitly so no reader infers otherwise:
+
+- **The client-shutdown soft spot.** Rule 2's clause is capability-conditional while `IGameEvents`
+  states the anti-capability-check principle absolutely. B1 added no lifecycle obligations and
+  bears on this not at all; it carries forward untouched. See A2b spec §6.1.
+- **M5 actuation**, edge- vs level-triggered — still deferred to M5, per the M2 carry-forward notes
+  above. Untouched by B1.
+- **`guarded(core::stop)`** in `AdapterRuntime`. Readability only, owner's call, nothing depends on
+  it. Untouched by B1.
+
+**Two items B1's audit opened that must carry into M4 alongside the above:**
+
+- **Slipperiness is inexpressible in the current `BlockTag` set.** `ice` and `packed_ice` classify
+  identically to `stone`. Both versions answer slipperiness natively (`Block.slipperiness` /
+  `BlockBehaviour.Properties.friction`), and it meets §7's field-budget test on both counts, so it
+  is a live candidate the first time `mv-walk` needs it — not a gap to rediscover.
+- **The two divergent fixture rows, carpet and farmland.** The two games genuinely disagree — 1.7.10
+  carpet has no collision, 1.21.11's does; 1.7.10 farmland is a full cube, 1.21.11's is 15/16 —
+  and the classifier reports each truthfully rather than being made to agree. They are pinned per
+  version in the golden files, not reconciled. If M4 finds the divergence behaviourally significant,
+  the answer is a per-version table row, not a classifier change.
 
 ### M4 · Pathfinder (C) — **now also carries the world view, formerly B2**
 
@@ -526,7 +598,7 @@ deliberately licensed compatibly.
 
 | Risk | Milestone | Mitigation |
 |---|---|---|
-| SPI cannot express both 1.7.10 and 1.21.11 without bloating — **did not materialise at A2a** | M2 | A2 is deliberately placed before anything depends on the SPI. The M2 gate stops everything if it happens. **Evaluated 2026-08-13: gate not tripped** — no SPI type or signature changed for 1.7.10, and the contract got smaller, not larger (§3). Scope of that evidence is one input, ticks, lifecycle and platform info; the block model at M3 is where this risk is next live |
+| SPI cannot express both 1.7.10 and 1.21.11 without bloating — **did not materialise at A2a, or at B1** | M2, M3 | A2 is deliberately placed before anything depends on the SPI. The M2 gate stops everything if it happens. **Evaluated 2026-08-13: gate not tripped** — no SPI type or signature changed for 1.7.10, and the contract got smaller, not larger (§3). Scope of that evidence is one input, ticks, lifecycle and platform info; the block model at M3 was the next place this risk was live. **Evaluated again 2026-08-15, at M3: gate not tripped** — both adapters answer all six `BlockDescription` fields honestly through native, generic APIs, with zero block-identity conditionals in either `IBlockView` (§ M3 above). The next place this risk is live is M9, the third and fourth adapters |
 | SPI v0 designed around 1.21-shaped assumptions during M1 | M1 | Design SPI v0 as if 1.7.10 already existed; explicit SPI v1 revision at the end of M2 |
 | Forge 1.7.10 dev environment proves hostile in 2026 | M2 | unimined first, RetroFuturaGradle as fallback. Discovered in month 1, not month 6 |
 | ~~Build plugin chosen at M1 cannot handle 1.7.10 at M2~~ **MATERIALIZED** | M1 | Unavoidable: unimined has no release supporting 1.21.11, so Loom was forced. M2 now needs RetroFuturaGradle as a second toolchain. Cost accepted, recorded in `docs/toolchain-decision.md` |

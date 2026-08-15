@@ -865,8 +865,63 @@ recording gaps rather than leaving them silent.
 > **If either adapter cannot produce a faithful `BlockDescription` without judgement logic, or if
 > any field can be answered honestly on only one version, stop and redesign.**
 
-Evaluated against both adapters **as built, not predicted** — the standard A2a was held to. The
-finding is written into the roadmap alongside the M2 one, including what it does *not* cover.
+**Evaluated 2026-08-15 — NOT tripped.** Read against both adapters as built —
+`adapters/adapter-fabric-1.21.11/.../FabricBlockView.java` (132 lines) and
+`adapters/adapter-forge-1.7.10/.../ForgeBlockView.java` (129 lines) — field by field over
+`BlockDescription`'s six:
+
+| Field | Fabric | Forge | Honest on both? |
+|---|---|---|---|
+| `id` | `BuiltInRegistries.BLOCK.getKey(state.getBlock())` | `Block.blockRegistry.getNameForObject(block)` | Yes — each is the version's own generic registry lookup, not a per-block table |
+| `stateKey` | hand-built `id[prop=val,...]` from `state.getValues()` | `id + "#" + meta` | Yes — mechanical formatting of a value the game already exposes (property map / metadata int); no case-by-case logic |
+| `collisionBoxes` | `state.getCollisionShape(level, pos).toAabbs()` | `setBlockBoundsBasedOnState` then `addCollisionBoxesToList` | Yes — each calls the version's own generic collision-geometry API, the same one every block (including modded ones) already goes through |
+| `fluidId` | `state.getFluidState()` → fluid registry key, generically | `block.getMaterial().isLiquid() ? id : null` | Yes — **and this is the field the gate should scrutinise hardest.** Forge's line originally read `material == Material.water \|\| material == Material.lava`, a block-identity conditional. Review caught it before this task; it now asks the game's own generic "is this a liquid" question. Read fresh for this evaluation and confirmed fixed in the current tree |
+| `climbable` | `state.is(BlockTags.CLIMBABLE)` | `block.isLadder(world, x, y, z, null)` | Yes — a data-driven tag on one side, a per-block-overridable native API on the other; neither adapter enumerates ladder blocks itself |
+| `gravity` | `state.getBlock() instanceof FallingBlock` | `block instanceof BlockFalling` | Yes — a type check against the abstraction the game itself uses to mark "this block falls", not a check against any specific block, and it covers modded falling blocks for free |
+
+No field required either adapter to write judgement logic to answer it, and no field is answerable
+on only one version. The only conditionals in either `IBlockView` are a null level/world check, a
+vertical-bounds check, a chunk-loaded check, and (Fabric only) two formatting branches over
+`state.getValues()` — none is about block identity. §6.2 is the line-by-line accounting.
+
+The parity evidence corroborates the field-by-field reading rather than substituting for it: the
+2026-08-15 real-client run produced `BlockParityTest` at 8 tests, 0 skipped, 0 failures; 27 of 27
+compared indices (32 fixture rows minus the five excluded — carpet, farmland, and the three
+1.21.11-exclusive blocks) match exactly between `docs/parity/blocks-1.7.10.txt` and
+`docs/parity/blocks-1.21.11.txt`; and the five differing indices are exactly the five predicted
+from decompiled sources before either client ran. Two of those are worth naming directly because
+each is exactly the kind of failure the gate exists to catch: index 21 (one-layer snow) classifies
+`AIR` on both versions, which is rule 0 discarding a degenerate box on 1.7.10 and 1.21.11's own
+shape canonicaliser agreeing independently; index 9 (fence) classifies `FENCE top=1.5` on both,
+which is the failure the original bounds-field design would have shipped — `FULL` on 1.7.10 alone
+— had `addCollisionBoxesToList` not been used instead.
+
+**What this finding does not cover**, following the M2 gate's own paragraph as the model:
+
+- **The fixture is one 32-block row, not an exhaustive block set.** §4's audit reasoned about 34
+  logical blocks from source; the fixture built and dumped by a human instantiates 32 of them at
+  one position each. It is strong evidence for the audited set, not a claim about every block
+  either game defines.
+- **No modded blocks were exercised on either version.** `PARTIAL` is the designed-in safety net
+  for anything geometry does not match, and the field-by-field reading above shows every adapter
+  call is generic enough to reach a modded block correctly — but that is an argument from the
+  API's shape, not a demonstration. No mod loaded on either client for this run.
+- **Two indices are asserted per-version rather than cross-checked.** Carpet and farmland are
+  recorded as genuine divergences on the strength of reading decompiled sources for one version at
+  a time (§4), not by an independent second observer reproducing the same conclusion. The parity
+  run confirms the *values* the sources predicted; it does not add a second, independent method of
+  arriving at them.
+- **Slipperiness is inexpressible in the current `BlockTag` set.** Both versions answer it
+  natively (`Block.slipperiness` / `BlockBehaviour.Properties.friction`), which by §7's own budget
+  makes it a legitimate `describe`-field candidate — but it is absent today, so "faithful" here
+  means faithful to the six fields the SPI currently asks for, not to everything a future consumer
+  will want. Carried forward in §6.3.
+- **A green dump shows the adapters agree, not that the model is right.** Parity is evidence of
+  consistency between two independent readings of two different games, which is strong evidence
+  against a version-specific bug — but if the classifier's own rules were wrong in a way both
+  versions' geometry satisfies identically (a mis-set threshold, say), agreement would not surface
+  it. The audit's `PARTIAL` rows exist for exactly this kind of humility, not this specific gap,
+  but the distinction is worth stating plainly: agreement is not correctness.
 
 ### 6.2 The standing SPI audit
 
@@ -875,6 +930,33 @@ Each adapter gains one `IBlockView`, and the design deliberately routes every ju
 it: fluid normalisation to the table, shape derivation to the classifier, state ids to the native
 registry. If an adapter's `IBlockView` has grown an `if` about block identity, that is the audit
 failing, not a detail.
+
+**Run 2026-08-15.** `wc -l adapters/*/src/main/java/dev/continuo/adapter/*/*.java`:
+
+```
+117 ContinuoFabricMod.java        167 ContinuoForgeMod.java
+ 40 FabricActuator.java            50 ForgeActuator.java
+132 FabricBlockView.java          129 ForgeBlockView.java
+ 34 FabricPlatformContext.java     34 ForgePlatformContext.java
+ 25 FabricPlatformInfo.java        26 ForgePlatformInfo.java
+ 24 Slf4jRuntimeLog.java           28 Log4jRuntimeLog.java
+373 total (fabric)                 434 total (forge)         806 grand total
+```
+
+`FabricBlockView.java` (132 lines) and `ForgeBlockView.java` (129 lines) are B1's entire new
+surface in the adapters; the rest of each module is pre-existing tick/input/lifecycle plumbing the
+M2 gate already audited.
+
+Both were read line by line for this task. Every conditional in each is one of: a null
+level/world guard, a vertical-range or chunk-loaded guard, or (Fabric's `stateKey` builder only) a
+formatting branch over an empty-or-not property map — all translation, all fine by the rule stated
+above. **Zero conditionals about block identity were found in either file.** The one that
+previously existed — `ForgeBlockView.fluidId()`'s `material == Material.water || material ==
+Material.lava` — was already caught and replaced with `block.getMaterial().isLiquid()` before this
+task; re-reading the current source confirms the fix is in place and nothing has regressed it.
+
+**Verdict: the audit passes. 0 block-identity conditionals in either adapter's `IBlockView`.**
+Every judgement the classifier needs stayed in `:core`; the adapters report facts.
 
 ### 6.3 Carried forward, unresolved
 
