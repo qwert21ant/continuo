@@ -101,6 +101,55 @@ class DescendMoveTest {
     }
 
     @Test
+    void aWallAtBodyHeightBlocksAShaftBehindIt() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,96,0\n"
+                + "--- y=96\n"
+                + "##\n"
+                + "--- y=97\n"
+                + "#.\n"
+                + "--- y=98\n"
+                + "#.\n"
+                + "--- y=99\n"
+                + "#.\n"
+                + "--- y=100\n"
+                + ".#\n"
+                + "--- y=101\n"
+                + "..\n");
+
+        RecordingSink sink = new RecordingSink();
+        move.expand(world, 0, 100, 0, sink);
+
+        assertEquals(0, sink.size(),
+            "there is a reachable floor three below, but a wall stands where the step would go");
+    }
+
+    @Test
+    void anObstructionPartWayDownStopsTheScanRatherThanFallingPastIt() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,96,0\n"
+                + "--- y=96\n"
+                + "##\n"
+                + "--- y=97\n"
+                + "#.\n"
+                + "--- y=98\n"
+                + "#.\n"
+                + "--- y=99\n"
+                + "#_\n"
+                + "--- y=100\n"
+                + "..\n"
+                + "--- y=101\n"
+                + "..\n");
+
+        RecordingSink sink = new RecordingSink();
+        move.expand(world, 0, 100, 0, sink);
+
+        assertEquals(0, sink.size(),
+            "the slab is neither a floor nor passable; the fall stops there, it does not continue"
+                + " to the standable ledge two blocks further down");
+    }
+
+    @Test
     void unknownTerrainInTheShaftIsNotDescendedInto() {
         FixtureWorld world = FixtureWorld.parse(
             "origin: 0,97,0\n"
