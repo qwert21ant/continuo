@@ -1370,7 +1370,7 @@ final class FixtureWorld implements BlockSource {
 - [ ] **Step 5: Run the tests**
 
 Run: `./gradlew :core-pathfinder:test --tests "dev.continuo.pathfinder.FixtureWorldTest"`
-Expected: PASS, 11 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 6: Prove the out-of-extent test is not vacuous**
 
