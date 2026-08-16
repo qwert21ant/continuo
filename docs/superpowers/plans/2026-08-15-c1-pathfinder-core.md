@@ -1418,16 +1418,27 @@ The 1.7.10 tree is already unpacked at `adapters/adapter-forge-1.7.10/build/rfg/
 
 Run: `./gradlew :adapters:adapter-fabric-1.21.11:genSources`
 
-This produces a sources jar under
-`C:\GradleHome\caches\fabric-loom\minecraftMaven\net\minecraft\minecraft-merged\1.21.11-loom.mappings.1_21_11.layered+hash.2198-v2\`.
-Unpack it into the **scratchpad**, never into the repo:
+Loom writes the sources jar into the **project's own** `.gradle/loom-cache`, not into `GRADLE_USER_HOME` — verified 2026-08-16:
 
-```bash
-mkdir -p "$SCRATCH/mc-1.21.11-src"
-unzip -q -o /c/GradleHome/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged/*/minecraft-merged-*-sources.jar -d "$SCRATCH/mc-1.21.11-src"
+```
+.gradle/loom-cache/minecraftMaven/net/minecraft/minecraft-merged-<hash>/1.21.11-loom.mappings.1_21_11.layered+hash.2198-v2/minecraft-merged-<hash>-1.21.11-...-sources.jar
 ```
 
-where `$SCRATCH` is your scratchpad directory. A previous agent built a 1.7 GB untracked cache inside the repo; do not repeat it, and do not set `GRADLE_USER_HOME`.
+Find it rather than assuming the path, since the `<hash>` segment varies:
+
+```bash
+find .gradle/loom-cache -name "minecraft-merged-*-sources.jar"
+```
+
+`.gradle/` is the first entry in `.gitignore`, so the jar is already excluded from git. Unpack it **outside the repository** — a previous agent built a 1.7 GB untracked directory inside it:
+
+```bash
+mkdir -p /c/Users/qwert/AppData/Local/Temp/continuo-mc-1.21.11-src
+unzip -q -o "$(find .gradle/loom-cache -name 'minecraft-merged-*-sources.jar' | head -1)" \
+  -d /c/Users/qwert/AppData/Local/Temp/continuo-mc-1.21.11-src
+```
+
+Do not set `GRADLE_USER_HOME`. If `genSources` reports `UP-TO-DATE` and you cannot find the jar, it has already run — search for it rather than forcing a re-run.
 
 - [ ] **Step 2: Derive each constant, recording file and line**
 
