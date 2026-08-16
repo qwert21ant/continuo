@@ -34,6 +34,13 @@ class StandabilityTest {
     private static final BlockData STAIR = block(BlockShape.STAIR, 1.0);
     private static final BlockData BOTTOM_SLAB = block(BlockShape.SLAB_BOTTOM, 0.5);
     private static final BlockData FENCE = block(BlockShape.FENCE, 1.5);
+
+    /** Taller than a cube but not classified FENCE — only the numeric upper bound rejects it. */
+    private static final BlockData TALL_PARTIAL = block(BlockShape.PARTIAL, 1.5);
+
+    /** A fence whose collision top would qualify — only the shape check rejects it. */
+    private static final BlockData SHORT_FENCE = block(BlockShape.FENCE, 1.0);
+
     private static final BlockData CARPET_LEGACY = block(BlockShape.AIR, 0.0);
     private static final BlockData CARPET_MODERN = block(BlockShape.THIN_LAYER, 0.0625);
     private static final BlockData FARMLAND_LEGACY = block(BlockShape.FULL, 1.0);
@@ -96,6 +103,18 @@ class StandabilityTest {
     @Test
     void aFenceIsNotAFloorDespiteItsCollisionTop() {
         assertFalse(Standability.supports(FENCE));
+    }
+
+    @Test
+    void anythingTallerThanACubeIsNotAFloorEvenWhenNotClassifiedAsAFence() {
+        assertFalse(Standability.supports(TALL_PARTIAL),
+            "only the SUPPORT_MAX_TOP bound rejects this; the FENCE shape check does not fire");
+    }
+
+    @Test
+    void aFenceIsNotAFloorEvenWhenItsCollisionTopWouldQualify() {
+        assertFalse(Standability.supports(SHORT_FENCE),
+            "only the FENCE shape check rejects this; the SUPPORT_MAX_TOP bound does not fire");
     }
 
     @Test

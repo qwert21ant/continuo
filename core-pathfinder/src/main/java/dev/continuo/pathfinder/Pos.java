@@ -107,7 +107,8 @@ public final class Pos {
 
     @Override
     public int hashCode() {
-        return (int) (packed() ^ (packed() >>> 32));
+        long packed = packed();
+        return (int) (packed ^ (packed >>> 32));
     }
 
     @Override
