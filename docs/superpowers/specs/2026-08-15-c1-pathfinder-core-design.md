@@ -302,11 +302,16 @@ Two things the derivation task **recorded rather than assumed**:
    be evaluated in `float`, as the sources declare it, not in exact decimal**, and the sign
    reverses when it is: `0.6f * 0.91f` rounds *up* to `0.54600006`, whose cube `0.16277139`
    exceeds 1.7.10's literal, so 1.7.10's normaliser is `0.9999998` while 1.21.11's divides out to
-   exactly `1.0`. **1.7.10 is therefore the slower version**, by 8.8e-7 ticks per block sprinting
-   and 6.3e-7 walking. The rounded constants take the slower (1.7.10) figure; because 3.5636 is
-   the four-decimal rounding of 1.7.10's 3.5635793 and lies above both versions, no constant
-   changed when this direction was corrected. A shared pure core cannot branch on version, and no
-   per-version cost seam was introduced.
+   exactly `1.0`. **1.7.10 is therefore the slower version**, by under 1e-6 ticks per block,
+   walking or sprinting. No sharper magnitude is quoted: the gap is a few units in the last place
+   of a `float`, so its leading digits depend on where the speed attribute is rounded — through
+   the `double` pipeline the sources use, or straight to the `float` literal — and two careful
+   derivations of this task disagreed exactly there (8.8e-7 against 8.3e-7 sprinting) while
+   agreeing on the direction, the bound and every constant. The bound and the direction are stable;
+   the second significant figure is not, so it is not asserted. The rounded constants take the
+   slower (1.7.10) figure; because 3.5636 is the four-decimal rounding of 1.7.10's 3.5635793 and
+   lies above both versions, no constant changed when this direction was corrected. A shared pure
+   core cannot branch on version, and no per-version cost seam was introduced.
 
 One approximation is recorded on the constants rather than hidden: the ascend surcharge is
 **added** to the horizontal crossing although the rise and the crossing really overlap, which

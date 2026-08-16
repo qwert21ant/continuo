@@ -28,10 +28,19 @@ package dev.continuo.pathfinder;
  * cube {@code 0.16277139} exceeds 1.7.10's literal {@code 0.16277136}, so 1.7.10's normaliser
  * comes out at {@code 0.9999998} — fractionally below one. 1.21.11 divides its literal by the
  * cube of {@code 0.6f} alone, which yields exactly {@code 1.0}. <b>1.7.10 therefore accelerates
- * fractionally less and is the slower version</b>, by {@code 8.8e-7} ticks per block sprinting
- * and {@code 6.3e-7} walking. The constants below take the slower (1.7.10) figure:
- * {@code 3.5636} is the four-decimal rounding of 1.7.10's {@code 3.5635793} and sits above both
- * versions, so no constant needed restating when this direction was corrected.
+ * fractionally less and is the slower version</b>, by under {@code 1e-6} ticks per block, walking
+ * or sprinting.
+ *
+ * <p>No sharper figure is quoted, deliberately. The gap is a few units in the last place of a
+ * {@code float}, so its leading digits move depending on where one rounds the speed attribute —
+ * through the {@code double} pipeline the sources actually use, or straight to the {@code float}
+ * literal. Two careful derivations of this task disagreed in exactly that way, at {@code 8.8e-7}
+ * against {@code 8.3e-7} sprinting, while agreeing on everything that matters. The bound and the
+ * direction are stable under both; the second significant figure is not, so it is not asserted.
+ *
+ * <p>The constants below take the slower (1.7.10) figure: {@code 3.5636} is the four-decimal
+ * rounding of 1.7.10's {@code 3.5635793} and sits above both versions, so no constant needed
+ * restating when this direction was corrected.
  *
  * <p><b>Every movement is costed at the sprint figure, not the walk figure.</b> That is a
  * recorded decision, not an oversight. M5's executor sprints wherever it can, so the walk rate
