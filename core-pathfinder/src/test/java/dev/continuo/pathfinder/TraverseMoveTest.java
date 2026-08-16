@@ -150,7 +150,8 @@ class TraverseMoveTest {
         move.expand(world, 1, 65, 1, sink);
 
         assertTrue(!sink.positions().contains(new Pos(2, 65, 1)),
-            "unreadable ground might not be there at all; stepping onto it is a guess");
+            "unreadable ground is not a floor - enforced here by the support band, "
+                + "since UNKNOWN's collision top is 0.0");
     }
 
     private static FixtureWorld openFloor() {
