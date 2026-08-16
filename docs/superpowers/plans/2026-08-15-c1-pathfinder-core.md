@@ -2342,6 +2342,55 @@ class DescendMoveTest {
     }
 
     @Test
+    void aWallAtBodyHeightBlocksAShaftBehindIt() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,96,0\n"
+                + "--- y=96\n"
+                + "##\n"
+                + "--- y=97\n"
+                + "#.\n"
+                + "--- y=98\n"
+                + "#.\n"
+                + "--- y=99\n"
+                + "#.\n"
+                + "--- y=100\n"
+                + ".#\n"
+                + "--- y=101\n"
+                + "..\n");
+
+        RecordingSink sink = new RecordingSink();
+        move.expand(world, 0, 100, 0, sink);
+
+        assertEquals(0, sink.size(),
+            "there is a reachable floor three below, but a wall stands where the step would go");
+    }
+
+    @Test
+    void anObstructionPartWayDownStopsTheScanRatherThanFallingPastIt() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,96,0\n"
+                + "--- y=96\n"
+                + "##\n"
+                + "--- y=97\n"
+                + "#.\n"
+                + "--- y=98\n"
+                + "#.\n"
+                + "--- y=99\n"
+                + "#_\n"
+                + "--- y=100\n"
+                + "..\n"
+                + "--- y=101\n"
+                + "..\n");
+
+        RecordingSink sink = new RecordingSink();
+        move.expand(world, 0, 100, 0, sink);
+
+        assertEquals(0, sink.size(),
+            "the slab is neither a floor nor passable; the fall stops there, it does not continue"
+                + " to the standable ledge two blocks further down");
+    }
+
+    @Test
     void unknownTerrainInTheShaftIsNotDescendedInto() {
         FixtureWorld world = FixtureWorld.parse(
             "origin: 0,97,0\n"
@@ -2440,7 +2489,7 @@ final class DescendMove implements Move {
 - [ ] **Step 4: Run the tests**
 
 Run: `./gradlew :core-pathfinder:test --tests "dev.continuo.pathfinder.DescendMoveTest"`
-Expected: PASS, 9 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 5: Prove the safe-fall limit is not vacuous**
 
@@ -2450,6 +2499,10 @@ Two mutations, run separately. Both must fail, and they must fail *different* te
 |---|---|
 | `drop <= MovementCosts.MAX_SAFE_FALL` → `drop <= MovementCosts.MAX_SAFE_FALL + 1` | `aDropDeeperThanTheSafeLimitIsRefused` |
 | `drop <= MovementCosts.MAX_SAFE_FALL` → `drop < MovementCosts.MAX_SAFE_FALL` | `aDropOfExactlyTheSafeLimitIsAccepted` |
+| Delete the pre-loop `passable(nx, y, nz) \|\| passable(nx, y + 1, nz)` guard | `aWallAtBodyHeightBlocksAShaftBehindIt` |
+| Delete the mid-loop `if (!passable(landingY)) break;` | `anObstructionPartWayDownStopsTheScanRatherThanFallingPastIt` |
+
+**Why the last two need their own fixtures.** A shaft whose obstruction sits directly above its floor cannot witness either guard: the landing's own head check rejects it anyway, so deleting the guard still yields zero offers by a different route. The guards only bite when there is a *reachable floor further down* — that is what makes their absence produce a landing behind a wall, or a fall straight through an obstruction. Both fixtures above put a genuine floor three blocks down for exactly that reason.
 
 Run each as: `./gradlew :core-pathfinder:test --tests "dev.continuo.pathfinder.DescendMoveTest"`
 Record both outputs, revert, confirm with `git diff --stat`.
