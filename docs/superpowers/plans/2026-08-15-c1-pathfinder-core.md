@@ -2707,10 +2707,12 @@ Expected: PASS, 7 tests.
 
 Three mutations, run separately. Removing one check leaves the other guarding, so a single combined mutation would prove nothing about either.
 
+**Which check guards which fixture is easy to get backwards** — this plan got it wrong first time round. For the north-east diagonal from `(1,65,1)`, `clear(world, nx, y, z)` is the check on `(2,65,1)`, the **east** side, and `clear(world, x, y, nz)` is the check on `(1,65,0)`, the **north** side. `aCornerCannotBeCutThroughOneBlockedSide` blocks the north side, so the *second* check is what rejects it; `...TheOtherBlockedSide` blocks the east side and is rejected by the *first*. The table below is in that corrected order.
+
 | Mutation to `DiagonalMove.expand` | Test that must fail |
 |---|---|
-| Drop `!clear(world, nx, y, z)` from the condition | `aCornerCannotBeCutThroughOneBlockedSide` |
-| Drop `!clear(world, x, y, nz)` from the condition | `aCornerCannotBeCutThroughTheOtherBlockedSide` |
+| Drop `!clear(world, nx, y, z)` from the condition | `aCornerCannotBeCutThroughTheOtherBlockedSide` |
+| Drop `!clear(world, x, y, nz)` from the condition | `aCornerCannotBeCutThroughOneBlockedSide` |
 | In `clear`, drop the `y + 1` check | `aCornerBlockedAtHeadHeightAloneStillBlocks` |
 
 Run each as: `./gradlew :core-pathfinder:test --tests "dev.continuo.pathfinder.DiagonalMoveTest"`
