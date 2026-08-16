@@ -1648,7 +1648,7 @@ are realistic; M5 is the first thing that can."
   - `interface Move { void expand(BlockSource world, int x, int y, int z, MoveSink sink); }` (package-private)
   - `interface MoveSink { void offer(int x, int y, int z, double cost); }` (package-private)
   - `final class TraverseMove implements Move` (package-private)
-  - `RecordingSink` (test) — `offers()` returning `List<String>` of `"(x, y, z)=cost"` in offer order, and `positions()` returning `List<Pos>`
+  - `RecordingSink` (test) — `positions()` returning `List<Pos>` in offer order, `costOf(Pos)` returning the offered cost, and `size()`
   - `Move.CARDINALS` — `int[][]` of `{dx, dz}` in the fixed order N, E, S, W (`{0,-1}, {1,0}, {0,1}, {-1,0}`)
 
 - [ ] **Step 1: Write the failing test**
