@@ -1802,7 +1802,31 @@ class TraverseMoveTest {
     }
 
     @Test
-    void unknownTerrainIsNeverOffered() {
+    void unknownAtBodyHeightIsNeverEntered() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,64,0\n"
+                + "--- y=64\n"
+                + "###\n"
+                + "###\n"
+                + "###\n"
+                + "--- y=65\n"
+                + "...\n"
+                + "..?\n"
+                + "...\n"
+                + "--- y=66\n"
+                + "...\n"
+                + "...\n"
+                + "...\n");
+
+        RecordingSink sink = new RecordingSink();
+        move.expand(world, 1, 65, 1, sink);
+
+        assertTrue(!sink.positions().contains(new Pos(2, 65, 1)),
+            "an unreadable block where the body would go might be solid");
+    }
+
+    @Test
+    void unknownGroundIsNeverWalkedOnto() {
         FixtureWorld world = FixtureWorld.parse(
             "origin: 0,64,0\n"
                 + "--- y=64\n"
@@ -1822,7 +1846,7 @@ class TraverseMoveTest {
         move.expand(world, 1, 65, 1, sink);
 
         assertTrue(!sink.positions().contains(new Pos(2, 65, 1)),
-            "unreadable terrain might be solid; the search must not assume it is walkable");
+            "unreadable ground might not be there at all; stepping onto it is a guess");
     }
 
     private static FixtureWorld openFloor() {
@@ -1934,13 +1958,17 @@ final class TraverseMove implements Move {
 - [ ] **Step 4: Run the tests**
 
 Run: `./gradlew :core-pathfinder:test --tests "dev.continuo.pathfinder.TraverseMoveTest"`
-Expected: PASS, 6 tests.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 5: Prove the unknown-terrain test is not vacuous**
 
 Mutation: in `Standability.passable`, change `if (block.shape() == BlockShape.UNKNOWN) { return false; }` to `if (false) { return false; }`.
 Run: `./gradlew :core-pathfinder:test --tests "dev.continuo.pathfinder.TraverseMoveTest"`
-Expected: `unknownTerrainIsNeverOffered` FAILS. Record the output, revert, confirm with `git diff --stat`.
+Expected: `unknownAtBodyHeightIsNeverEntered` FAILS. Record the output, revert, confirm with `git diff --stat`.
+
+**Why the `?` sits at body height and not in the floor.** `standable` consults `passable` for the feet and head blocks but `supports` for the block below, and each has its own `UNKNOWN` guard. A fixture whose `?` is the floor is rejected by `supports`, so mutating `passable` leaves it passing — the test would witness nothing. `unknownGroundIsNeverWalkedOnto` keeps that floor case as a behavioural test, but it is not this mutation's witness.
+
+**`supports`'s own `UNKNOWN` guard cannot be witnessed from a fixture world at all**, and that is worth stating rather than leaving as a gap. `BlockData.UNKNOWN` has a collision top of `0.0`, which the `>= SUPPORT_MIN_TOP` band rejects independently, and a fixture can only produce that one `UNKNOWN` value. The guard is defensive against an `UNKNOWN`-shaped block with a floor-height collision top, which B1's classifier does not currently emit. Do not attempt a mutation for it here.
 
 - [ ] **Step 6: Commit**
 
