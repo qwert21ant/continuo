@@ -1410,7 +1410,7 @@ This task is **research first, code second**. Its deliverable is a set of consta
 - Modify: `docs/superpowers/specs/2026-08-15-c1-pathfinder-core-design.md` (fill §6's table with the derived values and citations)
 
 **Interfaces:**
-- Produces: `MovementCosts` with `public static final double` constants `TRAVERSE`, `ASCEND`, `DIAGONAL`, `FALL_PER_BLOCK`, `public static final int MAX_SAFE_FALL`, and `public static double cheapestMove()`
+- Produces: `MovementCosts` with `public static final double` constants `TRAVERSE`, `ASCEND`, `DIAGONAL`, `public static final int MAX_SAFE_FALL`, and the methods `public static double fallTicks(int blocks)` and `public static double cheapestMove()`
 
 - [ ] **Step 1: Make the 1.21.11 sources greppable**
 
@@ -1478,7 +1478,7 @@ class MovementCostsTest {
         assertTrue(MovementCosts.TRAVERSE > 0, "TRAVERSE");
         assertTrue(MovementCosts.ASCEND > 0, "ASCEND");
         assertTrue(MovementCosts.DIAGONAL > 0, "DIAGONAL");
-        assertTrue(MovementCosts.FALL_PER_BLOCK > 0, "FALL_PER_BLOCK");
+        assertTrue(MovementCosts.fallTicks(1) > 0, "fallTicks(1)");
         assertTrue(MovementCosts.MAX_SAFE_FALL >= 1, "MAX_SAFE_FALL");
     }
 
@@ -1500,7 +1500,7 @@ class MovementCostsTest {
         assertTrue(cheapest <= MovementCosts.TRAVERSE, "TRAVERSE");
         assertTrue(cheapest <= MovementCosts.ASCEND, "ASCEND");
         assertTrue(cheapest <= MovementCosts.DIAGONAL, "DIAGONAL");
-        assertTrue(cheapest <= MovementCosts.TRAVERSE + MovementCosts.FALL_PER_BLOCK,
+        assertTrue(cheapest <= MovementCosts.TRAVERSE + MovementCosts.fallTicks(1),
             "the cheapest possible descend");
         assertTrue(cheapest > 0, "a zero lower bound would make the heuristic useless");
     }
@@ -1561,11 +1561,19 @@ public final class MovementCosts {
     public static final double DIAGONAL = TRAVERSE * Math.sqrt(2.0);
 
     /**
-     * Ticks spent falling per block of drop, on top of the step that leaves the ledge.
+     * Ticks spent falling a given number of blocks, on top of the step that leaves the ledge.
+     *
+     * <p>Per-depth rather than per-block, because a fall accelerates: charging a mean would
+     * underprice a one-block drop by roughly 39%, and a search that underprices the commonest
+     * descend prefers dropping to walking around.
      *
      * <p>1.7.10: {@code <citation>}. 1.21.11: {@code <citation>}.
+     *
+     * @param blocks the drop depth, from 1 to {@link #MAX_SAFE_FALL}
+     * @return the fall time in ticks
+     * @throws IllegalArgumentException outside that range
      */
-    public static final double FALL_PER_BLOCK = <derived>;
+    public static double fallTicks(int blocks) { <derived table> }
 
     /**
      * The greatest drop, in blocks, taken without damage.
@@ -1587,7 +1595,7 @@ public final class MovementCosts {
      * @return the cheapest possible single movement, in ticks
      */
     public static double cheapestMove() {
-        return Math.min(Math.min(TRAVERSE, ASCEND), Math.min(DIAGONAL, TRAVERSE + FALL_PER_BLOCK));
+        return Math.min(Math.min(TRAVERSE, ASCEND), Math.min(DIAGONAL, TRAVERSE + fallTicks(1)));
     }
 }
 ```
@@ -2241,12 +2249,24 @@ class DescendMoveTest {
     }
 
     @Test
-    void aDropCostsATraversePlusFallTimePerBlock() {
+    void aDropCostsATraversePlusTheFallTimeForItsDepth() {
         RecordingSink sink = new RecordingSink();
         move.expand(shaft(3), 0, 100, 0, sink);
 
-        assertEquals(MovementCosts.TRAVERSE + 3 * MovementCosts.FALL_PER_BLOCK,
+        assertEquals(MovementCosts.TRAVERSE + MovementCosts.fallTicks(3),
             sink.costOf(new Pos(1, 97, 0)), 1.0e-9);
+    }
+
+    @Test
+    void deeperDropsCostStrictlyMoreThanShallowerOnes() {
+        RecordingSink shallow = new RecordingSink();
+        move.expand(shaft(1), 0, 100, 0, shallow);
+
+        RecordingSink deep = new RecordingSink();
+        move.expand(shaft(3), 0, 100, 0, deep);
+
+        assertTrue(deep.costOf(new Pos(1, 97, 0)) > shallow.costOf(new Pos(1, 99, 0)),
+            "falling further takes longer; a per-depth table must preserve that ordering");
     }
 
     @Test
@@ -2377,7 +2397,7 @@ final class DescendMove implements Move {
                 int landingY = y - drop;
                 if (Standability.standable(world, nx, landingY, nz)) {
                     sink.offer(nx, landingY, nz,
-                        MovementCosts.TRAVERSE + drop * MovementCosts.FALL_PER_BLOCK);
+                        MovementCosts.TRAVERSE + MovementCosts.fallTicks(drop));
                     break;
                 }
                 if (!Standability.passable(world.at(nx, landingY, nz))) {
@@ -2392,7 +2412,7 @@ final class DescendMove implements Move {
 - [ ] **Step 4: Run the tests**
 
 Run: `./gradlew :core-pathfinder:test --tests "dev.continuo.pathfinder.DescendMoveTest"`
-Expected: PASS, 8 tests.
+Expected: PASS, 9 tests.
 
 - [ ] **Step 5: Prove the safe-fall limit is not vacuous**
 
