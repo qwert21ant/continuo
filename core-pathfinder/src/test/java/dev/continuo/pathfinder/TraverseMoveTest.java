@@ -106,7 +106,31 @@ class TraverseMoveTest {
     }
 
     @Test
-    void unknownTerrainIsNeverOffered() {
+    void unknownAtBodyHeightIsNeverEntered() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,64,0\n"
+                + "--- y=64\n"
+                + "###\n"
+                + "###\n"
+                + "###\n"
+                + "--- y=65\n"
+                + "...\n"
+                + "..?\n"
+                + "...\n"
+                + "--- y=66\n"
+                + "...\n"
+                + "...\n"
+                + "...\n");
+
+        RecordingSink sink = new RecordingSink();
+        move.expand(world, 1, 65, 1, sink);
+
+        assertTrue(!sink.positions().contains(new Pos(2, 65, 1)),
+            "an unreadable block where the body would go might be solid");
+    }
+
+    @Test
+    void unknownGroundIsNeverWalkedOnto() {
         FixtureWorld world = FixtureWorld.parse(
             "origin: 0,64,0\n"
                 + "--- y=64\n"
@@ -126,7 +150,7 @@ class TraverseMoveTest {
         move.expand(world, 1, 65, 1, sink);
 
         assertTrue(!sink.positions().contains(new Pos(2, 65, 1)),
-            "unreadable terrain might be solid; the search must not assume it is walkable");
+            "unreadable ground might not be there at all; stepping onto it is a guess");
     }
 
     private static FixtureWorld openFloor() {
