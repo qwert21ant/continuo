@@ -537,6 +537,12 @@ class StandabilityTest {
     private static final BlockData FARMLAND_LEGACY = block(BlockShape.FULL, 1.0);
     private static final BlockData FARMLAND_MODERN = block(BlockShape.PARTIAL, 0.9375);
 
+    /** Taller than a cube but not classified FENCE — only the numeric upper bound rejects it. */
+    private static final BlockData TALL_PARTIAL = block(BlockShape.PARTIAL, 1.5);
+
+    /** A fence whose collision top would qualify — only the shape check rejects it. */
+    private static final BlockData SHORT_FENCE = block(BlockShape.FENCE, 1.0);
+
     // --- passable -------------------------------------------------------
 
     @Test
@@ -618,6 +624,20 @@ class StandabilityTest {
     void farmlandSupportsOnBothVersionsValues() {
         assertTrue(Standability.supports(FARMLAND_LEGACY));
         assertTrue(Standability.supports(FARMLAND_MODERN));
+    }
+
+    // --- each support guard, isolated -----------------------------------
+
+    @Test
+    void anythingTallerThanACubeIsNotAFloorEvenWhenNotClassifiedAsAFence() {
+        assertFalse(Standability.supports(TALL_PARTIAL),
+            "only the SUPPORT_MAX_TOP bound rejects this; the FENCE shape check does not fire");
+    }
+
+    @Test
+    void aFenceIsNotAFloorEvenWhenItsCollisionTopWouldQualify() {
+        assertFalse(Standability.supports(SHORT_FENCE),
+            "only the FENCE shape check rejects this; the SUPPORT_MAX_TOP bound does not fire");
     }
 
     // --- the deliberate C1 limitation -----------------------------------
@@ -818,12 +838,14 @@ Five of these tests exist to prove something does *not* happen, which is exactly
 | 1 | Delete the `shape() == UNKNOWN` check from `passable` | `unknownIsNeverPassable` |
 | 2 | Delete the `fluid() != Fluid.NONE` check from `passable` | `waterIsNotPassableEvenThoughItHasNoCollision`, `aWaterloggedSlabIsNotPassable` |
 | 3 | Delete the `AVOID` check from `passable` | `avoidTaggedBlocksAreNotPassable` |
-| 4 | Delete `shape() == BlockShape.FENCE` from `supports` (leave `SUPPORT_MAX_TOP`) | `aFenceIsNotAFloorDespiteItsCollisionTop` |
-| 5 | Change `top <= SUPPORT_MAX_TOP` to `true` in `supports` (leave the `FENCE` check) | `aFenceIsNotAFloorDespiteItsCollisionTop` |
+| 4 | Delete `shape() == BlockShape.FENCE` from `supports` | `aFenceIsNotAFloorEvenWhenItsCollisionTopWouldQualify` |
+| 5 | Change `top <= SUPPORT_MAX_TOP` to `true` in `supports` | `anythingTallerThanACubeIsNotAFloorEvenWhenNotClassifiedAsAFence` |
 | 6 | Change `PASSABLE_MAX_TOP` to `0.6` | `aBottomSlabIsAnObstacleNeitherEnterableNorStandable` |
 | 7 | Change `SUPPORT_MIN_TOP` to `0.4` | `aBottomSlabIsAnObstacleNeitherEnterableNorStandable` |
 
-Mutations 4 and 5 are run **separately and both must fail the test**. Removing only one leaves the other guarding, and a single combined mutation would prove nothing about either.
+**Why mutations 4 and 5 need their own fixtures.** `supports` guards against a fence twice — by shape and by the `1.0` upper bound — and the ordinary fence fixture has a collision top of `1.5`, so *either* guard alone rejects it. Neither mutation can kill a test that uses only that fixture, which makes `aFenceIsNotAFloorDespiteItsCollisionTop` unable to prove anything about either guard on its own. `TALL_PARTIAL` (`PARTIAL`, top `1.5`) is rejected only by the bound; `SHORT_FENCE` (`FENCE`, top `1.0`) only by the shape check. Run the two mutations separately against those two tests.
+
+Neither fixture is a state B1's classifier can currently emit — its rule 2 sends anything above `1.0` to `FENCE`. They exist because the spec deliberately keeps both guards so the predicate stays correct if that rule changes, and a guard nothing can fail is a guard nobody can trust.
 
 Run each as: `./gradlew :core-pathfinder:test --tests "dev.continuo.pathfinder.StandabilityTest"`
 
