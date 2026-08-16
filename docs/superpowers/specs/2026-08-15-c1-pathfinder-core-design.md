@@ -258,28 +258,51 @@ Costs are in ticks, which the source architecture §3 takes from Baritone as-is.
 pure `:core-pathfinder` and is therefore shared across both versions; there is no per-version seam
 and C1 does not introduce one.
 
-**No numeric values appear in this spec.** The project's standing rule is that Minecraft API and
-behaviour claims are evidenced from the decompiled sources on disk, never recalled — B1 caught
-three silent, one-version-only wrong answers that way. The implementation plan carries a
-derivation task whose deliverable is `file:line` citations from **both** decompiled trees.
+**No numeric value appeared in this spec until it was derived.** The project's standing rule is
+that Minecraft API and behaviour claims are evidenced from the decompiled sources on disk, never
+recalled — B1 caught three silent, one-version-only wrong answers that way. The implementation
+plan carried a derivation task whose deliverable was `file:line` citations from **both** decompiled
+trees; the table below is now filled in from it. The full evidence, with the quoted source line for
+every raw value and the arithmetic that turns it into ticks, is in
+`.superpowers/sdd/2026-08-15-c1-pathfinder-core/task-4-report.md`; the citations are also carried on
+each constant in `MovementCosts`.
 
-| Constant | Derived from | Status |
-|---|---|---|
-| Horizontal ticks per block | movement speed attributes, `EntityLivingBase` and its modern equivalent | derived, cited |
-| Ascend surcharge | jump velocity and gravity | derived, cited |
-| Fall ticks per block | gravity | derived, cited |
-| Maximum safe fall distance | the fall-damage threshold | derived, cited |
-| Diagonal factor | geometric √2 | declared |
-| Turn penalty | — | declared estimate, or omitted entirely |
+| Constant | Derived from | Value | Citations (1.7.10 / 1.21.11) |
+|---|---|---|---|
+| Horizontal ticks per block | movement speed attributes, `EntityLivingBase` and its modern equivalent | **3.5636** (sprint; the walk figure derives to 4.6327) | `EntityLivingBase.java:1618,1621,1626,1704,2021`, `Entity.java:1195,1198,1200`, `Block.java:453`, `PlayerCapabilities.java:20`, `EntityLivingBase.java:57`, `ModifiableAttributeInstance.java:188` / `LivingEntity.java:159-160,2338-2339,2357,2527-2529,2571-2572,3007-3009`, `Entity.java:1636`, `BlockBehaviour.java:983`, `Player.java:214,465`, `AttributeInstance.java:160-161` |
+| Ascend surcharge | jump velocity and gravity | **+2.9946** on top of a traverse (6.5582 total) | `EntityLivingBase.java:1557,1700,1703` / `Attributes.java:45-50`, `LivingEntity.java:169,2253-2254,2266,2346,2356-2357`, `BlockBehaviour.java:985` |
+| Fall ticks per block | gravity | **2.8229** (mean over the deepest damage-free drop) | `EntityLivingBase.java:1700,1703` / `Attributes.java:45-47`, `LivingEntity.java:169,2346,2356-2357` |
+| Maximum safe fall distance | the fall-damage threshold | **3** blocks | `EntityLivingBase.java:1125` / `Attributes.java:73-75`, `LivingEntity.java:1747,1750-1751` |
+| Diagonal factor | geometric √2 | **5.0397** = 3.5636 × √2 | declared, not derived |
+| Turn penalty | — | **omitted** | no figure exists in either tree; omitted rather than invented |
 
-Two things the derivation task must **record rather than assume**:
+Two things the derivation task **recorded rather than assumed**:
 
-1. **Walk figure or sprint figure, per movement type.** M5's executor will sprint wherever it can,
-   so costing every movement at the walk rate would systematically misrank long straight runs.
-   Which figure each movement uses is a decision made during derivation and written down.
-2. **Whether the two versions' figures differ.** If they do, C1 takes the slower and says so in
-   the javadoc. A shared pure core cannot branch on version, and inventing a per-version cost seam
-   is out of scope here.
+1. **Walk figure or sprint figure, per movement type — the sprint figure, for every movement.**
+   M5's executor will sprint wherever it can, so costing every movement at the walk rate would
+   systematically misrank long straight runs. The binding reason is admissibility, though: §5.3's
+   heuristic multiplies `cheapestMove()` by a move count, so that figure must never exceed a real
+   move's cost, and sprinting is the fastest a vanilla player moves on flat ground. Traverse uses
+   it directly; Diagonal inherits it through the √2 factor; Ascend uses it for the horizontal
+   block and adds the jump surcharge, because both versions add a forward impulse when a
+   sprinting entity jumps and airborne motion decays at 0.91 rather than 0.546, so sprint speed
+   survives the hop; Descend uses it for the step off the ledge. The walk figure is derived and
+   recorded, but not used.
+2. **Whether the two versions' figures differ — they barely do, and the slower is taken.** Every
+   raw input is identical across the fifteen-year gap: walk speed 0.1, the +0.3 multiplicative
+   sprint modifier, block friction 0.6, the 0.91 air factor, the 0.98 input damping, jump velocity
+   0.42, gravity 0.08, vertical drag 0.98, safe fall distance 3.0. The single difference is
+   bookkeeping — the horizontal-acceleration normaliser is spelled `0.16277136F` with the 0.91
+   folded in on 1.7.10 and `0.21600002F` with it factored out on 1.21.11 — which separates the two
+   by 2e-7 ticks per block. 1.21.11 is the marginally slower and the rounded constants take it. A
+   shared pure core cannot branch on version, and no per-version cost seam was introduced.
+
+Two approximations are recorded on the constants rather than hidden. The ascend surcharge is
+**added** to the horizontal crossing although the rise and the crossing really overlap, which
+makes `ASCEND` an upper bound; the design requires a climb to cost more than level ground and only
+M5 can measure how much more. And a fall accelerates, so no single per-block constant is exact —
+`FALL_PER_BLOCK` is the mean over the deepest damage-free drop, exact at that depth and an
+approximation above it.
 
 Nothing in C1 can validate that these numbers are *realistic* — only that they are admissible and
 consistent. M5 is the first thing that executes a path and therefore the first thing that can
