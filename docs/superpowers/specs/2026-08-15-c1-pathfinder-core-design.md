@@ -269,10 +269,10 @@ each constant in `MovementCosts`.
 
 | Constant | Derived from | Value | Citations (1.7.10 / 1.21.11) |
 |---|---|---|---|
-| Horizontal ticks per block | movement speed attributes, `EntityLivingBase` and its modern equivalent | **3.5636** (sprint; the walk figure derives to 4.6327) | `EntityLivingBase.java:1618,1621,1626,1704,2021`, `Entity.java:1195,1198,1200`, `Block.java:453`, `PlayerCapabilities.java:20`, `EntityLivingBase.java:57`, `ModifiableAttributeInstance.java:188` / `LivingEntity.java:159-160,2338-2339,2357,2527-2529,2571-2572,3007-3009`, `Entity.java:1636`, `BlockBehaviour.java:983`, `Player.java:214,465`, `AttributeInstance.java:160-161` |
+| Horizontal ticks per block | movement speed attributes, `EntityLivingBase` and its modern equivalent | **3.5636** (sprint; the walk figure derives to 4.6327) | `EntityLivingBase.java:1618,1621,1626,1633,1680,1704,2021`, `Entity.java:1195,1198,1200`, `Block.java:453`, `PlayerCapabilities.java:20`, `EntityLivingBase.java:57`, `ModifiableAttributeInstance.java:188` / `LivingEntity.java:159-160,2338-2339,2357,2528,2530,2571-2572,3007-3009`, `Entity.java:1636`, `BlockBehaviour.java:983`, `Player.java:214,465`, `AttributeInstance.java:160-161` |
 | Ascend surcharge | jump velocity and gravity | **+2.9946** on top of a traverse (6.5582 total) | `EntityLivingBase.java:1557,1700,1703` / `Attributes.java:45-50`, `LivingEntity.java:169,2253-2254,2266,2346,2356-2357`, `BlockBehaviour.java:985` |
-| Fall ticks per block | gravity | **2.8229** (mean over the deepest damage-free drop) | `EntityLivingBase.java:1700,1703` / `Attributes.java:45-47`, `LivingEntity.java:169,2346,2356-2357` |
-| Maximum safe fall distance | the fall-damage threshold | **3** blocks | `EntityLivingBase.java:1125` / `Attributes.java:73-75`, `LivingEntity.java:1747,1750-1751` |
+| Fall ticks by depth | gravity | **4.6147 / 6.7881 / 8.4687** ticks for a 1, 2 or 3 block drop — exact per-depth costs via `fallTicks(int)`, not a per-block rate | `EntityLivingBase.java:1700,1703` / `Attributes.java:45-47`, `LivingEntity.java:169,2346,2356-2357` |
+| Maximum safe fall distance | the fall-damage threshold | **3** blocks | `EntityLivingBase.java:1124-1125` / `Attributes.java:37-40,73-75`, `LivingEntity.java:1747,1750-1751` |
 | Diagonal factor | geometric √2 | **5.0397** = 3.5636 × √2 | declared, not derived |
 | Turn penalty | — | **omitted** | no figure exists in either tree; omitted rather than invented |
 
@@ -280,9 +280,14 @@ Two things the derivation task **recorded rather than assumed**:
 
 1. **Walk figure or sprint figure, per movement type — the sprint figure, for every movement.**
    M5's executor will sprint wherever it can, so costing every movement at the walk rate would
-   systematically misrank long straight runs. The binding reason is admissibility, though: §5.3's
-   heuristic multiplies `cheapestMove()` by a move count, so that figure must never exceed a real
-   move's cost, and sprinting is the fastest a vanilla player moves on flat ground. Traverse uses
+   systematically misrank long straight runs. Admissibility then follows without any claim about
+   the game: §5.3's heuristic multiplies `cheapestMove()` by a move count, so that figure must not
+   exceed the cost of any move the search can make — a property of the constants this model
+   declares, and the sprint figure satisfies it by construction because it is the smallest
+   per-block figure the other movements are built from. (The tempting stronger claim, that
+   sprinting is the fastest a player moves, is *false*: sprint-jumping is faster, by the same 0.2
+   forward impulse cited on the ascend surcharge. Admissibility here is a property of the model,
+   not of Minecraft.) Traverse uses
    it directly; Diagonal inherits it through the √2 factor; Ascend uses it for the horizontal
    block and adds the jump surcharge, because both versions add a forward impulse when a
    sprinting entity jumps and airborne motion decays at 0.91 rather than 0.546, so sprint speed
@@ -293,16 +298,27 @@ Two things the derivation task **recorded rather than assumed**:
    sprint modifier, block friction 0.6, the 0.91 air factor, the 0.98 input damping, jump velocity
    0.42, gravity 0.08, vertical drag 0.98, safe fall distance 3.0. The single difference is
    bookkeeping — the horizontal-acceleration normaliser is spelled `0.16277136F` with the 0.91
-   folded in on 1.7.10 and `0.21600002F` with it factored out on 1.21.11 — which separates the two
-   by 2e-7 ticks per block. 1.21.11 is the marginally slower and the rounded constants take it. A
-   shared pure core cannot branch on version, and no per-version cost seam was introduced.
+   folded in on 1.7.10 and `0.21600002F` with it factored out on 1.21.11. **That difference has to
+   be evaluated in `float`, as the sources declare it, not in exact decimal**, and the sign
+   reverses when it is: `0.6f * 0.91f` rounds *up* to `0.54600006`, whose cube `0.16277139`
+   exceeds 1.7.10's literal, so 1.7.10's normaliser is `0.9999998` while 1.21.11's divides out to
+   exactly `1.0`. **1.7.10 is therefore the slower version**, by 8.8e-7 ticks per block sprinting
+   and 6.3e-7 walking. The rounded constants take the slower (1.7.10) figure; because 3.5636 is
+   the four-decimal rounding of 1.7.10's 3.5635793 and lies above both versions, no constant
+   changed when this direction was corrected. A shared pure core cannot branch on version, and no
+   per-version cost seam was introduced.
 
-Two approximations are recorded on the constants rather than hidden. The ascend surcharge is
+One approximation is recorded on the constants rather than hidden: the ascend surcharge is
 **added** to the horizontal crossing although the rise and the crossing really overlap, which
-makes `ASCEND` an upper bound; the design requires a climb to cost more than level ground and only
-M5 can measure how much more. And a fall accelerates, so no single per-block constant is exact —
-`FALL_PER_BLOCK` is the mean over the deepest damage-free drop, exact at that depth and an
-approximation above it.
+makes `ASCEND` an upper bound. The design requires a climb to cost more than level ground and only
+M5 can measure how much more.
+
+Fall cost is **not** an approximation and deliberately not a per-block rate. A fall accelerates, so
+the marginal cost of each block drops away sharply — 4.6147, then 2.1734, then 1.6806 — and a
+single per-block constant would underprice a one-block drop, the commonest descend in the game, by
+roughly 39%; a search that under-prices short drops prefers dropping to walking around. `MovementCosts`
+therefore exposes `fallTicks(int)` over 1..`MAX_SAFE_FALL`, carrying the exact derived cost of each
+depth, and `DescendMove` charges `TRAVERSE + fallTicks(drop)`.
 
 Nothing in C1 can validate that these numbers are *realistic* — only that they are admissible and
 consistent. M5 is the first thing that executes a path and therefore the first thing that can
