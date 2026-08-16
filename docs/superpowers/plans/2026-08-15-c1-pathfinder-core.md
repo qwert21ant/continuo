@@ -836,7 +836,7 @@ Five of these tests exist to prove something does *not* happen, which is exactly
 | # | Mutation to `Standability` | Test that must fail |
 |---|---|---|
 | 1 | Delete the `shape() == UNKNOWN` check from `passable` | `unknownIsNeverPassable` |
-| 2 | Delete the `fluid() != Fluid.NONE` check from `passable` | `waterIsNotPassableEvenThoughItHasNoCollision`, `aWaterloggedSlabIsNotPassable` |
+| 2 | Delete the `fluid() != Fluid.NONE` check from `passable` | `waterIsNotPassableEvenThoughItHasNoCollision` |
 | 3 | Delete the `AVOID` check from `passable` | `avoidTaggedBlocksAreNotPassable` |
 | 4 | Delete `shape() == BlockShape.FENCE` from `supports` | `aFenceIsNotAFloorEvenWhenItsCollisionTopWouldQualify` |
 | 5 | Change `top <= SUPPORT_MAX_TOP` to `true` in `supports` | `anythingTallerThanACubeIsNotAFloorEvenWhenNotClassifiedAsAFence` |
@@ -844,6 +844,8 @@ Five of these tests exist to prove something does *not* happen, which is exactly
 | 7 | Change `SUPPORT_MIN_TOP` to `0.4` | `aBottomSlabIsAnObstacleNeitherEnterableNorStandable` |
 
 **Why mutations 4 and 5 need their own fixtures.** `supports` guards against a fence twice — by shape and by the `1.0` upper bound — and the ordinary fence fixture has a collision top of `1.5`, so *either* guard alone rejects it. Neither mutation can kill a test that uses only that fixture, which makes `aFenceIsNotAFloorDespiteItsCollisionTop` unable to prove anything about either guard on its own. `TALL_PARTIAL` (`PARTIAL`, top `1.5`) is rejected only by the bound; `SHORT_FENCE` (`FENCE`, top `1.0`) only by the shape check. Run the two mutations separately against those two tests.
+
+**`aWaterloggedSlabIsNotPassable` is not mutation 2's witness either**, for the same reason: its slab's collision top of `1.0` is already outside `PASSABLE_MAX_TOP`, so the fluid guard is not what rejects it. It stays in the suite as a behavioural test — it documents that 1.21.11 lets a block be solid *and* watery, which is the asymmetry the spec warns against assuming away — but the guard it names is proven by `waterIsNotPassableEvenThoughItHasNoCollision`, whose air-shaped fixture only the fluid check can reject. The equivalent test on the `supports` side, `aWaterloggedSlabIsNotAFloor`, *does* isolate its guard: a top of `1.0` sits inside the support band, so fluid is the only thing rejecting it.
 
 Neither fixture is a state B1's classifier can currently emit — its rule 2 sends anything above `1.0` to `FENCE`. They exist because the spec deliberately keeps both guards so the predicate stays correct if that rule changes, and a guard nothing can fail is a guard nobody can trust.
 
