@@ -4,9 +4,13 @@ package dev.continuo.pathfinder;
  * What the search is trying to reach, and how far away it estimates itself to be.
  *
  * <p><b>The heuristic must never overestimate</b> the true remaining cost, or A* stops
- * guaranteeing a shortest path. Both implementations here keep that guarantee by construction
- * rather than by argument: they count the fewest moves that could possibly close the gap and
- * multiply by the cheapest possible move.
+ * guaranteeing a shortest path. Both implementations here multiply {@code cheapestMove()} by a
+ * Chebyshev distance, which holds that guarantee only under a condition on the movement set:
+ * every movement {@code m} must satisfy {@code cost(m) >= axisSpan(m) × cheapestMove()}, where
+ * {@code axisSpan(m)} is the largest number of steps {@code m} takes along any single axis. That
+ * is a checked numeric property of the cost table and not a structural one — the movements are
+ * free to span more than one block per axis, and {@link DescendMove} does. See
+ * {@link MovementCosts#cheapestMove()}.
  */
 public interface Goal {
 
