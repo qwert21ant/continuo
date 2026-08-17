@@ -3431,9 +3431,14 @@ class AStarPathfinderTest {
 
     @Test
     void theReturnedPathIsTheCheapestOneOverManyRandomWorlds() {
-        for (long seed = 1; seed <= 200; seed++) {
-            FixtureWorld world = randomWorld(seed, 6);
-            GoalBlock goal = new GoalBlock(5, 65, 5);
+        // These parameters are not arbitrary. An 8x8 world at 25% pillar density over seeds
+        // 1..400 was measured to separate the two implementations: the shipped search matches
+        // Dijkstra on all 364 solvable worlds, while the pre-fix mutate-and-requeue version
+        // disagrees on 4 of them, first at seed 6. A 6x6 world at the same density diverges on
+        // none of them — which is why an earlier version of this test passed against the bug.
+        for (long seed = 1; seed <= 400; seed++) {
+            FixtureWorld world = randomWorld(seed, 8);
+            GoalBlock goal = new GoalBlock(7, 65, 7);
 
             PathResult result = new AStarPathfinder().findPath(world, 0, 65, 0, goal);
             if (result.outcome() != PathOutcome.FOUND) {
@@ -3458,7 +3463,7 @@ class AStarPathfinderTest {
             }
             art.append('\n');
         }
-        for (int y = 65; y <= 68; y++) {
+        for (int y = 65; y <= 69; y++) {
             art.append("--- y=").append(y).append('\n');
             for (int z = 0; z < size; z++) {
                 for (int x = 0; x < size; x++) {
