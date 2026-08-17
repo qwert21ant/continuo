@@ -418,21 +418,62 @@ of any file a mutation touched must be verified, because B1 had one left broken 
 
 ## 8. Done criteria
 
-1. `./gradlew build --rerun-tasks` green, including all machine-checked invariants, with the Java 8
-   bytecode check extended to `:core-pathfinder`. **Never `./gradlew clean`** — it destroys the
-   1.7.10 decompiled sources at `adapters/adapter-forge-1.7.10/build/rfg/minecraft-src/java`,
+1. ✅ `./gradlew build --rerun-tasks` green, including all machine-checked invariants, with the
+   Java 8 bytecode check extended to `:core-pathfinder`. **Never `./gradlew clean`** — it destroys
+   the 1.7.10 decompiled sources at `adapters/adapter-forge-1.7.10/build/rfg/minecraft-src/java`,
    which are the evidence base for every API claim in this project.
-2. The headless suite passes, and every test in §7.3's mutation table has had its non-vacuity
+
+   **Evidence (Task 12, 2026-08-17):** `./gradlew build --rerun-tasks` →
+   `BUILD SUCCESSFUL in 1m 8s`, `65 actionable tasks: 65 executed` (none up-to-date, so every task
+   including `:core-pathfinder:checkCoreBytecode` genuinely re-ran). 293 `PASSED` test lines
+   project-wide, 0 `FAILED`. The 1.7.10 decompile tasks (`decompileSrgJar` etc.) reported
+   `SKIPPED`, meaning the sources on disk were reused, not deleted — `clean` was never invoked.
+   Separately, `./gradlew :core-pathfinder:checkCoreBytecode :core-pathfinder:checkCorePurity
+   --rerun-tasks` → `BUILD SUCCESSFUL in 6s`, `14 actionable tasks: 14 executed`, confirming both
+   invariant checks actually ran (not skipped) against `:core-pathfinder`'s compiled classes.
+
+2. ✅ The headless suite passes, and every test in §7.3's mutation table has had its non-vacuity
    demonstrated with the failing output recorded.
-3. `BlockSource` is implemented by `BlockLookup` and by the fixture worlds, and the pathfinder
+
+   **Evidence:** non-vacuity for the mutation table was demonstrated task-by-task with recorded
+   failing output in `.superpowers/sdd/2026-08-15-c1-pathfinder-core/task-2-report.md`,
+   `task-3-report.md`, `task-5-report.md`, `task-6-8-report.md`, `task-10-report.md` and
+   `task-11-report.md` (predicates, movements, and the corner-cut/max-safe-fall/fence guards).
+   Task 12 adds a complementary acceptance suite (`PathfinderAcceptanceTest`, 4 tests) asserting
+   properties over
+   any path the search returns rather than per-fixture behaviour; all 4 passed on first run
+   (`./gradlew :core-pathfinder:test --tests
+   "dev.continuo.pathfinder.PathfinderAcceptanceTest"` → `BUILD SUCCESSFUL`, 4/4 `PASSED`). The
+   full-project run in criterion 1 confirms the headless suite passes as a whole (293/293).
+
+3. ✅ `BlockSource` is implemented by `BlockLookup` and by the fixture worlds, and the pathfinder
    reads through the interface rather than through any concrete type.
-4. **No new SPI types, no new `IGameEvents` methods, no adapter changes** — verifiable by
+
+   **Evidence:** `grep -rn "implements BlockSource"` under the repo root finds exactly
+   `core/src/main/java/dev/continuo/core/BlockLookup.java:25` and
+   `core-pathfinder/src/test/java/dev/continuo/pathfinder/FixtureWorld.java:39`. `AStarPathfinder`
+   and every `Move` take `BlockSource` as a parameter type, never `BlockLookup` or `FixtureWorld`
+   directly.
+
+4. ✅ **No new SPI types, no new `IGameEvents` methods, no adapter changes** — verifiable by
    inspecting the diff, and a stated success condition rather than a hoped-for outcome.
-5. The cost constants in §6 carry `file:line` citations from both decompiled trees, and the two
+
+   **Evidence (Task 12, 2026-08-17):** `git diff --stat master...HEAD -- platform/ adapters/`
+   printed nothing (empty output, exit code 0) — checked, not assumed.
+
+5. ✅ The cost constants in §6 carry `file:line` citations from both decompiled trees, and the two
    recorded decisions (walk-or-sprint per movement, version divergence) are written down.
-6. **No smoke checklist and no in-game verification.** C1 adds nothing to `dev.continuo.platform`
+
+   **Evidence:** satisfied at Task 4; citations are recorded in §6's table above and on each
+   constant in `MovementCosts`, with full derivation in
+   `.superpowers/sdd/2026-08-15-c1-pathfinder-core/task-4-report.md`.
+
+6. ✅ **No smoke checklist and no in-game verification.** C1 adds nothing to `dev.continuo.platform`
    and changes neither adapter. This is stated because every sub-project since A1 has had an
    in-game obligation and a reader will reasonably expect one here.
+
+   **Evidence:** satisfied by criterion 4's empty diff against `platform/` and `adapters/` — there
+   is nothing in those trees for an in-game check to exercise.
 
 ---
 
