@@ -3067,9 +3067,16 @@ Create `core-pathfinder/src/test/java/dev/continuo/pathfinder/AStarPathfinderTes
 ```java
 package dev.continuo.pathfinder;
 
+import dev.continuo.core.BlockSource;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -3117,6 +3124,14 @@ class AStarPathfinderTest {
                 + "..#..\n"
                 + ".....\n"
                 + "--- y=66\n"
+                + "..#..\n"
+                + "..#..\n"
+                + ".....\n"
+                + "--- y=67\n"
+                + ".....\n"
+                + ".....\n"
+                + ".....\n"
+                + "--- y=68\n"
                 + ".....\n"
                 + ".....\n"
                 + ".....\n");
@@ -3124,8 +3139,11 @@ class AStarPathfinderTest {
         PathResult result = run(pathfinder, world);
 
         assertEquals(PathOutcome.FOUND, result.outcome());
-        assertTrue(!result.path().contains(new Pos(2, 65, 0)));
-        assertTrue(!result.path().contains(new Pos(2, 65, 1)));
+        assertTrue(!result.path().contains(new Pos(2, 66, 0)),
+            "the wall is two tall and must be routed around, not climbed");
+        assertTrue(!result.path().contains(new Pos(2, 66, 1)));
+        assertTrue(result.path().contains(new Pos(2, 65, 2)),
+            "the only gap is the third row, so the path must pass through it");
         assertEquals(new Pos(4, 65, 0), result.path().get(result.path().size() - 1));
     }
 
@@ -3177,6 +3195,10 @@ class AStarPathfinderTest {
 
     @Test
     void reportsNoPathWhenWalledOff() {
+        // The wall is two blocks tall with clear air above it, so the refusal comes from the
+        // wall itself rather than from running out of declared extent. A one-block wall in a
+        // three-slice world is refused only because y+2 reads UNKNOWN off the top, which would
+        // make this test pass for a reason that has nothing to do with walls.
         FixtureWorld world = FixtureWorld.parse(
             "origin: 0,64,0\n"
                 + "--- y=64\n"
@@ -3184,6 +3206,10 @@ class AStarPathfinderTest {
                 + "--- y=65\n"
                 + "S.#.G\n"
                 + "--- y=66\n"
+                + "..#..\n"
+                + "--- y=67\n"
+                + ".....\n"
+                + "--- y=68\n"
                 + ".....\n");
 
         PathResult result = run(pathfinder, world);
@@ -3344,6 +3370,176 @@ class AStarPathfinderTest {
     }
 
     @Test
+    void theTieBreakOrderIsPinnedSoAComparatorChangeCannotPassUnnoticed() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,64,0\n"
+                + "--- y=64\n"
+                + "###\n"
+                + "###\n"
+                + "###\n"
+                + "--- y=65\n"
+                + "S..\n"
+                + "...\n"
+                + "..G\n"
+                + "--- y=66\n"
+                + "...\n"
+                + "...\n"
+                + "...\n");
+
+        // A golden path. Repeating a search proves only that the code is deterministic — it
+        // passes even for a comparator with no tie-break at all, because nothing in the search
+        // varies between runs. Pinning the actual sequence is what makes a change in tie-break
+        // order visible. Run it once and encode exactly what comes back.
+        assertEquals(
+            Arrays.asList(new Pos(0, 65, 0), new Pos(1, 65, 1), new Pos(2, 65, 2)),
+            run(pathfinder, world).path());
+    }
+
+    @Test
+    void aStraightRunCostsExactlyItsTraverses() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,64,0\n"
+                + "--- y=64\n"
+                + "#####\n"
+                + "--- y=65\n"
+                + "S...G\n"
+                + "--- y=66\n"
+                + ".....\n");
+
+        assertEquals(4 * MovementCosts.TRAVERSE, run(pathfinder, world).cost(), 1.0e-9);
+    }
+
+    @Test
+    void aStaircaseCostsExactlyItsAscents() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,64,0\n"
+                + "--- y=64\n"
+                + "####\n"
+                + "--- y=65\n"
+                + "S###\n"
+                + "--- y=66\n"
+                + "..##\n"
+                + "--- y=67\n"
+                + "...#\n"
+                + "--- y=68\n"
+                + "...G\n"
+                + "--- y=69\n"
+                + "....\n");
+
+        assertEquals(3 * MovementCosts.ASCEND, run(pathfinder, world).cost(), 1.0e-9);
+    }
+
+    @Test
+    void theReturnedPathIsTheCheapestOneOverManyRandomWorlds() {
+        for (long seed = 1; seed <= 200; seed++) {
+            FixtureWorld world = randomWorld(seed, 6);
+            GoalBlock goal = new GoalBlock(5, 65, 5);
+
+            PathResult result = new AStarPathfinder().findPath(world, 0, 65, 0, goal);
+            if (result.outcome() != PathOutcome.FOUND) {
+                continue;
+            }
+
+            assertEquals(optimalCost(world, new Pos(0, 65, 0), goal), result.cost(), 1.0e-9,
+                "A* returned a costlier path than Dijkstra over the same movements, seed " + seed);
+        }
+    }
+
+    /**
+     * A deterministic pseudorandom world: solid floor, scattered pillars, generous headroom.
+     * Both corners are kept clear so the start and goal are always standable.
+     */
+    private static FixtureWorld randomWorld(long seed, int size) {
+        Random random = new Random(seed);
+        StringBuilder art = new StringBuilder("origin: 0,64,0\n--- y=64\n");
+        for (int z = 0; z < size; z++) {
+            for (int x = 0; x < size; x++) {
+                art.append('#');
+            }
+            art.append('\n');
+        }
+        for (int y = 65; y <= 68; y++) {
+            art.append("--- y=").append(y).append('\n');
+            for (int z = 0; z < size; z++) {
+                for (int x = 0; x < size; x++) {
+                    boolean corner = (x == 0 && z == 0) || (x == size - 1 && z == size - 1);
+                    art.append(!corner && y <= 66 && random.nextInt(100) < 25 ? '#' : '.');
+                }
+                art.append('\n');
+            }
+        }
+        return FixtureWorld.parse(art.toString());
+    }
+
+    /** An immutable frontier entry for the Dijkstra oracle. */
+    private static final class Entry {
+        final long packed;
+        final double cost;
+
+        Entry(long packed, double cost) {
+            this.packed = packed;
+            this.cost = cost;
+        }
+    }
+
+    /**
+     * The cheapest cost from start to goal, by Dijkstra over the same four movements.
+     *
+     * <p>An oracle independent of A*: no heuristic, no closed set, and immutable queue entries.
+     * This is what catches a search that returns a walkable but not-cheapest path — the class of
+     * defect that a suite asserting only path <em>lengths</em> cannot see.
+     */
+    private static double optimalCost(final BlockSource world, Pos start, final Goal goal) {
+        final Move[] moves = {
+            new TraverseMove(), new AscendMove(), new DescendMove(), new DiagonalMove()
+        };
+        final Map<Long, Double> best = new HashMap<Long, Double>();
+        final PriorityQueue<Entry> frontier =
+            new PriorityQueue<Entry>(64, new Comparator<Entry>() {
+                @Override
+                public int compare(Entry a, Entry b) {
+                    return Double.compare(a.cost, b.cost);
+                }
+            });
+
+        best.put(Long.valueOf(start.packed()), Double.valueOf(0.0));
+        frontier.add(new Entry(start.packed(), 0.0));
+
+        while (!frontier.isEmpty()) {
+            final Entry current = frontier.poll();
+            Double known = best.get(Long.valueOf(current.packed));
+            if (known == null || current.cost > known.doubleValue() + 1.0e-12) {
+                continue;
+            }
+
+            int cx = Pos.unpackX(current.packed);
+            int cy = Pos.unpackY(current.packed);
+            int cz = Pos.unpackZ(current.packed);
+            if (goal.isReached(cx, cy, cz)) {
+                return current.cost;
+            }
+
+            MoveSink sink = new MoveSink() {
+                @Override
+                public void offer(int nx, int ny, int nz, double cost) {
+                    Long key = Long.valueOf(Pos.pack(nx, ny, nz));
+                    double next = current.cost + cost;
+                    Double previous = best.get(key);
+                    if (previous == null || next < previous.doubleValue() - 1.0e-12) {
+                        best.put(key, Double.valueOf(next));
+                        frontier.add(new Entry(key.longValue(), next));
+                    }
+                }
+            };
+
+            for (int i = 0; i < moves.length; i++) {
+                moves[i].expand(world, cx, cy, cz, sink);
+            }
+        }
+        return Double.POSITIVE_INFINITY;
+    }
+
+    @Test
     void theHeuristicNeverExceedsTheCostActuallyPaid() {
         FixtureWorld world = FixtureWorld.parse(
             "origin: 0,64,0\n"
@@ -3465,6 +3661,7 @@ Create `core-pathfinder/src/main/java/dev/continuo/pathfinder/PathResult.java`:
 ```java
 package dev.continuo.pathfinder;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -3484,8 +3681,11 @@ public final class PathResult {
      */
     PathResult(PathOutcome outcome, List<Pos> path, List<Pos> expanded, double cost) {
         this.outcome = outcome;
-        this.path = Collections.unmodifiableList(path);
-        this.expanded = Collections.unmodifiableList(expanded);
+        // Copied, not merely wrapped: the search hands over the live list it was appending to,
+        // so an unmodifiable view alone would leave this object's contents defined by whether
+        // the caller happens to stop using it.
+        this.path = Collections.unmodifiableList(new ArrayList<Pos>(path));
+        this.expanded = Collections.unmodifiableList(new ArrayList<Pos>(expanded));
         this.cost = cost;
     }
 
@@ -3538,17 +3738,48 @@ package dev.continuo.pathfinder;
 final class PathNode {
 
     final long packed;
-    final int sequence;
     double g;
-    double f;
     PathNode parent;
     boolean closed;
 
-    PathNode(long packed, int sequence) {
+    PathNode(long packed) {
         this.packed = packed;
-        this.sequence = sequence;
         this.g = Double.POSITIVE_INFINITY;
-        this.f = Double.POSITIVE_INFINITY;
+    }
+}
+```
+
+Create `core-pathfinder/src/main/java/dev/continuo/pathfinder/QueuedNode.java`:
+
+```java
+package dev.continuo.pathfinder;
+
+/**
+ * An immutable snapshot of a node's priority at the moment it entered the open set.
+ *
+ * <p><b>Why the queue holds these rather than {@link PathNode} itself.</b> When A* finds a cheaper
+ * route to a node it has already seen, it lowers that node's {@code g}. If the queue held the node
+ * object, that would be an in-place decrease-key with no sift-up: the heap invariant breaks, and
+ * {@code poll()} can then return an entry that is not the minimum. A* would close a node at a
+ * non-optimal cost and — because closed nodes are never reopened — return a path that is not the
+ * cheapest.
+ *
+ * <p>Snapshots make the queue's keys immutable, so the heap stays a heap. A node may appear
+ * several times; the entry with the lowest {@code f} is polled first, and later entries find the
+ * node already closed and are discarded.
+ */
+final class QueuedNode {
+
+    final long packed;
+    final double f;
+    final double g;
+    final int sequence;
+
+    QueuedNode(long packed, double f, double g, int sequence) {
+        this.packed = packed;
+        this.f = f;
+        this.g = g;
+        this.sequence = sequence;
     }
 }
 ```
@@ -3635,29 +3866,32 @@ public final class AStarPathfinder {
         final List<Pos> expanded = new ArrayList<Pos>();
         final int[] discovered = {0};
 
-        PriorityQueue<PathNode> open = new PriorityQueue<PathNode>(64, new Comparator<PathNode>() {
-            @Override
-            public int compare(PathNode a, PathNode b) {
-                int byF = Double.compare(a.f, b.f);
-                if (byF != 0) {
-                    return byF;
+        final PriorityQueue<QueuedNode> open =
+            new PriorityQueue<QueuedNode>(64, new Comparator<QueuedNode>() {
+                @Override
+                public int compare(QueuedNode a, QueuedNode b) {
+                    int byF = Double.compare(a.f, b.f);
+                    if (byF != 0) {
+                        return byF;
+                    }
+                    int byG = Double.compare(b.g, a.g);
+                    if (byG != 0) {
+                        return byG;
+                    }
+                    return Integer.compare(a.sequence, b.sequence);
                 }
-                int byG = Double.compare(b.g, a.g);
-                if (byG != 0) {
-                    return byG;
-                }
-                return Integer.compare(a.sequence, b.sequence);
-            }
-        });
+            });
 
-        PathNode start = new PathNode(Pos.pack(startX, startY, startZ), discovered[0]++);
+        long startPacked = Pos.pack(startX, startY, startZ);
+        PathNode start = new PathNode(startPacked);
         start.g = 0.0;
-        start.f = goal.heuristic(startX, startY, startZ);
-        nodes.put(Long.valueOf(start.packed), start);
-        open.add(start);
+        nodes.put(Long.valueOf(startPacked), start);
+        open.add(new QueuedNode(
+            startPacked, goal.heuristic(startX, startY, startZ), 0.0, discovered[0]++));
 
         while (!open.isEmpty()) {
-            final PathNode current = open.poll();
+            QueuedNode entry = open.poll();
+            final PathNode current = nodes.get(Long.valueOf(entry.packed));
             if (current.closed) {
                 continue;
             }
@@ -3676,15 +3910,14 @@ public final class AStarPathfinder {
                     Collections.<Pos>emptyList(), expanded, 0.0);
             }
 
-            final PriorityQueue<PathNode> openRef = open;
             MoveSink sink = new MoveSink() {
                 @Override
                 public void offer(int nx, int ny, int nz, double cost) {
-                    long key = Pos.pack(nx, ny, nz);
-                    PathNode neighbour = nodes.get(Long.valueOf(key));
+                    Long key = Long.valueOf(Pos.pack(nx, ny, nz));
+                    PathNode neighbour = nodes.get(key);
                     if (neighbour == null) {
-                        neighbour = new PathNode(key, discovered[0]++);
-                        nodes.put(Long.valueOf(key), neighbour);
+                        neighbour = new PathNode(key.longValue());
+                        nodes.put(key, neighbour);
                     }
                     if (neighbour.closed) {
                         return;
@@ -3694,9 +3927,12 @@ public final class AStarPathfinder {
                         return;
                     }
                     neighbour.g = tentative;
-                    neighbour.f = tentative + goal.heuristic(nx, ny, nz);
                     neighbour.parent = current;
-                    openRef.add(neighbour);
+                    // A fresh immutable entry, never a mutation of one already queued — see
+                    // QueuedNode. The old entry stays in the heap and is discarded on poll,
+                    // because by then this node is closed.
+                    open.add(new QueuedNode(neighbour.packed,
+                        tentative + goal.heuristic(nx, ny, nz), tentative, discovered[0]++));
                 }
             };
 
@@ -3722,7 +3958,7 @@ public final class AStarPathfinder {
 - [ ] **Step 5: Run the tests**
 
 Run: `./gradlew :core-pathfinder:test --tests "dev.continuo.pathfinder.AStarPathfinderTest"`
-Expected: PASS, 17 tests.
+Expected: PASS, 21 tests.
 
 If `theSameSearchReturnsTheIdenticalPathEveryTime` fails, the comparator is not a total order — do **not** work around it by relaxing the assertion. A non-deterministic search makes every path assertion in this suite flaky, and diagnosing that later costs far more than fixing the comparator now.
 
