@@ -4,7 +4,6 @@ import dev.continuo.core.BlockSource;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,13 +12,12 @@ import java.util.PriorityQueue;
 /**
  * A* over an implicit graph of block positions.
  *
- * <p><b>Deterministic by construction.</b> Movements expand in a fixed order, each open-set
- * <em>entry</em> carries the sequence number it was created at, and the open set orders by
- * {@code f}, then by higher {@code g}, then by that sequence. The sequence belongs to the entry
- * rather than the node, which matters: one node can hold several entries, and only a per-entry
- * sequence makes the comparison total. An identical search over an identical world therefore
- * returns an identical path — which is what lets a test assert <em>which</em> path it expects
- * rather than merely that one exists.
+ * <p><b>Deterministic by construction.</b> Movements expand in a fixed order and the open set is
+ * ordered by {@link QueuedNodeOrder}, which is total over distinct entries. An identical search
+ * over an identical world therefore returns an identical path — which is what lets a test assert
+ * <em>which</em> path it expects rather than merely that one exists. The two halves are
+ * independent and are tested apart: {@code QueuedNodeOrderTest} pins the comparator's three legs,
+ * and a golden-path fixture pins the movement iteration order.
  *
  * <p><b>The node budget is a stopping condition, not a fallback.</b> Exhausting it yields
  * {@link PathOutcome#BUDGET_EXCEEDED} and no path at all. Returning the best node reached so far
@@ -80,20 +78,7 @@ public final class AStarPathfinder {
         final int[] discovered = {0};
 
         final PriorityQueue<QueuedNode> open =
-            new PriorityQueue<QueuedNode>(64, new Comparator<QueuedNode>() {
-                @Override
-                public int compare(QueuedNode a, QueuedNode b) {
-                    int byF = Double.compare(a.f, b.f);
-                    if (byF != 0) {
-                        return byF;
-                    }
-                    int byG = Double.compare(b.g, a.g);
-                    if (byG != 0) {
-                        return byG;
-                    }
-                    return Integer.compare(a.sequence, b.sequence);
-                }
-            });
+            new PriorityQueue<QueuedNode>(64, QueuedNodeOrder.INSTANCE);
 
         long startPacked = Pos.pack(startX, startY, startZ);
         PathNode start = new PathNode(startPacked);

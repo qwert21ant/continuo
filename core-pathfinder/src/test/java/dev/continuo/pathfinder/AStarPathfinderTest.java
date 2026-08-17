@@ -303,7 +303,7 @@ class AStarPathfinderTest {
     }
 
     @Test
-    void theTieBreakOrderIsPinnedSoAComparatorChangeCannotPassUnnoticed() {
+    void theMovementIterationOrderIsPinnedSoAReorderingCannotPassUnnoticed() {
         FixtureWorld world = FixtureWorld.parse(
             "origin: 0,64,0\n"
                 + "--- y=64\n"
@@ -321,13 +321,20 @@ class AStarPathfinderTest {
 
         // A golden path, over a fixture with a genuine tie. The centre pillar rules out the
         // two-diagonal route, leaving two four-traverse routes of identical cost — around the
-        // north-east corner, or around the south-west. Which one comes back is decided purely
-        // by the comparator's tie-break, so a change to it fails this test.
+        // north-east corner, or around the south-west. Which one comes back is decided by the
+        // order the movements offer their neighbours in, so reversing Move.CARDINALS fails this
+        // test. Measured: it is the only one of the four mutations tried that does.
+        //
+        // It does NOT pin the comparator, despite the tie. Reducing the comparator to f alone,
+        // reversing its g leg, and stubbing its sequence leg to 0 each leave this test green,
+        // because the two candidate routes are discovered in an order the surviving legs already
+        // agree on. The comparator's three legs are pinned directly in QueuedNodeOrderTest; this
+        // test is the regression guard for Move.CARDINALS and is named for that.
         //
         // An open 3x3 will not do, and this is worth stating because it was tried: there the
-        // two-diagonal route is the unique optimum, so every comparator returns it — including
-        // one with no tie-break at all. Repeating a search proves only determinism, which this
-        // code has regardless; pinning a path is only meaningful where a tie exists to break.
+        // two-diagonal route is the unique optimum, so every iteration order returns it.
+        // Repeating a search proves only determinism, which this code has regardless; pinning a
+        // path is only meaningful where a tie exists to break.
         assertEquals(
             Arrays.asList(new Pos(0, 65, 0), new Pos(1, 65, 0), new Pos(2, 65, 0),
                 new Pos(2, 65, 1), new Pos(2, 65, 2)),
