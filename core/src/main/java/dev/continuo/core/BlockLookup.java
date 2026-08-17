@@ -17,8 +17,12 @@ import java.util.Map;
  * rule 2 already requires the adapter to call on every level transition — so no new machinery
  * and no new condition. A {@code HashMap} rather than an array because 1.21.11's state id space
  * is around 26,000 entries of which a session touches a small fraction.
+ *
+ * <p>This is the live implementation of {@link BlockSource}. Its reads are subject to
+ * {@code IBlockView}'s delivery window; a caller holding only the interface cannot know that,
+ * which is why the restriction is documented on both.
  */
-public final class BlockLookup {
+public final class BlockLookup implements BlockSource {
 
     private final IBlockView view;
     private final BlockClassifier classifier;
@@ -50,6 +54,7 @@ public final class BlockLookup {
      * @param z world Z
      * @return the block, or {@link BlockData#UNKNOWN} if the position is unreadable
      */
+    @Override
     public BlockData at(int x, int y, int z) {
         int stateId = view.stateId(x, y, z);
         if (stateId == -1) {
@@ -71,11 +76,13 @@ public final class BlockLookup {
     }
 
     /** @return the world's inclusive lower bound */
+    @Override
     public int minY() {
         return view.minY();
     }
 
     /** @return the world's exclusive upper bound */
+    @Override
     public int maxY() {
         return view.maxY();
     }

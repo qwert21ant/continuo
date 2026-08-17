@@ -10,6 +10,7 @@ plugins {
 val allowedProjectDependencies: Map<String, Set<String>> = mapOf(
     ":platform" to emptySet(),
     ":core" to setOf(":platform"),
+    ":core-pathfinder" to setOf(":core"),
     ":platform-testkit" to setOf(":platform", ":core"),
     ":runtime" to setOf(":platform", ":core"),
     // ":adapters" itself is an implicit parent project created by the colon-segmented

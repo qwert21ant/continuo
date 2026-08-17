@@ -19,6 +19,7 @@ rootProject.name = "continuo"
 
 include("platform")
 include("core")
+include("core-pathfinder")
 include("platform-testkit")
 include("runtime")
 include("adapters:adapter-fabric-1.21.11")
