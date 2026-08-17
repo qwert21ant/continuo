@@ -412,8 +412,21 @@ reviewers read test output as text and cannot open a PNG. An image written to th
 would be invisible to everyone in the loop that actually debugs this code.
 
 **Overlay characters parse back as air**, so a rendered failure pastes straight in as a regression
-fixture — terrain survives the round-trip and the annotations degrade harmlessly. That property is
-what makes the renderer worth building at C1 rather than waiting for the web UI at M7.
+fixture — terrain *not covered by an overlay* survives the round-trip and the annotations degrade
+harmlessly. That property is what makes the renderer worth building at C1 rather than waiting for
+the web UI at M7.
+
+**The limit, stated rather than implied.** An overlay *replaces* the terrain character, so a
+passable non-air block under a path position or an expanded node — carpet, a snow layer, one of
+the two blocks §4.3 makes a centrepiece — re-parses as air. The fix is not to drop the overlay
+where the terrain is non-air: that would lose the path marker exactly where the terrain is
+interesting, which is worse for debugging than the loss it prevents.
+
+The consequence is mild but real. Any block that can sit under an overlay is passable and
+non-supporting, because the search only walks where it can stand, and air is passable and
+non-supporting too — so a pasted-back fixture still poses the same routing question and still
+reproduces the failure. What is lost is the record of *which* passable block was there. §7.3
+requires a test pinning this behaviour, so it is documented in code rather than rediscovered.
 
 ### 7.3 Testing
 
@@ -427,7 +440,9 @@ apply anywhere in C1.
 - **A\*** — shortest path found, obstacles routed around, `NO_PATH` when walled off,
   `BUDGET_EXCEEDED` at the cap, and identical results across repeated runs.
 - **Heuristic** — `h` never exceeds the actual cost of the path found, across the fixture suite.
-- **Parser and renderer** — round-trip: render a result, re-parse it, get the same terrain.
+- **Parser and renderer** — round-trip: render a result, re-parse it, get the same terrain
+  wherever no overlay covers it; and a test pinning the §7.2 limit, that a passable non-air block
+  under an overlay comes back as air.
 
 **Mutation proof is required, not optional,** for every test whose subject is *"X does not
 happen"*:

@@ -13,10 +13,24 @@ import java.util.Set;
  * <p>ASCII rather than an image, deliberately. The people and agents who debug this read test
  * output as text; a PNG written to the build directory would be invisible to every one of them.
  *
- * <p><b>The output round-trips.</b> Overlay characters read back as air when parsed, so a
- * rendered failure can be pasted straight into a test as a new fixture — the terrain survives
- * and the annotations degrade harmlessly. Put this in an assertion message rather than reasoning
- * about a failing path from coordinates alone.
+ * <p><b>The output round-trips, with one stated limit.</b> Overlay characters read back as air
+ * when parsed, so a rendered failure can be pasted straight into a test as a new fixture. Terrain
+ * <em>not covered by an overlay</em> survives exactly, and the annotations degrade harmlessly.
+ * Put this in an assertion message rather than reasoning about a failing path from coordinates
+ * alone.
+ *
+ * <p><b>An overlay replaces the terrain character rather than accompanying it</b>, so a passable
+ * non-air block underneath one — a carpet, a snow layer — re-parses as air. Nothing is stacked or
+ * escaped to avoid this, deliberately: dropping the overlay wherever the terrain is non-air would
+ * lose the path marker exactly where the terrain is interesting, which is worse for the debugging
+ * this class exists to serve.
+ *
+ * <p>The practical consequence is mild rather than absent, and is worth stating rather than
+ * implying away. Every block that can sit under an overlay is passable and non-supporting by
+ * construction — the search only walks where it can stand — and air is passable and
+ * non-supporting too, so a pasted-back fixture still poses the same routing question and still
+ * reproduces the failure. What it loses is the record of which passable block was there.
+ * {@code PathRendererTest} pins both halves of this: what survives, and what does not.
  */
 final class PathRenderer {
 

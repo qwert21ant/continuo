@@ -55,8 +55,16 @@ class PathRendererTest {
                 + rendered);
     }
 
+    /**
+     * The round trip over a fixture whose only blocks are {@code #} and {@code .}.
+     *
+     * <p>That is a real property and worth pinning, but it is narrower than it used to be named:
+     * every cell an overlay covers here holds air, so equality across the round trip says nothing
+     * about what happens when an overlay covers something else. It cannot witness the limitation
+     * that {@link #aPassableNonAirBlockUnderAnOverlayComesBackAsAir} pins.
+     */
     @Test
-    void terrainSurvivesARenderParseRoundTrip() {
+    void terrainNotCoveredByAnOverlaySurvivesARenderParseRoundTrip() {
         FixtureWorld world = FixtureWorld.parse(FLAT);
         PathResult result = new AStarPathfinder().findPath(world, 0, 65, 0,
             new GoalBlock(4, 65, 0));
@@ -71,6 +79,61 @@ class PathRendererTest {
                 }
             }
         }
+    }
+
+    /**
+     * The stated limit of the round trip, pinned so it is not rediscovered.
+     *
+     * <p>An overlay replaces the terrain character rather than accompanying it, so the carpet the
+     * path walks over comes back as air. This is a documented limitation rather than a bug — see
+     * {@link PathRenderer}'s class javadoc and spec §7.2 for why dropping the overlay instead
+     * would be worse — and the second half of the test is the reason it is tolerable: air routes
+     * identically to carpet, so the re-parsed fixture still reproduces the same search.
+     */
+    @Test
+    void aPassableNonAirBlockUnderAnOverlayComesBackAsAir() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,64,0\n"
+                + "--- y=64\n"
+                + "#####\n"
+                + "--- y=65\n"
+                + "S.c.G\n"
+                + "--- y=66\n"
+                + ".....\n");
+        PathResult result = new AStarPathfinder().findPath(world, 0, 65, 0,
+            new GoalBlock(4, 65, 0));
+
+        assertEquals(PathOutcome.FOUND, result.outcome());
+        assertEquals(FixtureBlocks.CARPET, world.at(2, 65, 0), "the fixture really has carpet");
+
+        String rendered = PathRenderer.render(world, result);
+
+        assertTrue(rendered.contains("S***G"),
+            "the path walks straight over the carpet, so an overlay covers it\n" + rendered);
+        // Only the terrain slices, not the trailing "// ... cost ..." summary, which has its own
+        // letter c and is skipped by the parser anyway.
+        String terrain = rendered.substring(0, rendered.indexOf("// "));
+        assertTrue(terrain.indexOf('c') < 0,
+            "and the overlay replaces the carpet's character rather than accompanying it\n"
+                + rendered);
+
+        FixtureWorld reparsed = FixtureWorld.parse(rendered);
+
+        assertEquals(FixtureBlocks.AIR, reparsed.at(2, 65, 0),
+            "so the carpet degrades to air on re-parse — the round trip preserves terrain only"
+                + " where no overlay covers it, and carpet is one of the two blocks spec 4.3"
+                + " makes a centrepiece");
+
+        // Why the limitation is tolerable rather than merely admitted: only passable,
+        // non-supporting blocks can sit under an overlay, and air is passable and non-supporting
+        // too, so the pasted-back fixture still poses the same routing question.
+        PathResult again = new AStarPathfinder().findPath(reparsed, 0, 65, 0,
+            new GoalBlock(4, 65, 0));
+
+        assertEquals(result.outcome(), again.outcome());
+        assertEquals(result.path(), again.path(),
+            "what is lost is which passable block was there, not how the search behaves");
+        assertEquals(result.cost(), again.cost(), 1.0e-9);
     }
 
     @Test
