@@ -312,19 +312,25 @@ class AStarPathfinderTest {
                 + "###\n"
                 + "--- y=65\n"
                 + "S..\n"
-                + "...\n"
+                + ".#.\n"
                 + "..G\n"
                 + "--- y=66\n"
                 + "...\n"
                 + "...\n"
                 + "...\n");
 
-        // A golden path. Repeating a search proves only that the code is deterministic — it
-        // passes even for a comparator with no tie-break at all, because nothing in the search
-        // varies between runs. Pinning the actual sequence is what makes a change in tie-break
-        // order visible. Run it once and encode exactly what comes back.
+        // A golden path, over a fixture with a genuine tie. The centre pillar rules out the
+        // two-diagonal route, leaving two four-traverse routes of identical cost — around the
+        // north-east corner, or around the south-west. Which one comes back is decided purely
+        // by the comparator's tie-break, so a change to it fails this test.
+        //
+        // An open 3x3 will not do, and this is worth stating because it was tried: there the
+        // two-diagonal route is the unique optimum, so every comparator returns it — including
+        // one with no tie-break at all. Repeating a search proves only determinism, which this
+        // code has regardless; pinning a path is only meaningful where a tie exists to break.
         assertEquals(
-            Arrays.asList(new Pos(0, 65, 0), new Pos(1, 65, 1), new Pos(2, 65, 2)),
+            Arrays.asList(new Pos(0, 65, 0), new Pos(1, 65, 0), new Pos(2, 65, 0),
+                new Pos(2, 65, 1), new Pos(2, 65, 2)),
             run(pathfinder, world).path());
     }
 

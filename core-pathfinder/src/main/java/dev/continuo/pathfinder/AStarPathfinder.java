@@ -13,11 +13,13 @@ import java.util.PriorityQueue;
 /**
  * A* over an implicit graph of block positions.
  *
- * <p><b>Deterministic by construction.</b> Movements expand in a fixed order, each node carries
- * the sequence number it was discovered at, and the open set orders by {@code f}, then by the
- * heuristic, then by that sequence. Every comparison is therefore total, so an identical search
- * over an identical world returns an identical path — which is what makes it possible to assert
- * *which* path a test expects rather than merely that one exists.
+ * <p><b>Deterministic by construction.</b> Movements expand in a fixed order, each open-set
+ * <em>entry</em> carries the sequence number it was created at, and the open set orders by
+ * {@code f}, then by higher {@code g}, then by that sequence. The sequence belongs to the entry
+ * rather than the node, which matters: one node can hold several entries, and only a per-entry
+ * sequence makes the comparison total. An identical search over an identical world therefore
+ * returns an identical path — which is what lets a test assert <em>which</em> path it expects
+ * rather than merely that one exists.
  *
  * <p><b>The node budget is a stopping condition, not a fallback.</b> Exhausting it yields
  * {@link PathOutcome#BUDGET_EXCEEDED} and no path at all. Returning the best node reached so far
