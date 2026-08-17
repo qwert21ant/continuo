@@ -108,5 +108,37 @@ class PathRendererTest {
 
         assertTrue(rendered.contains("NO_PATH"), "the outcome belongs in the dump\n" + rendered);
         assertTrue(rendered.contains("#"), rendered);
+        assertTrue(rendered.indexOf(FixtureWorld.START) >= 0,
+            "a failed render must still say where the search began\n" + rendered);
+        assertTrue(rendered.indexOf(FixtureWorld.GOAL) >= 0,
+            "and where it was trying to get to — otherwise the dump cannot be pasted back in\n"
+                + rendered);
+    }
+
+    @Test
+    void aFailedSearchRoundTripsWithItsStartAndGoalIntact() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,64,0\n"
+                + "--- y=64\n"
+                + "#####\n"
+                + "--- y=65\n"
+                + "S.#.G\n"
+                + "--- y=66\n"
+                + "..#..\n"
+                + "--- y=67\n"
+                + ".....\n"
+                + "--- y=68\n"
+                + ".....\n");
+        PathResult result = new AStarPathfinder().findPath(world, 0, 65, 0,
+            new GoalBlock(4, 65, 0));
+
+        assertEquals(PathOutcome.NO_PATH, result.outcome());
+
+        // The whole point of the renderer: a failure pastes straight back in and reproduces the
+        // same question. That is only true if the query survives, not just the terrain.
+        FixtureWorld reparsed = FixtureWorld.parse(PathRenderer.render(world, result));
+
+        assertEquals(world.start(), reparsed.start());
+        assertEquals(world.goal(), reparsed.goal());
     }
 }
