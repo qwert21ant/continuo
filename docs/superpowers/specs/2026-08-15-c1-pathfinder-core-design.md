@@ -461,6 +461,7 @@ happen"*:
 | Rejects corner-cutting | dropping one of the two orthogonal checks |
 | `SLAB_BOTTOM` is an obstacle | widening either threshold |
 | `FENCE` is not a floor | dropping *either* the shape exclusion or the `1.0` bound from `supports` — the test must fail for each removed independently, or it only proves the redundancy |
+| `UNKNOWN` is not a floor | dropping the shape exclusion from `supports` — `BlockData.UNKNOWN` carries `collisionTop 0.0`, so the numeric band alone rejects it and the test must use an `UNKNOWN` with a floor-height top or it witnesses nothing |
 | Every movement costs at least its axis span times the cheapest move (§5.3) | raising `MAX_SAFE_FALL` with a correctly derived `fallTicks` for the new depth — at `k = 4` the inequality goes negative, the heuristic overestimates, and A\* silently stops returning shortest paths |
 
 B1 found five tests that read as correct and guarded nothing; every one was invisible on
