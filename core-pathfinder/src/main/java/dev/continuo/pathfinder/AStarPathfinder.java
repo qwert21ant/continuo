@@ -77,29 +77,32 @@ public final class AStarPathfinder {
         final List<Pos> expanded = new ArrayList<Pos>();
         final int[] discovered = {0};
 
-        PriorityQueue<PathNode> open = new PriorityQueue<PathNode>(64, new Comparator<PathNode>() {
-            @Override
-            public int compare(PathNode a, PathNode b) {
-                int byF = Double.compare(a.f, b.f);
-                if (byF != 0) {
-                    return byF;
+        final PriorityQueue<QueuedNode> open =
+            new PriorityQueue<QueuedNode>(64, new Comparator<QueuedNode>() {
+                @Override
+                public int compare(QueuedNode a, QueuedNode b) {
+                    int byF = Double.compare(a.f, b.f);
+                    if (byF != 0) {
+                        return byF;
+                    }
+                    int byG = Double.compare(b.g, a.g);
+                    if (byG != 0) {
+                        return byG;
+                    }
+                    return Integer.compare(a.sequence, b.sequence);
                 }
-                int byG = Double.compare(b.g, a.g);
-                if (byG != 0) {
-                    return byG;
-                }
-                return Integer.compare(a.sequence, b.sequence);
-            }
-        });
+            });
 
-        PathNode start = new PathNode(Pos.pack(startX, startY, startZ), discovered[0]++);
+        long startPacked = Pos.pack(startX, startY, startZ);
+        PathNode start = new PathNode(startPacked);
         start.g = 0.0;
-        start.f = goal.heuristic(startX, startY, startZ);
-        nodes.put(Long.valueOf(start.packed), start);
-        open.add(start);
+        nodes.put(Long.valueOf(startPacked), start);
+        open.add(new QueuedNode(
+            startPacked, goal.heuristic(startX, startY, startZ), 0.0, discovered[0]++));
 
         while (!open.isEmpty()) {
-            final PathNode current = open.poll();
+            QueuedNode entry = open.poll();
+            final PathNode current = nodes.get(Long.valueOf(entry.packed));
             if (current.closed) {
                 continue;
             }
@@ -118,15 +121,14 @@ public final class AStarPathfinder {
                     Collections.<Pos>emptyList(), expanded, 0.0);
             }
 
-            final PriorityQueue<PathNode> openRef = open;
             MoveSink sink = new MoveSink() {
                 @Override
                 public void offer(int nx, int ny, int nz, double cost) {
-                    long key = Pos.pack(nx, ny, nz);
-                    PathNode neighbour = nodes.get(Long.valueOf(key));
+                    Long key = Long.valueOf(Pos.pack(nx, ny, nz));
+                    PathNode neighbour = nodes.get(key);
                     if (neighbour == null) {
-                        neighbour = new PathNode(key, discovered[0]++);
-                        nodes.put(Long.valueOf(key), neighbour);
+                        neighbour = new PathNode(key.longValue());
+                        nodes.put(key, neighbour);
                     }
                     if (neighbour.closed) {
                         return;
@@ -136,9 +138,12 @@ public final class AStarPathfinder {
                         return;
                     }
                     neighbour.g = tentative;
-                    neighbour.f = tentative + goal.heuristic(nx, ny, nz);
                     neighbour.parent = current;
-                    openRef.add(neighbour);
+                    // A fresh immutable entry, never a mutation of one already queued — see
+                    // QueuedNode. The old entry stays in the heap and is discarded on poll,
+                    // because by then this node is closed.
+                    open.add(new QueuedNode(neighbour.packed,
+                        tentative + goal.heuristic(nx, ny, nz), tentative, discovered[0]++));
                 }
             };
 

@@ -1,5 +1,6 @@
 package dev.continuo.pathfinder;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -19,8 +20,11 @@ public final class PathResult {
      */
     PathResult(PathOutcome outcome, List<Pos> path, List<Pos> expanded, double cost) {
         this.outcome = outcome;
-        this.path = Collections.unmodifiableList(path);
-        this.expanded = Collections.unmodifiableList(expanded);
+        // Copied, not merely wrapped: the search hands over the live list it was appending to,
+        // so an unmodifiable view alone would leave this object's contents defined by whether
+        // the caller happens to stop using it.
+        this.path = Collections.unmodifiableList(new ArrayList<Pos>(path));
+        this.expanded = Collections.unmodifiableList(new ArrayList<Pos>(expanded));
         this.cost = cost;
     }
 

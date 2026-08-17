@@ -9,16 +9,12 @@ package dev.continuo.pathfinder;
 final class PathNode {
 
     final long packed;
-    final int sequence;
     double g;
-    double f;
     PathNode parent;
     boolean closed;
 
-    PathNode(long packed, int sequence) {
+    PathNode(long packed) {
         this.packed = packed;
-        this.sequence = sequence;
         this.g = Double.POSITIVE_INFINITY;
-        this.f = Double.POSITIVE_INFINITY;
     }
 }
