@@ -230,13 +230,47 @@ nothing needs it before M5.
 h = cheapestMoveCost × max(|dx|, |dz|, |dy|)
 ```
 
-Every C1 movement changes each axis by at most one, so this cannot overestimate. Admissibility
-holds **by construction** rather than by an argument about diagonal factors — which is the version
-that survives a reviewer, and the version that stays true when C2 adds movements, provided
-`cheapestMoveCost` remains a genuine lower bound over the active set.
+**What admissibility actually requires.** Because `h` is `cheapestMoveCost` times a Chebyshev
+distance, one movement can shrink `h` by `cheapestMoveCost × axisSpan(m)`, where `axisSpan(m)` is
+the largest number of steps `m` takes along any single axis. So for every movement `m` in the
+active set:
 
-It is deliberately loose. C1 has no performance target to trade tightness against, and search
-effort is C4's subject.
+```
+cost(m) ≥ axisSpan(m) × cheapestMoveCost
+```
+
+Traverse, ascend and diagonal have span 1, so for those the condition collapses to
+`cheapestMoveCost` being the minimum movement cost — which is how it is defined. **Descend does
+not**: §5.4 lets it fall `k` blocks for `k` up to the max safe fall, so it has span `k` and
+requires the stronger
+
+```
+TRAVERSE + fallTicks(k) ≥ k × cheapestMoveCost,   for every k in 1..MAX_SAFE_FALL
+```
+
+An earlier draft of this section justified admissibility with "every C1 movement changes each axis
+by at most one". That is **false** and contradicts §5.4. Descend is the counterexample, and the
+error mattered: it presented as a structural guarantee something that is only a numeric fact about
+the current constants.
+
+**It is a checked numeric property, not a structural one.** With today's table it holds, with the
+margin shrinking fast:
+
+| `k` | `TRAVERSE + fallTicks(k)` | `k × cheapestMoveCost` | slack |
+|---|---|---|---|
+| 1 | 8.1783 | 3.5636 | +4.6147 |
+| 2 | 10.3517 | 7.1272 | +3.2245 |
+| 3 | 12.0323 | 10.6908 | +1.3415 |
+| 4 | 13.4752 | 14.2544 | **−0.7792** |
+
+The `k = 4` row is the whole point. Raising `MAX_SAFE_FALL` to 4 with a correctly derived
+`fallTicks(4)` — a change a reader would take for a routine re-derivation — makes A\* inadmissible
+and silently stops it returning shortest paths. §7.3 therefore requires a test asserting the
+inequality above for every `k`, and that test is itself mutation-proved by making exactly that
+change and watching it fail.
+
+The heuristic is otherwise deliberately loose. C1 has no performance target to trade tightness
+against, and search effort is C4's subject.
 
 ### 5.4 The four movements — D2
 

@@ -46,10 +46,9 @@ package dev.continuo.pathfinder;
  * recorded decision, not an oversight. M5's executor sprints wherever it can, so the walk rate
  * would inflate every move by 30% and systematically misrank long straight runs. And
  * {@link #cheapestMove()} multiplies the search's heuristic, so it must not exceed the cost of
- * any move the search can make — a property of the constants declared in this class, which the
- * sprint basis satisfies by construction because it is the smallest per-block figure any movement
- * here is built from. For the record, the walk figure derives to {@code 4.6327} ticks per block by
- * the same arithmetic.
+ * any single <em>axis step</em> the search can make — see that method, which spells out why the
+ * per-movement reading of that condition is too weak for {@link DescendMove}. For the record, the
+ * walk figure derives to {@code 4.6327} ticks per block by the same arithmetic.
  *
  * <p>A turn penalty is deliberately <b>omitted</b>. No figure for one exists in either source
  * tree, and the design permits leaving it out rather than inventing it.
@@ -213,13 +212,36 @@ public final class MovementCosts {
     }
 
     /**
-     * A lower bound on the cost of any single movement.
+     * A lower bound on the cost of one <em>axis step</em>.
      *
-     * <p>The heuristic multiplies this by a move count, so it must never exceed the true cost of
-     * any movement the search can make — that is what keeps A* admissible. When C2 makes the
-     * movement set open, this must become a minimum over the active set rather than a constant.
+     * <p>The heuristic is this value times a Chebyshev distance, so what keeps A* admissible is
+     * not a per-movement bound but a per-axis-step one. A movement {@code m} shrinks the
+     * heuristic by at most {@code cheapestMove()} times its <b>axis span</b> — the largest number
+     * of blocks it travels along any one axis — so admissibility requires
+     * {@code cost(m) >= axisSpan(m) * cheapestMove()} for every movement the search can make.
      *
-     * @return the cheapest possible single movement, in ticks
+     * <p>For a movement of span 1 that reduces to "this must be the minimum movement cost", which
+     * is what the {@link Math#min} chain below computes. {@link TraverseMove},
+     * {@link AscendMove} and {@link DiagonalMove} are all span 1.
+     *
+     * <p><b>{@link DescendMove} is not, and it is the only movement today that is not.</b> It
+     * falls {@code k} blocks in one step, so its span is {@code k} and it must satisfy the
+     * stronger {@code TRAVERSE + fallTicks(k) >= k * cheapestMove()} for every {@code k} in
+     * {@code 1..}{@link #MAX_SAFE_FALL}. That holds for the constants in this class, but only
+     * numerically and with the margin shrinking fast — {@code +4.6147}, {@code +3.2245},
+     * {@code +1.3415} at {@code k} of 1, 2 and 3, and it would go <b>negative</b> at
+     * {@code -0.7792} if {@code MAX_SAFE_FALL} were raised to 4 with a correctly derived
+     * {@code fallTicks(4)}. It is a checked property, not a structural guarantee, and
+     * {@code MovementCostsTest.everyMovementCostsAtLeastItsAxisSpanTimesTheCheapestMove} is what
+     * checks it.
+     *
+     * <p><b>Carrying this forward.</b> When C2 makes the movement set open, this must become a
+     * minimum over the active set rather than a constant — and the registry must enforce the
+     * per-axis-step condition above on every movement it admits, not merely the per-movement one.
+     * Any movement that travels more than one block along an axis, as descend does, needs the
+     * stronger form or the heuristic overestimates.
+     *
+     * @return the cheapest possible single axis step, in ticks
      */
     public static double cheapestMove() {
         return Math.min(Math.min(TRAVERSE, ASCEND), Math.min(DIAGONAL, TRAVERSE + fallTicks(1)));
