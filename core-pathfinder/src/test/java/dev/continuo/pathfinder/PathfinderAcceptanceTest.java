@@ -88,14 +88,15 @@ class PathfinderAcceptanceTest {
         AStarPathfinder pathfinder = new AStarPathfinder();
         PathResult whole = pathfinder.findPath(world, 0, 65, 0, goal);
 
-        assertEquals(PathOutcome.FOUND, whole.outcome());
+        assertEquals(PathOutcome.FOUND, whole.outcome(), render(world, whole));
 
         for (Pos pos : whole.path()) {
             PathResult fromHere = pathfinder.findPath(world, pos.x(), pos.y(), pos.z(), goal);
             assertEquals(PathOutcome.FOUND, fromHere.outcome(), render(world, fromHere));
             assertTrue(goal.heuristic(pos.x(), pos.y(), pos.z()) <= fromHere.cost() + 1.0e-9,
                 "the heuristic overestimates from " + pos + ": "
-                    + goal.heuristic(pos.x(), pos.y(), pos.z()) + " > " + fromHere.cost());
+                    + goal.heuristic(pos.x(), pos.y(), pos.z()) + " > " + fromHere.cost()
+                    + render(world, fromHere));
         }
     }
 

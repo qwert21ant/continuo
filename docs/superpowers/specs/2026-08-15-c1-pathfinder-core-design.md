@@ -449,10 +449,12 @@ of any file a mutation touched must be verified, because B1 had one left broken 
 3. ✅ `BlockSource` is implemented by `BlockLookup` and by the fixture worlds, and the pathfinder
    reads through the interface rather than through any concrete type.
 
-   **Evidence:** `grep -rn "implements BlockSource"` under the repo root finds exactly
-   `core/src/main/java/dev/continuo/core/BlockLookup.java:25` and
-   `core-pathfinder/src/test/java/dev/continuo/pathfinder/FixtureWorld.java:39`. `AStarPathfinder`
-   and every `Move` take `BlockSource` as a parameter type, never `BlockLookup` or `FixtureWorld`
+   **Evidence:** `grep -rn "implements BlockSource" --include=*.java . | grep -v "/build/"` from
+   the repo root finds exactly two hits:
+   `./core/src/main/java/dev/continuo/core/BlockLookup.java:25:public final class BlockLookup
+   implements BlockSource {` and `./core-pathfinder/src/test/java/dev/continuo/pathfinder/
+   FixtureWorld.java:39:final class FixtureWorld implements BlockSource {`. `AStarPathfinder` and
+   every `Move` take `BlockSource` as a parameter type, never `BlockLookup` or `FixtureWorld`
    directly.
 
 4. ✅ **No new SPI types, no new `IGameEvents` methods, no adapter changes** — verifiable by
