@@ -323,7 +323,7 @@ class AStarPathfinderTest {
         // two-diagonal route, leaving two four-traverse routes of identical cost — around the
         // north-east corner, or around the south-west. Which one comes back is decided by the
         // order the movements offer their neighbours in, so reversing Move.CARDINALS fails this
-        // test. Measured: it is the only one of the four mutations tried that does.
+        // test — measured, and it returns the mirror-image route around the other corner.
         //
         // It does NOT pin the comparator, despite the tie. Reducing the comparator to f alone,
         // reversing its g leg, and stubbing its sequence leg to 0 each leave this test green,

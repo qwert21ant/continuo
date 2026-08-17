@@ -63,13 +63,17 @@ class QueuedNodeOrderTest {
 
     @Test
     void noTwoDistinctEntriesCompareEqual() {
-        // Every combination of two f values and two g values, each at its own sequence number.
-        // A comparator missing any leg leaves at least one of these pairs comparing equal.
+        // Every combination of two f values and two g values, twice over, so that some pairs
+        // agree on both numeric legs and can only be separated by the sequence. Without those
+        // duplicates this test passes against a comparator whose sequence leg returns 0 — which
+        // it did, and which is precisely the hole the whole finding is about.
         List<QueuedNode> entries = new ArrayList<QueuedNode>();
         int sequence = 0;
-        for (int f = 0; f < 2; f++) {
-            for (int g = 0; g < 2; g++) {
-                entries.add(entry(f, g, sequence++));
+        for (int copy = 0; copy < 2; copy++) {
+            for (int f = 0; f < 2; f++) {
+                for (int g = 0; g < 2; g++) {
+                    entries.add(entry(f, g, sequence++));
+                }
             }
         }
 
