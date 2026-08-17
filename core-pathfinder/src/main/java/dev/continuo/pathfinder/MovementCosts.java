@@ -235,7 +235,7 @@ public final class MovementCosts {
      * {@code 1..}{@link #MAX_SAFE_FALL}. That holds for the constants in this class, but only
      * numerically and with the margin shrinking fast — {@code +4.6147}, {@code +3.2245},
      * {@code +1.3415} at {@code k} of 1, 2 and 3, and it would go <b>negative</b> at
-     * {@code -0.7792} if {@code MAX_SAFE_FALL} were raised to 4 with a correctly derived
+     * {@code -0.7791} if {@code MAX_SAFE_FALL} were raised to 4 with a correctly derived
      * {@code fallTicks(4)}. It is a checked property, not a structural guarantee, and
      * {@code MovementCostsTest.everyMovementCostsAtLeastItsAxisSpanTimesTheCheapestMove} is what
      * checks it.

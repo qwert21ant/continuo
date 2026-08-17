@@ -41,6 +41,13 @@ class StandabilityTest {
     /** A fence whose collision top would qualify — only the shape check rejects it. */
     private static final BlockData SHORT_FENCE = block(BlockShape.FENCE, 1.0);
 
+    /**
+     * Unreadable, with a collision top that would qualify as a floor — only the shape check
+     * rejects it. {@code BlockData.UNKNOWN} cannot witness that check in {@code supports},
+     * because its {@code collisionTop} of {@code 0.0} is already outside the support band.
+     */
+    private static final BlockData SOLID_UNKNOWN = block(BlockShape.UNKNOWN, 1.0);
+
     private static final BlockData CARPET_LEGACY = block(BlockShape.AIR, 0.0);
     private static final BlockData CARPET_MODERN = block(BlockShape.THIN_LAYER, 0.0625);
     private static final BlockData FARMLAND_LEGACY = block(BlockShape.FULL, 1.0);
@@ -98,6 +105,13 @@ class StandabilityTest {
     @Test
     void unknownNeverSupports() {
         assertFalse(Standability.supports(BlockData.UNKNOWN));
+    }
+
+    @Test
+    void unknownIsNotAFloorEvenWhenItsCollisionTopWouldQualify() {
+        assertFalse(Standability.supports(SOLID_UNKNOWN),
+            "only the UNKNOWN shape check rejects this; unknownNeverSupports cannot witness that "
+                + "check, because BlockData.UNKNOWN's collisionTop of 0.0 fails SUPPORT_MIN_TOP");
     }
 
     @Test

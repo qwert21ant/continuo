@@ -261,7 +261,7 @@ margin shrinking fast:
 | 1 | 8.1783 | 3.5636 | +4.6147 |
 | 2 | 10.3517 | 7.1272 | +3.2245 |
 | 3 | 12.0323 | 10.6908 | +1.3415 |
-| 4 | 13.4752 | 14.2544 | **−0.7792** |
+| 4 | 13.4753 | 14.2544 | **−0.7791** |
 
 The `k = 4` row is the whole point. Raising `MAX_SAFE_FALL` to 4 with a correctly derived
 `fallTicks(4)` — a change a reader would take for a routine re-derivation — makes A\* inadmissible
@@ -315,13 +315,16 @@ Two things the derivation task **recorded rather than assumed**:
 1. **Walk figure or sprint figure, per movement type — the sprint figure, for every movement.**
    M5's executor will sprint wherever it can, so costing every movement at the walk rate would
    systematically misrank long straight runs. Admissibility then follows without any claim about
-   the game: §5.3's heuristic multiplies `cheapestMove()` by a move count, so that figure must not
-   exceed the cost of any move the search can make — a property of the constants this model
-   declares, and the sprint figure satisfies it by construction because it is the smallest
-   per-block figure the other movements are built from. (The tempting stronger claim, that
-   sprinting is the fastest a player moves, is *false*: sprint-jumping is faster, by the same 0.2
-   forward impulse cited on the ascend surcharge. Admissibility here is a property of the model,
-   not of Minecraft.) Traverse uses
+   the game: §5.3's heuristic multiplies `cheapestMove()` by a Chebyshev distance, so that figure
+   must not exceed the cost of any single *axis step* the search can make —
+   `cost(m) ≥ axisSpan(m) × cheapestMoveCost` for every movement `m`, a property of the constants
+   this model declares. Being the smallest per-block figure the other movements are built from is
+   what makes the sprint figure satisfy that for the span-1 movements. **It does not settle
+   descend**, which spans up to `MAX_SAFE_FALL`: there the condition is a checked numeric fact with
+   a shrinking margin and nothing stronger, as §5.3's table shows. (The tempting stronger claim,
+   that sprinting is the fastest a player moves, is *false*: sprint-jumping is faster, by the same
+   0.2 forward impulse cited on the ascend surcharge. Admissibility here is a property of the
+   model, not of Minecraft.) Traverse uses
    it directly; Diagonal inherits it through the √2 factor; Ascend uses it for the horizontal
    block and adds the jump surcharge, because both versions add a forward impulse when a
    sprinting entity jumps and airborne motion decays at 0.91 rather than 0.546, so sprint speed
@@ -439,7 +442,9 @@ apply anywhere in C1.
 - **Movements** — each movement's expansion and each of its preconditions.
 - **A\*** — shortest path found, obstacles routed around, `NO_PATH` when walled off,
   `BUDGET_EXCEEDED` at the cap, and identical results across repeated runs.
-- **Heuristic** — `h` never exceeds the actual cost of the path found, across the fixture suite.
+- **Heuristic** — `h` never exceeds the actual cost of the path found, across the fixture suite;
+  and, per §5.3, `cost(m) ≥ axisSpan(m) × cheapestMoveCost` asserted directly on the cost table for
+  every movement, which for descend means every `k` in `1..MAX_SAFE_FALL`.
 - **Parser and renderer** — round-trip: render a result, re-parse it, get the same terrain
   wherever no overlay covers it; and a test pinning the §7.2 limit, that a passable non-air block
   under an overlay comes back as air.
@@ -456,6 +461,8 @@ happen"*:
 | Rejects corner-cutting | dropping one of the two orthogonal checks |
 | `SLAB_BOTTOM` is an obstacle | widening either threshold |
 | `FENCE` is not a floor | dropping *either* the shape exclusion or the `1.0` bound from `supports` — the test must fail for each removed independently, or it only proves the redundancy |
+| `UNKNOWN` is not a floor | dropping the shape exclusion from `supports` — `BlockData.UNKNOWN` carries `collisionTop 0.0`, so the numeric band alone rejects it and the test must use an `UNKNOWN` with a floor-height top or it witnesses nothing |
+| Every movement costs at least its axis span times the cheapest move (§5.3) | raising `MAX_SAFE_FALL` with a correctly derived `fallTicks` for the new depth — at `k = 4` the inequality goes negative, the heuristic overestimates, and A\* silently stops returning shortest paths |
 
 B1 found five tests that read as correct and guarded nothing; every one was invisible on
 inspection and visible only by breaking the code and watching the test fail. Two were found by
