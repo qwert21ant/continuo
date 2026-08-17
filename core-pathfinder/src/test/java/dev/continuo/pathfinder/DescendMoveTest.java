@@ -101,7 +101,7 @@ class DescendMoveTest {
     }
 
     @Test
-    void aWallAtBodyHeightBlocksAShaftBehindIt() {
+    void aWallAtFootHeightBlocksAShaftBehindIt() {
         FixtureWorld world = FixtureWorld.parse(
             "origin: 0,96,0\n"
                 + "--- y=96\n"
@@ -122,6 +122,29 @@ class DescendMoveTest {
 
         assertEquals(0, sink.size(),
             "there is a reachable floor three below, but a wall stands where the step would go");
+    }
+
+    @Test
+    void anOverhangAtHeadHeightBlocksTheStepOff() {
+        FixtureWorld world = FixtureWorld.parse(
+            "origin: 0,97,0\n"
+                + "--- y=97\n"
+                + "##\n"
+                + "--- y=98\n"
+                + "#.\n"
+                + "--- y=99\n"
+                + "#.\n"
+                + "--- y=100\n"
+                + "..\n"
+                + "--- y=101\n"
+                + ".#\n");
+
+        RecordingSink sink = new RecordingSink();
+        move.expand(world, 0, 100, 0, sink);
+
+        assertEquals(0, sink.size(),
+            "the neighbour column is clear at foot height but solid at head height, so the"
+                + " player cannot step off into it even though there is a floor three below");
     }
 
     @Test
