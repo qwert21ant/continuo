@@ -3379,19 +3379,25 @@ class AStarPathfinderTest {
                 + "###\n"
                 + "--- y=65\n"
                 + "S..\n"
-                + "...\n"
+                + ".#.\n"
                 + "..G\n"
                 + "--- y=66\n"
                 + "...\n"
                 + "...\n"
                 + "...\n");
 
-        // A golden path. Repeating a search proves only that the code is deterministic — it
-        // passes even for a comparator with no tie-break at all, because nothing in the search
-        // varies between runs. Pinning the actual sequence is what makes a change in tie-break
-        // order visible. Run it once and encode exactly what comes back.
+        // A golden path, over a fixture with a genuine tie. The centre pillar rules out the
+        // two-diagonal route, leaving two four-traverse routes of identical cost — around the
+        // north-east corner, or around the south-west. Which one comes back is decided purely
+        // by the comparator's tie-break, so a change to it fails this test.
+        //
+        // An open 3x3 will not do, and this is worth stating because it was tried: there the
+        // two-diagonal route is the unique optimum, so every comparator returns it — including
+        // one with no tie-break at all. Repeating a search proves only determinism, which this
+        // code has regardless; pinning a path is only meaningful where a tie exists to break.
         assertEquals(
-            Arrays.asList(new Pos(0, 65, 0), new Pos(1, 65, 1), new Pos(2, 65, 2)),
+            Arrays.asList(new Pos(0, 65, 0), new Pos(1, 65, 0), new Pos(2, 65, 0),
+                new Pos(2, 65, 1), new Pos(2, 65, 2)),
             run(pathfinder, world).path());
     }
 
@@ -3737,8 +3743,10 @@ package dev.continuo.pathfinder;
 /**
  * A position the search has reached.
  *
- * <p>Mutable and package-private: A* updates {@code g} and {@code f} in place when it finds a
- * cheaper route to a node it has already seen.
+ * <p>Mutable and package-private: A* lowers {@code g} and re-points {@code parent} when it finds
+ * a cheaper route to a node it has already seen. This object is reachable only through the
+ * search's node map and is <b>never</b> placed in the open set — the queue holds immutable
+ * {@link QueuedNode} snapshots instead, so lowering {@code g} here cannot disturb the heap.
  */
 final class PathNode {
 
@@ -3807,11 +3815,13 @@ import java.util.PriorityQueue;
 /**
  * A* over an implicit graph of block positions.
  *
- * <p><b>Deterministic by construction.</b> Movements expand in a fixed order, each node carries
- * the sequence number it was discovered at, and the open set orders by {@code f}, then by the
- * heuristic, then by that sequence. Every comparison is therefore total, so an identical search
- * over an identical world returns an identical path — which is what makes it possible to assert
- * *which* path a test expects rather than merely that one exists.
+ * <p><b>Deterministic by construction.</b> Movements expand in a fixed order, each open-set
+ * <em>entry</em> carries the sequence number it was created at, and the open set orders by
+ * {@code f}, then by higher {@code g}, then by that sequence. The sequence belongs to the entry
+ * rather than the node, which matters: one node can hold several entries, and only a per-entry
+ * sequence makes the comparison total. An identical search over an identical world therefore
+ * returns an identical path — which is what lets a test assert <em>which</em> path it expects
+ * rather than merely that one exists.
  *
  * <p><b>The node budget is a stopping condition, not a fallback.</b> Exhausting it yields
  * {@link PathOutcome#BUDGET_EXCEEDED} and no path at all. Returning the best node reached so far
