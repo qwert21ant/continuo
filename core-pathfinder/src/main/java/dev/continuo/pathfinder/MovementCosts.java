@@ -177,7 +177,12 @@ public final class MovementCosts {
      *
      * <p>Leaving a ledge the vertical motion is already {@code -0.0784}, because standing on the
      * ground each tick ends with gravity and drag applied to a motion the ground collision
-     * zeroed. Simulating from there — {@code v = (v + 0.08) * 0.98}, then displace by {@code v}:
+     * zeroed. Simulating from there — displace by {@code v}, <em>then</em> apply
+     * {@code v = (v + 0.08) * 0.98} — which is the order the sources run it in
+     * ({@code EntityLivingBase.java:1680} calls {@code moveEntity} before the gravity at
+     * {@code :1700} and the drag at {@code :1703}), and the order the table below is built on:
+     * the first tick displaces by the initial {@code v} of {@code 0.0784}, not by a value already
+     * accelerated:
      *
      * <pre>
      * tick   displacement   cumulative drop

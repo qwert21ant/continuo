@@ -6,8 +6,10 @@ package dev.continuo.pathfinder;
  * <p><b>The packing.</b> X and Z take 26 signed bits each and Y takes 12, which covers
  * &plusmn;33,554,432 horizontally — beyond Minecraft's world border on both versions — and
  * &minus;2048..2047 vertically, comfortably outside 1.7.10's {@code 0..256} and 1.21.11's
- * {@code -64..320}. A single {@code long} key means the open and closed collections are plain
- * maps of primitives rather than maps of objects with a hand-written hash.
+ * {@code -64..320}. A single {@code long} gives each node one identity that the search's maps key
+ * on directly, with no hand-written {@code hashCode} or {@code equals} over a composite key to get
+ * wrong. The maps are {@code HashMap<Long, PathNode>}, so the keys are still boxed; a primitive
+ * map would be a C4 concern, not a claim this packing already makes good on.
  */
 public final class Pos {
 
