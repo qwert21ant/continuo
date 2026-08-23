@@ -63,6 +63,18 @@ public final class AStarPathfinder {
         return registry;
     }
 
+    /**
+     * The registry {@link #AStarPathfinder()} would use.
+     *
+     * <p>Public so that a movement module's tests can assert what granting a capability does to
+     * the heuristic's multiplier without reaching into this package.
+     *
+     * @return a fresh registry; never {@code null}
+     */
+    public static MovementRegistry publicDefaultRegistry() {
+        return defaultRegistry();
+    }
+
     /** Creates a pathfinder with {@link #DEFAULT_NODE_BUDGET} and {@link #defaultRegistry()}. */
     public AStarPathfinder() {
         this(DEFAULT_NODE_BUDGET);

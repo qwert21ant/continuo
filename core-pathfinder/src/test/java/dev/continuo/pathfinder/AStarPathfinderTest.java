@@ -3,16 +3,10 @@ package dev.continuo.pathfinder;
 import dev.continuo.core.BlockSource;
 import dev.continuo.movement.IMovementType;
 import dev.continuo.movement.MovementCosts;
-import dev.continuo.movement.MoveSink;
-import dev.continuo.movement.MutableExpansionContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -426,74 +420,20 @@ class AStarPathfinderTest {
         return FixtureWorld.parse(art.toString());
     }
 
-    /** An immutable frontier entry for the Dijkstra oracle. */
-    private static final class Entry {
-        final long packed;
-        final double cost;
-
-        Entry(long packed, double cost) {
-            this.packed = packed;
-            this.cost = cost;
-        }
-    }
-
     /**
-     * The cheapest cost from start to goal, by Dijkstra over the same four movements.
+     * The cheapest cost from start to goal, by Dijkstra over C1's four movements.
      *
-     * <p>An oracle independent of A*: no heuristic, no closed set, and immutable queue entries.
-     * This is what catches a search that returns a walkable but not-cheapest path — the class of
-     * defect that a suite asserting only path <em>lengths</em> cannot see.
+     * <p>The oracle itself lives in {@link DijkstraOracle}, unchanged in substance, because a
+     * second test needs to run it over a different movement list — see
+     * {@link HeuristicMultiplierAdmissibilityTest}, which is the guard for the one admissibility
+     * bug these four movements cannot express. What that class needs is a registry whose
+     * <em>cheapest</em> movement is the one declaring wrongly; over C1's four, traverse is always
+     * the cheapest per axis step, so no declaration any of the other three could make would move
+     * the multiplier at all.
      */
-    private static double optimalCost(final BlockSource world, Pos start, final Goal goal) {
-        final IMovementType[] moves = {
-            new TraverseMove(), new AscendMove(), new DescendMove(), new DiagonalMove()
-        };
-        final MutableExpansionContext ctx = new MutableExpansionContext(world);
-        final Map<Long, Double> best = new HashMap<Long, Double>();
-        final PriorityQueue<Entry> frontier =
-            new PriorityQueue<Entry>(64, new Comparator<Entry>() {
-                @Override
-                public int compare(Entry a, Entry b) {
-                    return Double.compare(a.cost, b.cost);
-                }
-            });
-
-        best.put(Long.valueOf(start.packed()), Double.valueOf(0.0));
-        frontier.add(new Entry(start.packed(), 0.0));
-
-        while (!frontier.isEmpty()) {
-            final Entry current = frontier.poll();
-            Double known = best.get(Long.valueOf(current.packed));
-            if (known == null || current.cost > known.doubleValue() + 1.0e-12) {
-                continue;
-            }
-
-            int cx = Pos.unpackX(current.packed);
-            int cy = Pos.unpackY(current.packed);
-            int cz = Pos.unpackZ(current.packed);
-            if (goal.isReached(cx, cy, cz)) {
-                return current.cost;
-            }
-
-            MoveSink sink = new MoveSink() {
-                @Override
-                public void offer(int nx, int ny, int nz, double cost) {
-                    Long key = Long.valueOf(Pos.pack(nx, ny, nz));
-                    double next = current.cost + cost;
-                    Double previous = best.get(key);
-                    if (previous == null || next < previous.doubleValue() - 1.0e-12) {
-                        best.put(key, Double.valueOf(next));
-                        frontier.add(new Entry(key.longValue(), next));
-                    }
-                }
-            };
-
-            ctx.moveTo(cx, cy, cz);
-            for (int i = 0; i < moves.length; i++) {
-                moves[i].expand(ctx, sink);
-            }
-        }
-        return Double.POSITIVE_INFINITY;
+    private static double optimalCost(BlockSource world, Pos start, Goal goal) {
+        return DijkstraOracle.optimalCost(world, start, goal, Arrays.<IMovementType>asList(
+            new TraverseMove(), new AscendMove(), new DescendMove(), new DiagonalMove()));
     }
 
     @Test
