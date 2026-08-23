@@ -1,8 +1,15 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.Capability;
+import dev.continuo.movement.ExpansionContext;
+import dev.continuo.movement.IMovementType;
+import dev.continuo.movement.MoveSink;
 import dev.continuo.movement.MovementCosts;
 import dev.continuo.movement.Standability;
+
+import java.util.EnumSet;
+import java.util.Set;
 
 /**
  * Walking one block diagonally on the level.
@@ -12,23 +19,39 @@ import dev.continuo.movement.Standability;
  * that allows it produces paths that look shorter and cannot be walked. Checking only the
  * destination is the classic version of this bug.
  */
-final class DiagonalMove implements Move {
+final class DiagonalMove implements IMovementType {
 
     /** North-east, south-east, south-west, north-west as {@code {dx, dz}}. */
     private static final int[][] DIAGONALS = {{1, -1}, {1, 1}, {-1, 1}, {-1, -1}};
 
     @Override
-    public void expand(BlockSource world, int x, int y, int z, MoveSink sink) {
-        for (int i = 0; i < DIAGONALS.length; i++) {
-            int dx = DIAGONALS[i][0];
-            int dz = DIAGONALS[i][1];
-            int nx = x + dx;
-            int nz = z + dz;
+    public String id() {
+        return "walk.diagonal";
+    }
 
-            if (!Standability.standable(world, nx, y, nz)) {
+    @Override
+    public Set<Capability> requires() {
+        return EnumSet.noneOf(Capability.class);
+    }
+
+    @Override
+    public double minCostPerAxisStep() {
+        return MovementCosts.DIAGONAL;
+    }
+
+    @Override
+    public void expand(ExpansionContext ctx, MoveSink sink) {
+        int x = ctx.x();
+        int y = ctx.y();
+        int z = ctx.z();
+        for (int i = 0; i < DIAGONALS.length; i++) {
+            int nx = x + DIAGONALS[i][0];
+            int nz = z + DIAGONALS[i][1];
+
+            if (!Standability.standable(ctx.world(), nx, y, nz)) {
                 continue;
             }
-            if (!clear(world, nx, y, z) || !clear(world, x, y, nz)) {
+            if (!clear(ctx.world(), nx, y, z) || !clear(ctx.world(), x, y, nz)) {
                 continue;
             }
             sink.offer(nx, y, nz, MovementCosts.DIAGONAL);

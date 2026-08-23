@@ -1,5 +1,7 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.MoveSink;
+
 import java.util.ArrayList;
 import java.util.List;
 

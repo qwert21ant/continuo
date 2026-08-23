@@ -1,6 +1,8 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.IMovementType;
 import dev.continuo.movement.MovementCosts;
+import dev.continuo.movement.MutableExpansionContext;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -8,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AscendMoveTest {
 
-    private final Move move = new AscendMove();
+    private final IMovementType move = new AscendMove();
 
     /** A step up to the east of a player standing at (0, 65, 0). */
     private static final String STEP =
@@ -25,7 +27,9 @@ class AscendMoveTest {
     @Test
     void offersTheBlockAboveAStep() {
         RecordingSink sink = new RecordingSink();
-        move.expand(FixtureWorld.parse(STEP), 0, 65, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(FixtureWorld.parse(STEP));
+        ctx.moveTo(0, 65, 0);
+        move.expand(ctx, sink);
 
         assertEquals(1, sink.size());
         assertEquals(new Pos(1, 66, 0), sink.positions().get(0));
@@ -34,7 +38,9 @@ class AscendMoveTest {
     @Test
     void climbingCostsAnAscend() {
         RecordingSink sink = new RecordingSink();
-        move.expand(FixtureWorld.parse(STEP), 0, 65, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(FixtureWorld.parse(STEP));
+        ctx.moveTo(0, 65, 0);
+        move.expand(ctx, sink);
 
         assertEquals(MovementCosts.ASCEND, sink.costOf(new Pos(1, 66, 0)), 1.0e-9);
     }
@@ -53,7 +59,9 @@ class AscendMoveTest {
                 + "#.\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 0, 65, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(0, 65, 0);
+        move.expand(ctx, sink);
 
         assertEquals(0, sink.size(),
             "y+2 above the origin is where the head goes during the jump");
@@ -73,7 +81,9 @@ class AscendMoveTest {
                 + ".#\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 0, 65, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(0, 65, 0);
+        move.expand(ctx, sink);
 
         assertEquals(0, sink.size());
     }
@@ -92,7 +102,9 @@ class AscendMoveTest {
                 + "..\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 0, 65, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(0, 65, 0);
+        move.expand(ctx, sink);
 
         assertEquals(0, sink.size());
     }
@@ -111,7 +123,9 @@ class AscendMoveTest {
                 + "..\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 0, 65, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(0, 65, 0);
+        move.expand(ctx, sink);
 
         assertTrue(!sink.positions().contains(new Pos(1, 66, 0)),
             "a fence is 1.5 tall and cannot be jumped onto");
@@ -139,7 +153,9 @@ class AscendMoveTest {
                 + "...\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertEquals(4, sink.size());
         assertEquals(new Pos(1, 66, 0), sink.positions().get(0), "north first");

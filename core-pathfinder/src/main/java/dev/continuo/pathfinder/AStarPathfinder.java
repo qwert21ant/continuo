@@ -1,6 +1,10 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.ExpansionContext;
+import dev.continuo.movement.IMovementType;
+import dev.continuo.movement.MoveSink;
+import dev.continuo.movement.MutableExpansionContext;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,7 +37,7 @@ public final class AStarPathfinder {
      */
     public static final int DEFAULT_NODE_BUDGET = 100000;
 
-    private static final Move[] MOVES = {
+    private static final IMovementType[] MOVES = {
         new TraverseMove(), new AscendMove(), new DescendMove(), new DiagonalMove()
     };
 
@@ -87,6 +91,8 @@ public final class AStarPathfinder {
         open.add(new QueuedNode(
             startPacked, goal.heuristic(startX, startY, startZ), 0.0, discovered[0]++));
 
+        final MutableExpansionContext ctx = new MutableExpansionContext(world);
+
         while (!open.isEmpty()) {
             QueuedNode entry = open.poll();
             final PathNode current = nodes.get(Long.valueOf(entry.packed));
@@ -134,8 +140,9 @@ public final class AStarPathfinder {
                 }
             };
 
+            ctx.moveTo(cx, cy, cz);
             for (int i = 0; i < MOVES.length; i++) {
-                MOVES[i].expand(world, cx, cy, cz, sink);
+                MOVES[i].expand(ctx, sink);
             }
         }
 

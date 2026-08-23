@@ -1,6 +1,8 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.IMovementType;
 import dev.continuo.movement.MovementCosts;
+import dev.continuo.movement.MutableExpansionContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -10,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DiagonalMoveTest {
 
-    private final Move move = new DiagonalMove();
+    private final IMovementType move = new DiagonalMove();
 
     private static FixtureWorld openFloor() {
         return FixtureWorld.parse(
@@ -32,7 +34,9 @@ class DiagonalMoveTest {
     @Test
     void offersAllFourDiagonalsOnAnOpenFloor() {
         RecordingSink sink = new RecordingSink();
-        move.expand(openFloor(), 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(openFloor());
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertEquals(4, sink.size());
         assertTrue(sink.positions().containsAll(Arrays.asList(
@@ -42,7 +46,9 @@ class DiagonalMoveTest {
     @Test
     void offersDiagonalsInAFixedOrder() {
         RecordingSink sink = new RecordingSink();
-        move.expand(openFloor(), 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(openFloor());
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertEquals(Arrays.asList(
             new Pos(2, 65, 0), new Pos(2, 65, 2), new Pos(0, 65, 2), new Pos(0, 65, 0)),
@@ -52,7 +58,9 @@ class DiagonalMoveTest {
     @Test
     void aDiagonalCostsMoreThanAStraightStep() {
         RecordingSink sink = new RecordingSink();
-        move.expand(openFloor(), 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(openFloor());
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertEquals(MovementCosts.DIAGONAL, sink.costOf(new Pos(2, 65, 0)), 1.0e-9);
         assertTrue(MovementCosts.DIAGONAL > MovementCosts.TRAVERSE);
@@ -76,7 +84,9 @@ class DiagonalMoveTest {
                 + "...\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertTrue(!sink.positions().contains(new Pos(2, 65, 0)),
             "the destination is standable but the north side of the corner is solid");
@@ -100,7 +110,9 @@ class DiagonalMoveTest {
                 + "...\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertTrue(!sink.positions().contains(new Pos(2, 65, 0)),
             "the destination is standable but the east side of the corner is solid");
@@ -124,7 +136,9 @@ class DiagonalMoveTest {
                 + "...\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertTrue(!sink.positions().contains(new Pos(2, 65, 0)),
             "the player is two blocks tall; a corner blocked at head height blocks the squeeze");
@@ -148,7 +162,9 @@ class DiagonalMoveTest {
                 + "...\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertTrue(!sink.positions().contains(new Pos(2, 65, 0)));
     }

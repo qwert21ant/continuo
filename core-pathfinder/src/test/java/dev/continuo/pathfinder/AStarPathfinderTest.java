@@ -1,7 +1,10 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.IMovementType;
 import dev.continuo.movement.MovementCosts;
+import dev.continuo.movement.MoveSink;
+import dev.continuo.movement.MutableExpansionContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -323,14 +326,14 @@ class AStarPathfinderTest {
         // A golden path, over a fixture with a genuine tie. The centre pillar rules out the
         // two-diagonal route, leaving two four-traverse routes of identical cost — around the
         // north-east corner, or around the south-west. Which one comes back is decided by the
-        // order the movements offer their neighbours in, so reversing Move.CARDINALS fails this
-        // test — measured, and it returns the mirror-image route around the other corner.
+        // order the movements offer their neighbours in, so reversing Cardinals' step order fails
+        // this test — measured, and it returns the mirror-image route around the other corner.
         //
         // It does NOT pin the comparator, despite the tie. Reducing the comparator to f alone,
         // reversing its g leg, and stubbing its sequence leg to 0 each leave this test green,
         // because the two candidate routes are discovered in an order the surviving legs already
         // agree on. The comparator's three legs are pinned directly in QueuedNodeOrderTest; this
-        // test is the regression guard for Move.CARDINALS and is named for that.
+        // test is the regression guard for Cardinals' step order and is named for that.
         //
         // An open 3x3 will not do, and this is worth stating because it was tried: there the
         // two-diagonal route is the unique optimum, so every iteration order returns it.
@@ -442,9 +445,10 @@ class AStarPathfinderTest {
      * defect that a suite asserting only path <em>lengths</em> cannot see.
      */
     private static double optimalCost(final BlockSource world, Pos start, final Goal goal) {
-        final Move[] moves = {
+        final IMovementType[] moves = {
             new TraverseMove(), new AscendMove(), new DescendMove(), new DiagonalMove()
         };
+        final MutableExpansionContext ctx = new MutableExpansionContext(world);
         final Map<Long, Double> best = new HashMap<Long, Double>();
         final PriorityQueue<Entry> frontier =
             new PriorityQueue<Entry>(64, new Comparator<Entry>() {
@@ -484,8 +488,9 @@ class AStarPathfinderTest {
                 }
             };
 
+            ctx.moveTo(cx, cy, cz);
             for (int i = 0; i < moves.length; i++) {
-                moves[i].expand(world, cx, cy, cz, sink);
+                moves[i].expand(ctx, sink);
             }
         }
         return Double.POSITIVE_INFINITY;
