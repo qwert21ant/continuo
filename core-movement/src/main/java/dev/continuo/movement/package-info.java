@@ -10,8 +10,8 @@
  * <h2>Stability</h2>
  *
  * <p><b>Not yet stable for out-of-tree authors.</b> Two known additions are coming, and both are
- * additive: M5 adds an executor to {@code IMovementType} as a default
- * method, and sub-project I widens {@code ExpansionContext} with node
+ * additive: M5 adds an executor to {@link IMovementType} as a default
+ * method, and sub-project I widens {@link ExpansionContext} with node
  * state. Nothing here promises source compatibility before M5.
  *
  * <h2>Purity</h2>

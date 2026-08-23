@@ -7,7 +7,7 @@ package dev.continuo.movement;
  * order is what makes a path reproducible rather than merely optimal. A test pins a golden path
  * against it.
  *
- * <p>Exposed as accessors rather than as an {@code int[][]} constant on {@code IMovementType}
+ * <p>Exposed as accessors rather than as an {@code int[][]} constant on {@link IMovementType}
  * deliberately. An array on a public interface is a mutable global, and this is a plugin API:
  * a movement from another jar could reorder it and silently break the determinism every built-in
  * movement depends on.

@@ -7,7 +7,7 @@ import dev.continuo.core.BlockSource;
  * positions.
  *
  * <p>One allocation per search rather than one per expansion. It is public because more than one
- * module needs to build one — the search, and {@link MovementContract} when it audits a
+ * module needs to build one — the search, and {@code MovementContract} when it audits a
  * movement — not because callers of a movement are expected to implement the interface
  * themselves.
  */

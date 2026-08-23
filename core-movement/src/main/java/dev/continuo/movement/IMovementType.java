@@ -6,7 +6,7 @@ import java.util.Set;
  * One kind of movement: what it needs, what it costs, and which neighbours it reaches.
  *
  * <p>A movement is a plugin. It may live in any module or jar that depends on this one, and
- * {@link MovementRegistry#discover()} finds it through {@link java.util.ServiceLoader}. A
+ * {@code MovementRegistry#discover()} finds it through {@link java.util.ServiceLoader}. A
  * discovered implementation therefore needs a <b>public no-argument constructor</b>; without one
  * the failure surfaces at runtime in a consumer's build rather than at compile time here.
  *
@@ -51,7 +51,7 @@ public interface IMovementType {
      * one that spans further — a fall of three blocks, a jump across two — divide.
      *
      * <p>It is a declaration, so it is checked rather than trusted:
-     * {@link MovementContract#violations(IMovementType)} audits it against real expansions.
+     * {@code MovementContract#violations(IMovementType)} audits it against real expansions.
      *
      * @return the lower bound, in ticks; must be positive
      */
