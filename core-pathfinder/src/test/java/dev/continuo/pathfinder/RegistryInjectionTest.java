@@ -2,8 +2,11 @@ package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockData;
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.ActiveMovements;
 import dev.continuo.movement.Capability;
 import dev.continuo.movement.CapabilitySet;
+import dev.continuo.movement.IMovementRegistry;
+import dev.continuo.movement.IMovementType;
 import dev.continuo.movement.MovementRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -60,6 +63,33 @@ class RegistryInjectionTest {
         return registry;
     }
 
+    /**
+     * An {@link IMovementRegistry} that, unlike {@link MovementRegistry}, does not null-check
+     * {@code caps} itself. A real third-party plugin registry is under no obligation to — the
+     * interface says nothing about it — so this is what {@code AStarPathfinder}'s own {@code caps}
+     * guard exists to protect against: without it, a null {@code caps} passed through a registry
+     * like this one would surface as a bare {@link NullPointerException} from inside a plugin
+     * rather than the symmetric {@link IllegalArgumentException} every other bad argument gets.
+     */
+    private static final class NonValidatingRegistry implements IMovementRegistry {
+        private final MovementRegistry delegate = new MovementRegistry();
+
+        NonValidatingRegistry() {
+            delegate.register(new FakeMovement("walk.plain", 3.5636, 1, 3.5636));
+        }
+
+        @Override
+        public void register(IMovementType type) {
+            delegate.register(type);
+        }
+
+        @Override
+        public ActiveMovements activeFor(CapabilitySet caps) {
+            caps.capabilities();
+            return delegate.activeFor(caps);
+        }
+    }
+
     @Test
     void theNoCapabilityOverloadUsesTheInjectedRegistryAndExcludesTheGatedMovement() {
         AStarPathfinder pathfinder = new AStarPathfinder(1000, gatedRegistry());
@@ -102,5 +132,20 @@ class RegistryInjectionTest {
                 new AStarPathfinder(1000, null);
             }
         });
+    }
+
+    @Test
+    void aNullCapabilitySetIsRejectedEvenBehindARegistryThatDoesNotCheckItItself() {
+        final AStarPathfinder pathfinder = new AStarPathfinder(1000, new NonValidatingRegistry());
+
+        assertThrows(IllegalArgumentException.class, new Executable() {
+            @Override
+            public void execute() {
+                pathfinder.findPath(DUMMY_WORLD, 0, 0, 0, new GoalBlock(5, 0, 0), null);
+            }
+        }, "caps must be null-checked by AStarPathfinder itself, not merely delegated to "
+            + "whatever IMovementRegistry happens to be behind the seam — a registry that skips "
+            + "its own check, like this one, would otherwise let a null caps surface as a bare "
+            + "NullPointerException from inside a plugin");
     }
 }
