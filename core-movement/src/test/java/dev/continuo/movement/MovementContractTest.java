@@ -37,6 +37,51 @@ class MovementContractTest {
     }
 
     @Test
+    void aMovementTheAuditCannotExerciseAtAllIsReportedRatherThanPassed() {
+        // The failure this closes: violations() returned an empty list both when a declaration
+        // was honest and when the audit never elicited a single offer, and every caller reads
+        // empty as "passed". A movement gated on a precondition the palette cannot produce — a
+        // ladder on BlockTag.CLIMBABLE, which is what this gate stands in for and which the
+        // palette still deliberately does not generate — therefore got a silent pass however
+        // wrong its declaration was. This double's declaration is wrong by four.
+        List<String> violations = MovementContract.violations(
+            new PreconditionGatedMovement("a.ladder", PreconditionGatedMovement.Gate.CLIMBABLE));
+
+        assertEquals(1, violations.size(), "expected exactly one violation, got " + violations);
+        assertTrue(violations.get(0).contains("a.ladder"), violations.get(0));
+        assertTrue(violations.get(0).contains("offered nothing"), violations.get(0));
+        assertTrue(violations.get(0).contains("NOT A PASS"),
+            "a plugin author must not be able to read this as a clean audit: " + violations.get(0));
+    }
+
+    @Test
+    void thePaletteReachesEveryPreconditionItClaimsToGenerate() {
+        // The other half of the same defect. Widening the palette is only worth anything if the
+        // audit really produces those blocks, and a palette entry that never appeared would look
+        // exactly like one that did — every gate below would report "offered nothing" instead of
+        // the cost lie. The reviewer's demonstration was a movement gated on BlockShape.FENCE
+        // returning zero violations while wrong by four; each of these is that demonstration at
+        // one of the four preconditions the palette gained.
+        PreconditionGatedMovement.Gate[] reachable = {
+            PreconditionGatedMovement.Gate.FENCE,
+            PreconditionGatedMovement.Gate.UNKNOWN,
+            PreconditionGatedMovement.Gate.HARMFUL,
+            PreconditionGatedMovement.Gate.WATER
+        };
+
+        for (int i = 0; i < reachable.length; i++) {
+            String id = "a.gatedOn" + reachable[i];
+            List<String> violations = MovementContract.violations(
+                new PreconditionGatedMovement(id, reachable[i]));
+
+            assertEquals(1, violations.size(), id + ": expected one violation, got " + violations);
+            assertTrue(violations.get(0).contains("1.2"),
+                id + " must be caught on its cost, not reported as unreachable: "
+                    + violations.get(0));
+        }
+    }
+
+    @Test
     void onlyTheFirstOfTwoViolatingOffersInTheSameCallIsReported() {
         // TwoOfferMovement offers two neighbours per call, both violating. FakeMovement offers
         // only one per call and so cannot witness that the audit stops at the first offending
