@@ -123,6 +123,9 @@ public final class AStarPathfinder {
         if (goal == null) {
             throw new IllegalArgumentException("goal must not be null");
         }
+        if (caps == null) {
+            throw new IllegalArgumentException("caps must not be null; use CapabilitySet.none()");
+        }
 
         final ActiveMovements active = registry.activeFor(caps);
         final double cheapestAxisStep = active.cheapestAxisStep();

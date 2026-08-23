@@ -79,10 +79,15 @@ class GoalTest {
 
     @Test
     void aLooserMultiplierGivesALooserButStillAdmissibleEstimate() {
-        Goal goal = new GoalBlock(4, 64, 0);
+        Goal block = new GoalBlock(4, 64, 0);
 
-        assertTrue(goal.heuristic(0, 64, 0, 1.0) < goal.heuristic(0, 64, 0, 3.5636),
+        assertTrue(block.heuristic(0, 64, 0, 1.0) < block.heuristic(0, 64, 0, 3.5636),
             "a cheap wide movement lowering the multiplier must loosen the estimate, never "
                 + "raise it above the true cost");
+
+        Goal column = new GoalXZ(4, 0);
+
+        assertTrue(column.heuristic(0, 64, 0, 1.0) < column.heuristic(0, 64, 0, 3.5636),
+            "GoalXZ must also scale by the supplied multiplier, not a hard-coded constant");
     }
 }

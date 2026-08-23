@@ -44,14 +44,14 @@ package dev.continuo.movement;
  *
  * <p><b>Every movement is costed at the sprint figure, not the walk figure.</b> That is a
  * recorded decision, not an oversight. M5's executor sprints wherever it can, so the walk rate
- * would inflate every move by 30% and systematically misrank long straight runs.
+ * would inflate every move by 30% and systematically misrank long straight runs. For the record,
+ * the walk figure derives to {@code 4.6327} ticks per block by the same arithmetic.
  *
  * <p>The heuristic's multiplier is no longer a constant here. It is derived per search, as a
  * minimum over the active movement set — see
  * {@link dev.continuo.movement.ActiveMovements#cheapestAxisStep()}. A static lower bound over a
  * set that is no longer static was C1's most dangerous single line, and keeping it as a second
- * source of truth would be worse than removing it. For the record, the
- * walk figure derives to {@code 4.6327} ticks per block by the same arithmetic.
+ * source of truth would be worse than removing it.
  *
  * <p>A turn penalty is deliberately <b>omitted</b>. No figure for one exists in either source
  * tree, and the design permits leaving it out rather than inventing it.
