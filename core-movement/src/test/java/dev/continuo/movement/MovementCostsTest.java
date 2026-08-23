@@ -1,4 +1,4 @@
-package dev.continuo.pathfinder;
+package dev.continuo.movement;
 
 import org.junit.jupiter.api.Test;
 

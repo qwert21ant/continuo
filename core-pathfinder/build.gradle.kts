@@ -4,6 +4,7 @@ plugins {
 
 dependencies {
     api(project(":core"))
+    api(project(":core-movement"))
 
     val junitVersion = project.property("junit_version") as String
     testImplementation("org.junit.jupiter:junit-jupiter:$junitVersion")

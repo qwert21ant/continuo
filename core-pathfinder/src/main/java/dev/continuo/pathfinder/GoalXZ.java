@@ -1,5 +1,7 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.MovementCosts;
+
 /**
  * A column: any height at one X and Z.
  *

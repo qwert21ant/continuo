@@ -1,5 +1,6 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.MovementCosts;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;

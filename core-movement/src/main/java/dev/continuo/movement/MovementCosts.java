@@ -1,4 +1,4 @@
-package dev.continuo.pathfinder;
+package dev.continuo.movement;
 
 /**
  * Movement costs, in ticks.
@@ -47,7 +47,7 @@ package dev.continuo.pathfinder;
  * would inflate every move by 30% and systematically misrank long straight runs. And
  * {@link #cheapestMove()} multiplies the search's heuristic, so it must not exceed the cost of
  * any single <em>axis step</em> the search can make — see that method, which spells out why the
- * per-movement reading of that condition is too weak for {@link DescendMove}. For the record, the
+ * per-movement reading of that condition is too weak for {@code DescendMove}. For the record, the
  * walk figure derives to {@code 4.6327} ticks per block by the same arithmetic.
  *
  * <p>A turn penalty is deliberately <b>omitted</b>. No figure for one exists in either source
@@ -90,6 +90,15 @@ public final class MovementCosts {
     public static final double TRAVERSE = 3.5636;
 
     /**
+     * The ticks a jump adds on top of the horizontal crossing.
+     *
+     * <p>Named rather than folded into {@link #ASCEND} as a literal because more than one
+     * movement pays it: any movement that leaves the ground clears a block on the same
+     * simulated rise. The derivation and its citations are on {@link #ASCEND}.
+     */
+    public static final double JUMP_SURCHARGE = 2.9946;
+
+    /**
      * Ticks to cross one block while climbing one.
      *
      * <p>1.7.10: {@code EntityLivingBase.java:1557} (jump velocity {@code 0.41999998688697815}),
@@ -119,7 +128,7 @@ public final class MovementCosts {
      * horizontal crossing really do happen at the same time. It is taken deliberately: the design
      * requires a climb to cost more than level ground, and only M5 can measure how much more.
      */
-    public static final double ASCEND = TRAVERSE + 2.9946;
+    public static final double ASCEND = TRAVERSE + JUMP_SURCHARGE;
 
     /**
      * Ticks to cross one block diagonally.
@@ -226,10 +235,10 @@ public final class MovementCosts {
      * {@code cost(m) >= axisSpan(m) * cheapestMove()} for every movement the search can make.
      *
      * <p>For a movement of span 1 that reduces to "this must be the minimum movement cost", which
-     * is what the {@link Math#min} chain below computes. {@link TraverseMove},
-     * {@link AscendMove} and {@link DiagonalMove} are all span 1.
+     * is what the {@link Math#min} chain below computes. {@code TraverseMove},
+     * {@code AscendMove} and {@code DiagonalMove} are all span 1.
      *
-     * <p><b>{@link DescendMove} is not, and it is the only movement today that is not.</b> It
+     * <p><b>{@code DescendMove} is not, and it is the only movement today that is not.</b> It
      * falls {@code k} blocks in one step, so its span is {@code k} and it must satisfy the
      * stronger {@code TRAVERSE + fallTicks(k) >= k * cheapestMove()} for every {@code k} in
      * {@code 1..}{@link #MAX_SAFE_FALL}. That holds for the constants in this class, but only

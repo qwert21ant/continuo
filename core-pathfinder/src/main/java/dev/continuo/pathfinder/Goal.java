@@ -10,7 +10,7 @@ package dev.continuo.pathfinder;
  * {@code axisSpan(m)} is the largest number of steps {@code m} takes along any single axis. That
  * is a checked numeric property of the cost table and not a structural one — the movements are
  * free to span more than one block per axis, and {@link DescendMove} does. See
- * {@link MovementCosts#cheapestMove()}.
+ * {@link dev.continuo.movement.MovementCosts#cheapestMove()}.
  */
 public interface Goal {
 

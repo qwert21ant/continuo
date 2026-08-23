@@ -1,6 +1,8 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.MovementCosts;
+import dev.continuo.movement.Standability;
 
 /**
  * Walking off a ledge to a cardinal neighbour and falling to the first floor below.

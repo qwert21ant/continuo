@@ -1,6 +1,8 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.MovementCosts;
+import dev.continuo.movement.Standability;
 
 /**
  * Walking one block diagonally on the level.

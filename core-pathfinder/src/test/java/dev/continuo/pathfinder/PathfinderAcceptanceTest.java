@@ -1,5 +1,7 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.MovementCosts;
+import dev.continuo.movement.Standability;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

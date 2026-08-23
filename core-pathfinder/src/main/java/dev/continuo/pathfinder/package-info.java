@@ -6,7 +6,7 @@
  * classifier involved.
  *
  * <p><b>Block facts become movement facts in exactly one place</b> —
- * {@link dev.continuo.pathfinder.Standability}. Nothing else in this package reads
+ * {@link dev.continuo.movement.Standability}. Nothing else in this package reads
  * {@code collisionTop}, a {@code BlockShape} or a {@code Fluid} directly, so the rules about
  * what can be stood on live in one file rather than being restated per movement.
  */

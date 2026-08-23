@@ -1,6 +1,7 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.MovementCosts;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;

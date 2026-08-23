@@ -1,5 +1,7 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.MovementCosts;
+
 /**
  * One exact block position.
  *
