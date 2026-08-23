@@ -1,5 +1,7 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.MovementCosts;
+import dev.continuo.movement.Standability;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -90,13 +92,20 @@ class PathfinderAcceptanceTest {
 
         assertEquals(PathOutcome.FOUND, whole.outcome(), render(world, whole));
 
+        // TRAVERSE stands in for the multiplier the search actually derived from its active
+        // movement set. The two coincide only because
+        // DefaultRegistryTest.theMultiplierOverC1sMovementsIsWhatC1sConstantWas pins them equal
+        // over the default registry with no capabilities granted; that pin is this loop's
+        // load-bearing dependency, not an incidental one.
         for (Pos pos : whole.path()) {
             PathResult fromHere = pathfinder.findPath(world, pos.x(), pos.y(), pos.z(), goal);
             assertEquals(PathOutcome.FOUND, fromHere.outcome(), render(world, fromHere));
-            assertTrue(goal.heuristic(pos.x(), pos.y(), pos.z()) <= fromHere.cost() + 1.0e-9,
+            assertTrue(
+                goal.heuristic(pos.x(), pos.y(), pos.z(), MovementCosts.TRAVERSE)
+                    <= fromHere.cost() + 1.0e-9,
                 "the heuristic overestimates from " + pos + ": "
-                    + goal.heuristic(pos.x(), pos.y(), pos.z()) + " > " + fromHere.cost()
-                    + render(world, fromHere));
+                    + goal.heuristic(pos.x(), pos.y(), pos.z(), MovementCosts.TRAVERSE) + " > "
+                    + fromHere.cost() + render(world, fromHere));
         }
     }
 

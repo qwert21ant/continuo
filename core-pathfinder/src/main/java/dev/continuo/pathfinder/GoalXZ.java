@@ -26,9 +26,9 @@ public final class GoalXZ implements Goal {
     }
 
     @Override
-    public double heuristic(int px, int py, int pz) {
+    public double heuristic(int px, int py, int pz, double cheapestAxisStep) {
         int moves = Math.max(Math.abs(x - px), Math.abs(z - pz));
-        return moves * MovementCosts.cheapestMove();
+        return moves * cheapestAxisStep;
     }
 
     @Override

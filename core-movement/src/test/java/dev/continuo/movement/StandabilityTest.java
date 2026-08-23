@@ -1,4 +1,4 @@
-package dev.continuo.pathfinder;
+package dev.continuo.movement;
 
 import dev.continuo.core.BlockData;
 import dev.continuo.core.BlockShape;
@@ -167,8 +167,8 @@ class StandabilityTest {
 
     @Test
     void standingNeedsAFloorFeetRoomAndHeadRoom() {
-        Map<Long, BlockData> world = new HashMap<Long, BlockData>();
-        world.put(Pos.pack(0, 63, 0), STONE);
+        Map<String, BlockData> world = new HashMap<String, BlockData>();
+        world.put(key(0, 63, 0), STONE);
         BlockSource source = source(world);
 
         assertTrue(Standability.standable(source, 0, 64, 0));
@@ -176,33 +176,38 @@ class StandabilityTest {
 
     @Test
     void standingFailsWithoutAFloor() {
-        assertFalse(Standability.standable(source(new HashMap<Long, BlockData>()), 0, 64, 0));
+        assertFalse(Standability.standable(source(new HashMap<String, BlockData>()), 0, 64, 0));
     }
 
     @Test
     void standingFailsWhenTheHeadIsBlocked() {
-        Map<Long, BlockData> world = new HashMap<Long, BlockData>();
-        world.put(Pos.pack(0, 63, 0), STONE);
-        world.put(Pos.pack(0, 65, 0), STONE);
+        Map<String, BlockData> world = new HashMap<String, BlockData>();
+        world.put(key(0, 63, 0), STONE);
+        world.put(key(0, 65, 0), STONE);
 
         assertFalse(Standability.standable(source(world), 0, 64, 0));
     }
 
     @Test
     void standingFailsWhenTheFeetBlockIsOccupied() {
-        Map<Long, BlockData> world = new HashMap<Long, BlockData>();
-        world.put(Pos.pack(0, 63, 0), STONE);
-        world.put(Pos.pack(0, 64, 0), STONE);
+        Map<String, BlockData> world = new HashMap<String, BlockData>();
+        world.put(key(0, 63, 0), STONE);
+        world.put(key(0, 64, 0), STONE);
 
         assertFalse(Standability.standable(source(world), 0, 64, 0));
     }
 
+    /** A position key. Any injective encoding will do; this test only needs map lookups. */
+    private static String key(int x, int y, int z) {
+        return x + ":" + y + ":" + z;
+    }
+
     /** A map-backed source. Absent positions are air; nothing here needs a real fixture yet. */
-    private static BlockSource source(final Map<Long, BlockData> blocks) {
+    private static BlockSource source(final Map<String, BlockData> blocks) {
         return new BlockSource() {
             @Override
             public BlockData at(int x, int y, int z) {
-                BlockData found = blocks.get(Long.valueOf(Pos.pack(x, y, z)));
+                BlockData found = blocks.get(key(x, y, z));
                 return found == null ? AIR : found;
             }
 

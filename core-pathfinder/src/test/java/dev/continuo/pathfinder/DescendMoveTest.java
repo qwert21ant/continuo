@@ -1,5 +1,8 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.IMovementType;
+import dev.continuo.movement.MovementCosts;
+import dev.continuo.movement.MutableExpansionContext;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -7,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DescendMoveTest {
 
-    private final Move move = new DescendMove();
+    private final IMovementType move = new DescendMove();
 
     /**
      * A shaft of the given depth to the east of a player standing at (0, 100, 0).
@@ -29,7 +32,9 @@ class DescendMoveTest {
     @Test
     void steppingDownOneIsOffered() {
         RecordingSink sink = new RecordingSink();
-        move.expand(shaft(1), 0, 100, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(shaft(1));
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertEquals(1, sink.size());
         assertEquals(new Pos(1, 99, 0), sink.positions().get(0));
@@ -38,7 +43,9 @@ class DescendMoveTest {
     @Test
     void aDropCostsATraversePlusTheFallTimeForItsDepth() {
         RecordingSink sink = new RecordingSink();
-        move.expand(shaft(3), 0, 100, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(shaft(3));
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertEquals(MovementCosts.TRAVERSE + MovementCosts.fallTicks(3),
             sink.costOf(new Pos(1, 97, 0)), 1.0e-9);
@@ -47,10 +54,14 @@ class DescendMoveTest {
     @Test
     void deeperDropsCostStrictlyMoreThanShallowerOnes() {
         RecordingSink shallow = new RecordingSink();
-        move.expand(shaft(1), 0, 100, 0, shallow);
+        MutableExpansionContext shallowCtx = new MutableExpansionContext(shaft(1));
+        shallowCtx.moveTo(0, 100, 0);
+        move.expand(shallowCtx, shallow);
 
         RecordingSink deep = new RecordingSink();
-        move.expand(shaft(3), 0, 100, 0, deep);
+        MutableExpansionContext deepCtx = new MutableExpansionContext(shaft(3));
+        deepCtx.moveTo(0, 100, 0);
+        move.expand(deepCtx, deep);
 
         assertTrue(deep.costOf(new Pos(1, 97, 0)) > shallow.costOf(new Pos(1, 99, 0)),
             "falling further takes longer; a per-depth table must preserve that ordering");
@@ -59,7 +70,9 @@ class DescendMoveTest {
     @Test
     void onlyTheFirstFloorBelowIsOffered() {
         RecordingSink sink = new RecordingSink();
-        move.expand(shaft(2), 0, 100, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(shaft(2));
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertEquals(1, sink.size(),
             "the search descends to the floor it lands on, not to every level above it");
@@ -68,7 +81,10 @@ class DescendMoveTest {
     @Test
     void aDropDeeperThanTheSafeLimitIsRefused() {
         RecordingSink sink = new RecordingSink();
-        move.expand(shaft(MovementCosts.MAX_SAFE_FALL + 1), 0, 100, 0, sink);
+        MutableExpansionContext ctx =
+            new MutableExpansionContext(shaft(MovementCosts.MAX_SAFE_FALL + 1));
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertEquals(0, sink.size(), "falling further than the safe limit takes damage");
     }
@@ -76,7 +92,10 @@ class DescendMoveTest {
     @Test
     void aDropOfExactlyTheSafeLimitIsAccepted() {
         RecordingSink sink = new RecordingSink();
-        move.expand(shaft(MovementCosts.MAX_SAFE_FALL), 0, 100, 0, sink);
+        MutableExpansionContext ctx =
+            new MutableExpansionContext(shaft(MovementCosts.MAX_SAFE_FALL));
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertEquals(1, sink.size(), "the limit itself is safe; this pins the off-by-one");
     }
@@ -95,7 +114,9 @@ class DescendMoveTest {
                 + "..\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 0, 100, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertEquals(0, sink.size(), "you cannot walk off a ledge through a wall");
     }
@@ -118,7 +139,9 @@ class DescendMoveTest {
                 + "..\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 0, 100, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertEquals(0, sink.size(),
             "there is a reachable floor three below, but a wall stands where the step would go");
@@ -140,7 +163,9 @@ class DescendMoveTest {
                 + ".#\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 0, 100, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertEquals(0, sink.size(),
             "the neighbour column is clear at foot height but solid at head height, so the"
@@ -165,7 +190,9 @@ class DescendMoveTest {
                 + "..\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 0, 100, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertEquals(0, sink.size(),
             "the slab is neither a floor nor passable; the fall stops there, it does not continue"
@@ -188,7 +215,9 @@ class DescendMoveTest {
                 + "..\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 0, 100, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertEquals(0, sink.size(),
             "an unreadable block in the shaft might be solid, or might be a ledge");
@@ -208,7 +237,9 @@ class DescendMoveTest {
                 + "..\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 0, 100, 0, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(0, 100, 0);
+        move.expand(ctx, sink);
 
         assertTrue(!sink.positions().contains(new Pos(1, 99, 0)));
     }

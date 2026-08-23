@@ -1,4 +1,4 @@
-package dev.continuo.pathfinder;
+package dev.continuo.movement;
 
 import dev.continuo.core.BlockData;
 import dev.continuo.core.BlockShape;

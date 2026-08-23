@@ -1,5 +1,8 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.IMovementType;
+import dev.continuo.movement.MovementCosts;
+import dev.continuo.movement.MutableExpansionContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -9,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TraverseMoveTest {
 
-    private final Move move = new TraverseMove();
+    private final IMovementType move = new TraverseMove();
 
     @Test
     void offersAllFourNeighboursOnAnOpenFloor() {
@@ -29,7 +32,9 @@ class TraverseMoveTest {
                 + "...\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertEquals(4, sink.size());
         assertTrue(sink.positions().containsAll(Arrays.asList(
@@ -41,7 +46,9 @@ class TraverseMoveTest {
         FixtureWorld world = openFloor();
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertEquals(Arrays.asList(
             new Pos(1, 65, 0), new Pos(2, 65, 1), new Pos(1, 65, 2), new Pos(0, 65, 1)),
@@ -53,7 +60,9 @@ class TraverseMoveTest {
         FixtureWorld world = openFloor();
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertEquals(MovementCosts.TRAVERSE, sink.costOf(new Pos(2, 65, 1)), 1.0e-9);
     }
@@ -76,7 +85,9 @@ class TraverseMoveTest {
                 + "...\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertEquals(3, sink.size());
         assertTrue(!sink.positions().contains(new Pos(2, 65, 1)));
@@ -100,7 +111,9 @@ class TraverseMoveTest {
                 + "...\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertTrue(!sink.positions().contains(new Pos(2, 65, 1)));
     }
@@ -123,7 +136,9 @@ class TraverseMoveTest {
                 + "...\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertTrue(!sink.positions().contains(new Pos(2, 65, 1)),
             "an unreadable block where the body would go might be solid");
@@ -147,7 +162,9 @@ class TraverseMoveTest {
                 + "...\n");
 
         RecordingSink sink = new RecordingSink();
-        move.expand(world, 1, 65, 1, sink);
+        MutableExpansionContext ctx = new MutableExpansionContext(world);
+        ctx.moveTo(1, 65, 1);
+        move.expand(ctx, sink);
 
         assertTrue(!sink.positions().contains(new Pos(2, 65, 1)),
             "unreadable ground is not a floor - enforced here by the support band, "

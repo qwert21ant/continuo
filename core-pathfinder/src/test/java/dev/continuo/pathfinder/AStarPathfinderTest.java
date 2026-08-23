@@ -1,14 +1,12 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.IMovementType;
+import dev.continuo.movement.MovementCosts;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -303,7 +301,7 @@ class AStarPathfinderTest {
     }
 
     @Test
-    void theMovementIterationOrderIsPinnedSoAReorderingCannotPassUnnoticed() {
+    void cardinalsStepOrderIsPinnedSoAReorderingCannotPassUnnoticed() {
         FixtureWorld world = FixtureWorld.parse(
             "origin: 0,64,0\n"
                 + "--- y=64\n"
@@ -322,14 +320,18 @@ class AStarPathfinderTest {
         // A golden path, over a fixture with a genuine tie. The centre pillar rules out the
         // two-diagonal route, leaving two four-traverse routes of identical cost — around the
         // north-east corner, or around the south-west. Which one comes back is decided by the
-        // order the movements offer their neighbours in, so reversing Move.CARDINALS fails this
-        // test — measured, and it returns the mirror-image route around the other corner.
+        // order the movements offer their neighbours in, so reversing Cardinals' step order fails
+        // this test — measured, and it returns the mirror-image route around the other corner.
         //
         // It does NOT pin the comparator, despite the tie. Reducing the comparator to f alone,
         // reversing its g leg, and stubbing its sequence leg to 0 each leave this test green,
         // because the two candidate routes are discovered in an order the surviving legs already
         // agree on. The comparator's three legs are pinned directly in QueuedNodeOrderTest; this
-        // test is the regression guard for Move.CARDINALS and is named for that.
+        // test is the regression guard for Cardinals' step order and is named for that.
+        //
+        // Nor does it pin the order the *movements* are registered in: swapping Traverse and
+        // Diagonal in defaultRegistry() leaves this green, because neither route uses a diagonal.
+        // Since C2 that is a registry concern, and DefaultRegistryTest is what guards it.
         //
         // An open 3x3 will not do, and this is worth stating because it was tried: there the
         // two-diagonal route is the unique optimum, so every iteration order returns it.
@@ -422,72 +424,20 @@ class AStarPathfinderTest {
         return FixtureWorld.parse(art.toString());
     }
 
-    /** An immutable frontier entry for the Dijkstra oracle. */
-    private static final class Entry {
-        final long packed;
-        final double cost;
-
-        Entry(long packed, double cost) {
-            this.packed = packed;
-            this.cost = cost;
-        }
-    }
-
     /**
-     * The cheapest cost from start to goal, by Dijkstra over the same four movements.
+     * The cheapest cost from start to goal, by Dijkstra over C1's four movements.
      *
-     * <p>An oracle independent of A*: no heuristic, no closed set, and immutable queue entries.
-     * This is what catches a search that returns a walkable but not-cheapest path — the class of
-     * defect that a suite asserting only path <em>lengths</em> cannot see.
+     * <p>The oracle itself lives in {@link DijkstraOracle}, unchanged in substance, because a
+     * second test needs to run it over a different movement list — see
+     * {@link HeuristicMultiplierAdmissibilityTest}, which is the guard for the one admissibility
+     * bug these four movements cannot express. What that class needs is a registry whose
+     * <em>cheapest</em> movement is the one declaring wrongly; over C1's four, traverse is always
+     * the cheapest per axis step, so no declaration any of the other three could make would move
+     * the multiplier at all.
      */
-    private static double optimalCost(final BlockSource world, Pos start, final Goal goal) {
-        final Move[] moves = {
-            new TraverseMove(), new AscendMove(), new DescendMove(), new DiagonalMove()
-        };
-        final Map<Long, Double> best = new HashMap<Long, Double>();
-        final PriorityQueue<Entry> frontier =
-            new PriorityQueue<Entry>(64, new Comparator<Entry>() {
-                @Override
-                public int compare(Entry a, Entry b) {
-                    return Double.compare(a.cost, b.cost);
-                }
-            });
-
-        best.put(Long.valueOf(start.packed()), Double.valueOf(0.0));
-        frontier.add(new Entry(start.packed(), 0.0));
-
-        while (!frontier.isEmpty()) {
-            final Entry current = frontier.poll();
-            Double known = best.get(Long.valueOf(current.packed));
-            if (known == null || current.cost > known.doubleValue() + 1.0e-12) {
-                continue;
-            }
-
-            int cx = Pos.unpackX(current.packed);
-            int cy = Pos.unpackY(current.packed);
-            int cz = Pos.unpackZ(current.packed);
-            if (goal.isReached(cx, cy, cz)) {
-                return current.cost;
-            }
-
-            MoveSink sink = new MoveSink() {
-                @Override
-                public void offer(int nx, int ny, int nz, double cost) {
-                    Long key = Long.valueOf(Pos.pack(nx, ny, nz));
-                    double next = current.cost + cost;
-                    Double previous = best.get(key);
-                    if (previous == null || next < previous.doubleValue() - 1.0e-12) {
-                        best.put(key, Double.valueOf(next));
-                        frontier.add(new Entry(key.longValue(), next));
-                    }
-                }
-            };
-
-            for (int i = 0; i < moves.length; i++) {
-                moves[i].expand(world, cx, cy, cz, sink);
-            }
-        }
-        return Double.POSITIVE_INFINITY;
+    private static double optimalCost(BlockSource world, Pos start, Goal goal) {
+        return DijkstraOracle.optimalCost(world, start, goal, Arrays.<IMovementType>asList(
+            new TraverseMove(), new AscendMove(), new DescendMove(), new DiagonalMove()));
     }
 
     @Test
@@ -511,7 +461,12 @@ class AStarPathfinderTest {
         Goal goal = new GoalBlock(4, 65, 2);
 
         assertEquals(PathOutcome.FOUND, result.outcome());
-        assertTrue(goal.heuristic(0, 65, 0) <= result.cost(),
+        // The search runs on the multiplier *derived* from the active set, not on TRAVERSE. This
+        // assertion is only about the same heuristic the search used because
+        // DefaultRegistryTest.theMultiplierOverC1sMovementsIsWhatC1sConstantWas pins the two
+        // equal over the default registry with no capabilities granted. If that pin ever goes,
+        // this line silently starts checking a different heuristic than the one under test.
+        assertTrue(goal.heuristic(0, 65, 0, MovementCosts.TRAVERSE) <= result.cost(),
             "an overestimating heuristic silently gives up the shortest-path guarantee");
     }
 

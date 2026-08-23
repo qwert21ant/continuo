@@ -3,15 +3,10 @@ package dev.continuo.pathfinder;
 /**
  * One exact block position.
  *
- * <p>The heuristic is {@code cheapestMove × max(|dx|, |dy|, |dz|)}. It never overestimates only
- * while every movement {@code m} the search can make satisfies
- * {@code cost(m) >= axisSpan(m) × cheapestMove()}, where {@code axisSpan(m)} is the largest number
- * of steps {@code m} takes along any single axis: one movement can close at most
- * {@code axisSpan(m)} of that Chebyshev gap, so it has to pay at least that many cheapest moves
- * for it. <b>It is not enough that {@code cheapestMove()} is the cheapest movement.</b>
- * {@link DescendMove} takes up to {@link MovementCosts#MAX_SAFE_FALL} steps of Y at once, so the
- * per-movement reading of the condition is too weak — see {@link MovementCosts#cheapestMove()} for
- * the margins and the test that holds them.
+ * <p>The heuristic is {@code cheapestAxisStep × max(|dx|, |dy|, |dz|)}, where the multiplier is a
+ * minimum over the movements the search may use. One movement can close at most its own axis span
+ * of that Chebyshev gap, and by the definition of the minimum it pays at least that many cheapest
+ * axis steps for it — so the estimate cannot exceed the true remaining cost.
  *
  * <p>Taking the maximum rather than the sum is what makes a diagonal — which closes X and Z
  * together — free of double-counting.
@@ -39,9 +34,9 @@ public final class GoalBlock implements Goal {
     }
 
     @Override
-    public double heuristic(int px, int py, int pz) {
+    public double heuristic(int px, int py, int pz, double cheapestAxisStep) {
         int moves = Math.max(Math.abs(x - px), Math.max(Math.abs(y - py), Math.abs(z - pz)));
-        return moves * MovementCosts.cheapestMove();
+        return moves * cheapestAxisStep;
     }
 
     @Override

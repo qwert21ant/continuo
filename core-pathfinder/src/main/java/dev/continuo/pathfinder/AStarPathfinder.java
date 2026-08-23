@@ -1,6 +1,13 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.ActiveMovements;
+import dev.continuo.movement.CapabilitySet;
+import dev.continuo.movement.IMovementRegistry;
+import dev.continuo.movement.IMovementType;
+import dev.continuo.movement.MoveSink;
+import dev.continuo.movement.MovementRegistry;
+import dev.continuo.movement.MutableExpansionContext;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,13 +40,38 @@ public final class AStarPathfinder {
      */
     public static final int DEFAULT_NODE_BUDGET = 100000;
 
-    private static final Move[] MOVES = {
-        new TraverseMove(), new AscendMove(), new DescendMove(), new DiagonalMove()
-    };
-
     private final int nodeBudget;
+    private final IMovementRegistry registry;
 
-    /** Creates a pathfinder with {@link #DEFAULT_NODE_BUDGET}. */
+    /**
+     * The registry a pathfinder uses when given none: {@code walk.traverse}, {@code walk.ascend},
+     * {@code walk.descend} and {@code walk.diagonal}, registered in that order, plus whatever
+     * {@link MovementRegistry#discover()} then finds on the classpath.
+     *
+     * <p>The order is load-bearing. A* breaks cost ties by the order neighbours were discovered,
+     * so registering these four in any other sequence would change which of two equal-cost paths
+     * comes back.
+     *
+     * <p><b>Public because the four movements themselves are not.</b> They are package-private, so
+     * a module outside {@code dev.continuo.pathfinder} — a movement plugin's own tests, for
+     * instance, asserting what granting a capability does to the heuristic's multiplier — has no
+     * way to assemble this registry for itself. Each call returns a fresh, independently mutable
+     * registry, so a caller may {@link MovementRegistry#register(dev.continuo.movement.IMovementType)
+     * register} onto it without affecting anyone else's.
+     *
+     * @return a fresh registry; never {@code null}
+     */
+    public static MovementRegistry defaultRegistry() {
+        MovementRegistry registry = new MovementRegistry();
+        registry.register(new TraverseMove());
+        registry.register(new AscendMove());
+        registry.register(new DescendMove());
+        registry.register(new DiagonalMove());
+        registry.discover();
+        return registry;
+    }
+
+    /** Creates a pathfinder with {@link #DEFAULT_NODE_BUDGET} and {@link #defaultRegistry()}. */
     public AStarPathfinder() {
         this(DEFAULT_NODE_BUDGET);
     }
@@ -49,14 +81,27 @@ public final class AStarPathfinder {
      * @throws IllegalArgumentException if the budget is not positive
      */
     public AStarPathfinder(int nodeBudget) {
-        if (nodeBudget <= 0) {
-            throw new IllegalArgumentException("nodeBudget must be positive, got " + nodeBudget);
-        }
-        this.nodeBudget = nodeBudget;
+        this(nodeBudget, defaultRegistry());
     }
 
     /**
-     * Searches for a path.
+     * @param nodeBudget the most nodes that may be expanded before giving up; must be positive
+     * @param registry the movements this pathfinder may use; never {@code null}
+     * @throws IllegalArgumentException if the budget is not positive or the registry is null
+     */
+    public AStarPathfinder(int nodeBudget, IMovementRegistry registry) {
+        if (nodeBudget <= 0) {
+            throw new IllegalArgumentException("nodeBudget must be positive, got " + nodeBudget);
+        }
+        if (registry == null) {
+            throw new IllegalArgumentException("registry must not be null");
+        }
+        this.nodeBudget = nodeBudget;
+        this.registry = registry;
+    }
+
+    /**
+     * Searches with no capabilities granted, so only movements that require none are used.
      *
      * @param world the world to read; never {@code null}
      * @param startX the starting X
@@ -66,12 +111,33 @@ public final class AStarPathfinder {
      * @return the result; never {@code null}
      */
     public PathResult findPath(BlockSource world, int startX, int startY, int startZ, Goal goal) {
+        return findPath(world, startX, startY, startZ, goal, CapabilitySet.none());
+    }
+
+    /**
+     * @param world the world to read; never {@code null}
+     * @param startX the starting X
+     * @param startY the starting Y
+     * @param startZ the starting Z
+     * @param goal what to reach; never {@code null}
+     * @param caps what the caller grants; never {@code null}
+     * @return the result; never {@code null}
+     */
+    public PathResult findPath(BlockSource world, int startX, int startY, int startZ, Goal goal,
+                               CapabilitySet caps) {
         if (world == null) {
             throw new IllegalArgumentException("world must not be null");
         }
         if (goal == null) {
             throw new IllegalArgumentException("goal must not be null");
         }
+        if (caps == null) {
+            throw new IllegalArgumentException("caps must not be null; use CapabilitySet.none()");
+        }
+
+        final ActiveMovements active = registry.activeFor(caps);
+        final double cheapestAxisStep = active.cheapestAxisStep();
+        final List<IMovementType> moves = active.movements();
 
         final Map<Long, PathNode> nodes = new HashMap<Long, PathNode>();
         final List<Pos> expanded = new ArrayList<Pos>();
@@ -85,7 +151,10 @@ public final class AStarPathfinder {
         start.g = 0.0;
         nodes.put(Long.valueOf(startPacked), start);
         open.add(new QueuedNode(
-            startPacked, goal.heuristic(startX, startY, startZ), 0.0, discovered[0]++));
+            startPacked, goal.heuristic(startX, startY, startZ, cheapestAxisStep), 0.0,
+            discovered[0]++));
+
+        final MutableExpansionContext ctx = new MutableExpansionContext(world);
 
         while (!open.isEmpty()) {
             QueuedNode entry = open.poll();
@@ -130,12 +199,14 @@ public final class AStarPathfinder {
                     // QueuedNode. The old entry stays in the heap and is discarded on poll,
                     // because by then this node is closed.
                     open.add(new QueuedNode(neighbour.packed,
-                        tentative + goal.heuristic(nx, ny, nz), tentative, discovered[0]++));
+                        tentative + goal.heuristic(nx, ny, nz, cheapestAxisStep), tentative,
+                        discovered[0]++));
                 }
             };
 
-            for (int i = 0; i < MOVES.length; i++) {
-                MOVES[i].expand(world, cx, cy, cz, sink);
+            ctx.moveTo(cx, cy, cz);
+            for (int i = 0; i < moves.size(); i++) {
+                moves.get(i).expand(ctx, sink);
             }
         }
 
