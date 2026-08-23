@@ -9,14 +9,17 @@ import dev.continuo.movement.ActiveMovements;
 import dev.continuo.movement.Capability;
 import dev.continuo.movement.CapabilitySet;
 import dev.continuo.movement.IMovementType;
+import dev.continuo.movement.MovementCosts;
 import dev.continuo.movement.MovementRegistry;
 import dev.continuo.pathfinder.AStarPathfinder;
 import dev.continuo.pathfinder.GoalBlock;
 import dev.continuo.pathfinder.PathOutcome;
 import dev.continuo.pathfinder.PathResult;
+import dev.continuo.pathfinder.Pos;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -87,9 +90,19 @@ class ParkourPathfindingTest {
             new GoalBlock(4, 64, 0), CapabilitySet.of(Capability.PARKOUR));
 
         assertEquals(PathOutcome.FOUND, result.outcome());
-        assertEquals(4, result.path().get(result.path().size() - 1).x());
-        assertTrue(result.cost() >= ParkourMove.COST,
-            "the route has to pay for at least one jump");
+
+        // The causeway admits exactly one route — 0, 1, jump to 3, 4 — so both the cost and the
+        // route itself are pinned rather than bounded. `>= ParkourMove.COST` was the earlier
+        // assertion and it cannot tell a right route from a wrong one: any route paying for a
+        // jump satisfies it, including one that jumped somewhere pointless first.
+        List<Integer> xs = new ArrayList<Integer>();
+        for (Pos step : result.path()) {
+            xs.add(Integer.valueOf(step.x()));
+        }
+        assertEquals(Arrays.asList(Integer.valueOf(0), Integer.valueOf(1), Integer.valueOf(3),
+            Integer.valueOf(4)), xs, "the route must walk, jump the hole, then walk");
+        assertEquals(2 * MovementCosts.TRAVERSE + ParkourMove.COST, result.cost(), 1.0e-9,
+            "two traverses and exactly one jump");
     }
 
     @Test
