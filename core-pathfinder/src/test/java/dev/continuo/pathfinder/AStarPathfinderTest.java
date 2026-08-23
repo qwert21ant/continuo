@@ -301,7 +301,7 @@ class AStarPathfinderTest {
     }
 
     @Test
-    void theMovementIterationOrderIsPinnedSoAReorderingCannotPassUnnoticed() {
+    void cardinalsStepOrderIsPinnedSoAReorderingCannotPassUnnoticed() {
         FixtureWorld world = FixtureWorld.parse(
             "origin: 0,64,0\n"
                 + "--- y=64\n"
@@ -328,6 +328,10 @@ class AStarPathfinderTest {
         // because the two candidate routes are discovered in an order the surviving legs already
         // agree on. The comparator's three legs are pinned directly in QueuedNodeOrderTest; this
         // test is the regression guard for Cardinals' step order and is named for that.
+        //
+        // Nor does it pin the order the *movements* are registered in: swapping Traverse and
+        // Diagonal in defaultRegistry() leaves this green, because neither route uses a diagonal.
+        // Since C2 that is a registry concern, and DefaultRegistryTest is what guards it.
         //
         // An open 3x3 will not do, and this is worth stating because it was tried: there the
         // two-diagonal route is the unique optimum, so every iteration order returns it.
@@ -457,6 +461,11 @@ class AStarPathfinderTest {
         Goal goal = new GoalBlock(4, 65, 2);
 
         assertEquals(PathOutcome.FOUND, result.outcome());
+        // The search runs on the multiplier *derived* from the active set, not on TRAVERSE. This
+        // assertion is only about the same heuristic the search used because
+        // DefaultRegistryTest.theMultiplierOverC1sMovementsIsWhatC1sConstantWas pins the two
+        // equal over the default registry with no capabilities granted. If that pin ever goes,
+        // this line silently starts checking a different heuristic than the one under test.
         assertTrue(goal.heuristic(0, 65, 0, MovementCosts.TRAVERSE) <= result.cost(),
             "an overestimating heuristic silently gives up the shortest-path guarantee");
     }

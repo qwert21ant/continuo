@@ -92,6 +92,11 @@ class PathfinderAcceptanceTest {
 
         assertEquals(PathOutcome.FOUND, whole.outcome(), render(world, whole));
 
+        // TRAVERSE stands in for the multiplier the search actually derived from its active
+        // movement set. The two coincide only because
+        // DefaultRegistryTest.theMultiplierOverC1sMovementsIsWhatC1sConstantWas pins them equal
+        // over the default registry with no capabilities granted; that pin is this loop's
+        // load-bearing dependency, not an incidental one.
         for (Pos pos : whole.path()) {
             PathResult fromHere = pathfinder.findPath(world, pos.x(), pos.y(), pos.z(), goal);
             assertEquals(PathOutcome.FOUND, fromHere.outcome(), render(world, fromHere));
