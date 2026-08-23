@@ -44,16 +44,24 @@ public final class AStarPathfinder {
     private final IMovementRegistry registry;
 
     /**
-     * The registry a pathfinder uses when given none: C1's four movements, in C1's order, plus
-     * whatever {@link MovementRegistry#discover()} finds on the classpath.
+     * The registry a pathfinder uses when given none: {@code walk.traverse}, {@code walk.ascend},
+     * {@code walk.descend} and {@code walk.diagonal}, registered in that order, plus whatever
+     * {@link MovementRegistry#discover()} then finds on the classpath.
      *
      * <p>The order is load-bearing. A* breaks cost ties by the order neighbours were discovered,
      * so registering these four in any other sequence would change which of two equal-cost paths
      * comes back.
      *
+     * <p><b>Public because the four movements themselves are not.</b> They are package-private, so
+     * a module outside {@code dev.continuo.pathfinder} — a movement plugin's own tests, for
+     * instance, asserting what granting a capability does to the heuristic's multiplier — has no
+     * way to assemble this registry for itself. Each call returns a fresh, independently mutable
+     * registry, so a caller may {@link MovementRegistry#register(dev.continuo.movement.IMovementType)
+     * register} onto it without affecting anyone else's.
+     *
      * @return a fresh registry; never {@code null}
      */
-    static MovementRegistry defaultRegistry() {
+    public static MovementRegistry defaultRegistry() {
         MovementRegistry registry = new MovementRegistry();
         registry.register(new TraverseMove());
         registry.register(new AscendMove());
@@ -61,18 +69,6 @@ public final class AStarPathfinder {
         registry.register(new DiagonalMove());
         registry.discover();
         return registry;
-    }
-
-    /**
-     * The registry {@link #AStarPathfinder()} would use.
-     *
-     * <p>Public so that a movement module's tests can assert what granting a capability does to
-     * the heuristic's multiplier without reaching into this package.
-     *
-     * @return a fresh registry; never {@code null}
-     */
-    public static MovementRegistry publicDefaultRegistry() {
-        return defaultRegistry();
     }
 
     /** Creates a pathfinder with {@link #DEFAULT_NODE_BUDGET} and {@link #defaultRegistry()}. */

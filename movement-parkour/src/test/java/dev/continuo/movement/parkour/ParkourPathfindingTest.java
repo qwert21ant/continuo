@@ -104,7 +104,7 @@ class ParkourPathfindingTest {
 
     @Test
     void grantingParkourDoesNotChangeTheMultiplierForTheBuiltIns() {
-        MovementRegistry registry = AStarPathfinder.publicDefaultRegistry();
+        MovementRegistry registry = AStarPathfinder.defaultRegistry();
 
         assertEquals(
             registry.activeFor(CapabilitySet.none()).cheapestAxisStep(),
