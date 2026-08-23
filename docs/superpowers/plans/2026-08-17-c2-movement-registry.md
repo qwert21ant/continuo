@@ -23,6 +23,7 @@
 - **If a test and the code disagree, report it with the output you got. Do not adjust either side.** Ten of C1's defects were in the plan, not in the implementers' work, and every one surfaced this way.
 - **Append to your task report as you go, never compose it at the end.** Session limits killed three subagents mid-task during C1; recovery was cheap every time a report file already existed.
 - **Mutation proof requires the actual failing output pasted into the report**, plus `git diff --stat` afterwards to prove the mutation was reverted. C1 had one left broken on disk.
+- **Expected test counts in this plan are informational, not requirements.** Report the actual count you observe. The binding requirements are **0 failures, 0 errors** and **no C1 assertion changed**. Never add or delete a test to make a count match a number written here — if your count differs from the plan's, say so in your report and move on.
 
 ## Two deliberate refinements to the approved spec
 
@@ -461,7 +462,7 @@ package dev.continuo.movement;
 - [ ] **Step 9: Run the tests to verify they pass**
 
 Run: `./gradlew :core-movement:test`
-Expected: PASS, 9 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 10: Verify the module's own build gates pass**
 
@@ -925,7 +926,7 @@ public interface IMovementType {
 - [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `./gradlew :core-movement:test`
-Expected: PASS, 12 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 8: Commit**
 
@@ -1565,7 +1566,7 @@ Add these two methods after `register`:
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `./gradlew :core-movement:test`
-Expected: PASS, 25 tests.
+Expected: PASS, 24 tests.
 
 - [ ] **Step 6: Mutation-prove the sort**
 
@@ -2140,7 +2141,7 @@ Add `import dev.continuo.movement.MutableExpansionContext;` to each. Change noth
 - [ ] **Step 10: Run the full build**
 
 Run: `./gradlew build --rerun-tasks`
-Expected: PASS. Test count is 301 plus 2 from `BuiltInMovementContractTest` = **303**, 0 failures. **Every C1 assertion must still hold**, including `theMovementIterationOrderIsPinnedSoAReorderingCannotPassUnnoticed` — the golden path is unchanged because `Cardinals` preserves C1's order and `MOVES` preserves C1's sequence.
+Expected: PASS. Total test count **330**, 0 failures. **Every C1 assertion must still hold**, including `theMovementIterationOrderIsPinnedSoAReorderingCannotPassUnnoticed` — the golden path is unchanged because `Cardinals` preserves C1's order and `MOVES` preserves C1's sequence.
 
 - [ ] **Step 11: Mutation-prove that `Cardinals` order is still what pins the golden path**
 
@@ -2451,7 +2452,7 @@ Add the remaining multiplier argument (`MovementCosts.TRAVERSE`) to the other fi
 - [ ] **Step 7: Run the full build**
 
 Run: `./gradlew build --rerun-tasks`
-Expected: PASS. 303 tests plus 2 from `DefaultRegistryTest` plus 1 new `GoalTest` case = **306**, 0 failures.
+Expected: PASS. Total test count **333**, 0 failures.
 
 **Every C1 path and cost assertion must be unchanged.** That is the whole claim of spec §6.3, and it is now checked three ways: the multiplier reproduces `TRAVERSE`, registration reproduces `MOVES` order, and the `findPath` overload defaults to no capabilities. If any C1 assertion moves, **report it with the output — do not adjust the test.**
 
