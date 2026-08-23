@@ -20,6 +20,8 @@ public interface IMovementRegistry {
      * @param caps what the caller grants; never {@code null}
      * @return the movements whose requirements are met, in registration order, bound to the
      *         heuristic multiplier they imply; never {@code null}
+     * @throws IllegalArgumentException if {@code caps} is {@code null}; pass
+     *         {@link CapabilitySet#none()} to grant nothing
      * @throws IllegalStateException if no movement is active
      */
     ActiveMovements activeFor(CapabilitySet caps);
