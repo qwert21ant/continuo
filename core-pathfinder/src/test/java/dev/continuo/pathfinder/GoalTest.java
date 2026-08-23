@@ -21,7 +21,8 @@ class GoalTest {
 
     @Test
     void goalBlockHasNoDistanceToItself() {
-        assertEquals(0.0, new GoalBlock(10, 64, -3).heuristic(10, 64, -3), 1.0e-9);
+        assertEquals(0.0,
+            new GoalBlock(10, 64, -3).heuristic(10, 64, -3, MovementCosts.TRAVERSE), 1.0e-9);
     }
 
     @Test
@@ -37,14 +38,16 @@ class GoalTest {
     void goalXzHeuristicIgnoresHeight() {
         Goal goal = new GoalXZ(10, -3);
 
-        assertEquals(goal.heuristic(0, 64, 0), goal.heuristic(0, 200, 0), 1.0e-9);
+        assertEquals(goal.heuristic(0, 64, 0, MovementCosts.TRAVERSE),
+            goal.heuristic(0, 200, 0, MovementCosts.TRAVERSE), 1.0e-9);
     }
 
     @Test
     void theHeuristicCountsTheFewestPossibleMovesNotTheDistanceWalked() {
         Goal goal = new GoalBlock(3, 64, 3);
 
-        assertEquals(3 * MovementCosts.cheapestMove(), goal.heuristic(0, 64, 0), 1.0e-9,
+        assertEquals(3 * MovementCosts.TRAVERSE,
+            goal.heuristic(0, 64, 0, MovementCosts.TRAVERSE), 1.0e-9,
             "a diagonal covers X and Z at once, so three moves suffice, not six");
     }
 
@@ -52,24 +55,34 @@ class GoalTest {
     void verticalDistanceCountsWhenItExceedsHorizontal() {
         Goal goal = new GoalBlock(0, 74, 0);
 
-        assertEquals(10 * MovementCosts.cheapestMove(), goal.heuristic(0, 64, 0), 1.0e-9,
-            "every move changes Y by at most one, so ten levels need ten moves");
+        assertEquals(10 * MovementCosts.TRAVERSE,
+            goal.heuristic(0, 64, 0, MovementCosts.TRAVERSE), 1.0e-9,
+            "ten levels need at least ten axis steps");
     }
 
     @Test
     void theHeuristicIsNeverNegative() {
         Goal goal = new GoalBlock(-5, 64, -5);
 
-        assertTrue(goal.heuristic(5, 100, 5) >= 0);
-        assertTrue(goal.heuristic(-5, 64, -5) >= 0);
+        assertTrue(goal.heuristic(5, 100, 5, MovementCosts.TRAVERSE) >= 0);
+        assertTrue(goal.heuristic(-5, 64, -5, MovementCosts.TRAVERSE) >= 0);
     }
 
     @Test
     void aReachedGoalHasZeroHeuristicSoTheSearchCanTerminate() {
         Goal block = new GoalBlock(7, 64, 7);
-        assertEquals(0.0, block.heuristic(7, 64, 7), 1.0e-9);
+        assertEquals(0.0, block.heuristic(7, 64, 7, MovementCosts.TRAVERSE), 1.0e-9);
 
         Goal column = new GoalXZ(7, 7);
-        assertEquals(0.0, column.heuristic(7, 64, 7), 1.0e-9);
+        assertEquals(0.0, column.heuristic(7, 64, 7, MovementCosts.TRAVERSE), 1.0e-9);
+    }
+
+    @Test
+    void aLooserMultiplierGivesALooserButStillAdmissibleEstimate() {
+        Goal goal = new GoalBlock(4, 64, 0);
+
+        assertTrue(goal.heuristic(0, 64, 0, 1.0) < goal.heuristic(0, 64, 0, 3.5636),
+            "a cheap wide movement lowering the multiplier must loosen the estimate, never "
+                + "raise it above the true cost");
     }
 }

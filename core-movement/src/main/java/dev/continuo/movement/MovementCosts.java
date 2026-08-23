@@ -44,10 +44,13 @@ package dev.continuo.movement;
  *
  * <p><b>Every movement is costed at the sprint figure, not the walk figure.</b> That is a
  * recorded decision, not an oversight. M5's executor sprints wherever it can, so the walk rate
- * would inflate every move by 30% and systematically misrank long straight runs. And
- * {@link #cheapestMove()} multiplies the search's heuristic, so it must not exceed the cost of
- * any single <em>axis step</em> the search can make — see that method, which spells out why the
- * per-movement reading of that condition is too weak for {@code DescendMove}. For the record, the
+ * would inflate every move by 30% and systematically misrank long straight runs.
+ *
+ * <p>The heuristic's multiplier is no longer a constant here. It is derived per search, as a
+ * minimum over the active movement set — see
+ * {@link dev.continuo.movement.ActiveMovements#cheapestAxisStep()}. A static lower bound over a
+ * set that is no longer static was C1's most dangerous single line, and keeping it as a second
+ * source of truth would be worse than removing it. For the record, the
  * walk figure derives to {@code 4.6327} ticks per block by the same arithmetic.
  *
  * <p>A turn penalty is deliberately <b>omitted</b>. No figure for one exists in either source
@@ -85,7 +88,7 @@ public final class MovementCosts {
      *
      * <p>Uses the sprint figure because M5's executor sprints wherever it can, and because it is
      * the smallest per-block figure any movement in this class is built from, which is what makes
-     * {@link #cheapestMove()} a lower bound over these constants.
+     * it a lower bound over these constants.
      */
     public static final double TRAVERSE = 3.5636;
 
@@ -223,41 +226,5 @@ public final class MovementCosts {
                 "fall of " + blocks + " blocks is outside 1.." + MAX_SAFE_FALL);
         }
         return FALL_TICKS[blocks - 1];
-    }
-
-    /**
-     * A lower bound on the cost of one <em>axis step</em>.
-     *
-     * <p>The heuristic is this value times a Chebyshev distance, so what keeps A* admissible is
-     * not a per-movement bound but a per-axis-step one. A movement {@code m} shrinks the
-     * heuristic by at most {@code cheapestMove()} times its <b>axis span</b> — the largest number
-     * of blocks it travels along any one axis — so admissibility requires
-     * {@code cost(m) >= axisSpan(m) * cheapestMove()} for every movement the search can make.
-     *
-     * <p>For a movement of span 1 that reduces to "this must be the minimum movement cost", which
-     * is what the {@link Math#min} chain below computes. {@code TraverseMove},
-     * {@code AscendMove} and {@code DiagonalMove} are all span 1.
-     *
-     * <p><b>{@code DescendMove} is not, and it is the only movement today that is not.</b> It
-     * falls {@code k} blocks in one step, so its span is {@code k} and it must satisfy the
-     * stronger {@code TRAVERSE + fallTicks(k) >= k * cheapestMove()} for every {@code k} in
-     * {@code 1..}{@link #MAX_SAFE_FALL}. That holds for the constants in this class, but only
-     * numerically and with the margin shrinking fast — {@code +4.6147}, {@code +3.2245},
-     * {@code +1.3415} at {@code k} of 1, 2 and 3, and it would go <b>negative</b> at
-     * {@code -0.7791} if {@code MAX_SAFE_FALL} were raised to 4 with a correctly derived
-     * {@code fallTicks(4)}. It is a checked property, not a structural guarantee, and
-     * {@code MovementCostsTest.everyMovementCostsAtLeastItsAxisSpanTimesTheCheapestMove} is what
-     * checks it.
-     *
-     * <p><b>Carrying this forward.</b> When C2 makes the movement set open, this must become a
-     * minimum over the active set rather than a constant — and the registry must enforce the
-     * per-axis-step condition above on every movement it admits, not merely the per-movement one.
-     * Any movement that travels more than one block along an axis, as descend does, needs the
-     * stronger form or the heuristic overestimates.
-     *
-     * @return the cheapest possible single axis step, in ticks
-     */
-    public static double cheapestMove() {
-        return Math.min(Math.min(TRAVERSE, ASCEND), Math.min(DIAGONAL, TRAVERSE + fallTicks(1)));
     }
 }

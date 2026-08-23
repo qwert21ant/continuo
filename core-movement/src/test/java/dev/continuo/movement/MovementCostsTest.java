@@ -31,43 +31,6 @@ class MovementCostsTest {
     }
 
     @Test
-    void theCheapestMoveIsALowerBoundOnEveryMove() {
-        double cheapest = MovementCosts.cheapestMove();
-
-        assertTrue(cheapest <= MovementCosts.TRAVERSE, "TRAVERSE");
-        assertTrue(cheapest <= MovementCosts.ASCEND, "ASCEND");
-        assertTrue(cheapest <= MovementCosts.DIAGONAL, "DIAGONAL");
-        assertTrue(cheapest <= MovementCosts.TRAVERSE + MovementCosts.fallTicks(1),
-            "the cheapest possible descend");
-        assertTrue(cheapest > 0, "a zero lower bound would make the heuristic useless");
-    }
-
-    /**
-     * The real admissibility condition, which is per axis step rather than per movement.
-     *
-     * <p>{@link #theCheapestMoveIsALowerBoundOnEveryMove} above is the weaker per-movement form
-     * and passes even when the heuristic overestimates, because the heuristic is a Chebyshev
-     * distance: a descend of {@code k} blocks moves it by {@code k} steps in one move, so it must
-     * pay for {@code k} of them. Today's margin at {@code k = 3} is {@code +1.3415} ticks and
-     * goes negative at {@code k = 4}.
-     */
-    @Test
-    void everyMovementCostsAtLeastItsAxisSpanTimesTheCheapestMove() {
-        double cheapest = MovementCosts.cheapestMove();
-
-        assertTrue(MovementCosts.TRAVERSE >= cheapest, "traverse spans one axis step");
-        assertTrue(MovementCosts.ASCEND >= cheapest, "ascend spans one axis step");
-        assertTrue(MovementCosts.DIAGONAL >= cheapest, "diagonal spans one axis step");
-
-        for (int k = 1; k <= MovementCosts.MAX_SAFE_FALL; k++) {
-            assertTrue(MovementCosts.TRAVERSE + MovementCosts.fallTicks(k) >= k * cheapest,
-                "a descend of " + k + " blocks moves the heuristic by " + k + " steps, so it must"
-                    + " cost at least that many cheapest moves — otherwise the heuristic"
-                    + " overestimates and A* stops returning shortest paths");
-        }
-    }
-
-    @Test
     void aDeeperFallCostsMoreButLessPerBlock() {
         for (int drop = 2; drop <= MovementCosts.MAX_SAFE_FALL; drop++) {
             double shallower = MovementCosts.fallTicks(drop - 1);

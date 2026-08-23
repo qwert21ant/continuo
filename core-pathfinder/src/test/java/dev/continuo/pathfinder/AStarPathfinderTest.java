@@ -517,7 +517,7 @@ class AStarPathfinderTest {
         Goal goal = new GoalBlock(4, 65, 2);
 
         assertEquals(PathOutcome.FOUND, result.outcome());
-        assertTrue(goal.heuristic(0, 65, 0) <= result.cost(),
+        assertTrue(goal.heuristic(0, 65, 0, MovementCosts.TRAVERSE) <= result.cost(),
             "an overestimating heuristic silently gives up the shortest-path guarantee");
     }
 
