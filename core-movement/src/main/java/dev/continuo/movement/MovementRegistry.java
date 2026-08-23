@@ -27,7 +27,7 @@ public final class MovementRegistry implements IMovementRegistry {
             throw new IllegalArgumentException(
                 "a movement must have a non-empty id; " + type.getClass().getName() + " has none");
         }
-        if (!ids.add(id)) {
+        if (ids.contains(id)) {
             throw new IllegalArgumentException("a movement with id " + id + " is already"
                 + " registered; two movements answering to one id would make the registry's"
                 + " deduplication and its discovery order both undefined");
@@ -38,6 +38,7 @@ public final class MovementRegistry implements IMovementRegistry {
                 + " minCostPerAxisStep of " + declared + "; it must be positive, or it would drag"
                 + " the heuristic's multiplier to zero and turn A* into an exhaustive search");
         }
+        ids.add(id);
         registered.add(type);
     }
 

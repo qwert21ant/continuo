@@ -127,4 +127,35 @@ class MovementRegistryTest {
             }
         });
     }
+
+    @Test
+    void aCorrectedMovementCanBeRegisteredAfterAnEarlierRejection() {
+        final MovementRegistry registry = new MovementRegistry();
+
+        assertThrows(IllegalArgumentException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                registry.register(new FakeMovement("a.retry", 0.0));
+            }
+        }, "a movement with a non-positive cost must be rejected before its id is recorded, so "
+            + "the id remains available for a corrected retry");
+
+        registry.register(new FakeMovement("a.retry", 3.0));
+
+        assertEquals(Arrays.asList("a.retry"), idsOf(registry.activeFor(CapabilitySet.none())));
+    }
+
+    @Test
+    void constructingActiveMovementsCopiesItsInputSoALaterMutationOfTheCallersListDoesNotLeak() {
+        List<IMovementType> source = new java.util.ArrayList<IMovementType>();
+        source.add(new FakeMovement("a.free", 3.0));
+
+        ActiveMovements active = new ActiveMovements(source);
+        source.clear();
+        source.add(new FakeMovement("b.injected", 9.0));
+
+        assertEquals(Arrays.asList("a.free"), idsOf(active),
+            "ActiveMovements must copy its constructor argument; aliasing the caller's list would "
+                + "let it be mutated out from under an already-constructed ActiveMovements");
+    }
 }
