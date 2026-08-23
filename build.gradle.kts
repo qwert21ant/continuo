@@ -12,6 +12,7 @@ val allowedProjectDependencies: Map<String, Set<String>> = mapOf(
     ":core" to setOf(":platform"),
     ":core-movement" to setOf(":core"),
     ":core-pathfinder" to setOf(":core", ":core-movement"),
+    ":movement-parkour" to setOf(":core", ":core-movement"),
     ":platform-testkit" to setOf(":platform", ":core"),
     ":runtime" to setOf(":platform", ":core"),
     // ":adapters" itself is an implicit parent project created by the colon-segmented
