@@ -58,12 +58,21 @@ public final class MovementRegistry implements IMovementRegistry {
      * movements land after it. That is what lets the built-in movements keep C1's expansion
      * order exactly.
      *
+     * <p><b>Loads against this interface's own class loader, not the thread context one.</b> The
+     * single-argument {@link ServiceLoader#load(Class)} resolves against the thread context class
+     * loader, and in a Forge or Fabric runtime that is routinely not the loader holding mod jars —
+     * a game thread, a worker pool thread or a mixin-time caller can each carry a different one.
+     * Discovery would then find nothing at all and report it as an empty classpath rather than as
+     * a failure. The loader that holds {@link IMovementType} is by definition the one that can see
+     * every movement compiled against it, so it is named explicitly.
+     *
      * @throws IllegalArgumentException if a discovered movement duplicates a registered id, or
      *         declares a non-positive {@link IMovementType#minCostPerAxisStep()}
      */
     public void discover() {
         List<IMovementType> found = new ArrayList<IMovementType>();
-        for (IMovementType type : ServiceLoader.load(IMovementType.class)) {
+        for (IMovementType type
+            : ServiceLoader.load(IMovementType.class, IMovementType.class.getClassLoader())) {
             found.add(type);
         }
         registerAllSorted(found);
