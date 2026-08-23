@@ -35,4 +35,15 @@ class MovementContractTest {
         assertTrue(violations.get(0).contains("4.8"),
             "the message must carry the declared figure so the fix is obvious: " + violations);
     }
+
+    @Test
+    void onlyTheFirstOfTwoViolatingOffersInTheSameCallIsReported() {
+        // TwoOfferMovement offers two neighbours per call, both violating. FakeMovement offers
+        // only one per call and so cannot witness that the audit stops at the first offending
+        // offer within a call rather than reporting every one of them.
+        List<String> violations =
+            MovementContract.violations(new TwoOfferMovement("a.twiceLiar", 4.8));
+
+        assertEquals(1, violations.size(), "expected exactly one violation, got " + violations);
+    }
 }

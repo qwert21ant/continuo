@@ -129,7 +129,7 @@ public final class MovementContract {
 
             @Override
             public int maxY() {
-                return EXTENT;
+                return EXTENT + 1;
             }
         };
     }
