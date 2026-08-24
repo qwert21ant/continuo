@@ -75,8 +75,10 @@ class PathProbeTest {
         assertTrue(report.ran());
         assertEquals(PathOutcome.FOUND, report.outcome());
         assertTrue(report.summary().contains("FOUND"), report.summary());
-        assertTrue(report.map().indexOf(PathRenderer.START) >= 0, report.map());
-        assertTrue(report.map().indexOf(PathRenderer.GOAL) >= 0, report.map());
+        assertEquals(PathRenderer.START, charAt(report.map(), 0, ProbeWorld.WALK_Y, 0),
+            "the start marker must sit on the start\n" + report.map());
+        assertEquals(PathRenderer.GOAL, charAt(report.map(), 6, ProbeWorld.WALK_Y, 0),
+            "and the goal marker on the goal\n" + report.map());
     }
 
     @Test
@@ -109,10 +111,16 @@ class PathProbeTest {
         ProbeReport report = probe.run(world, 0, ProbeWorld.WALK_Y, 0);
 
         assertEquals(PathOutcome.NO_PATH, report.outcome());
-        assertTrue(report.map().indexOf(PathRenderer.START) >= 0,
-            "a failed render must still say where the search began\n" + report.map());
-        assertTrue(report.map().indexOf(PathRenderer.GOAL) >= 0,
-            "and where it was trying to get to\n" + report.map());
+        // Position, not presence. A failed search has an empty path, which is the only case in
+        // which the renderer consults its start and goal arguments at all - so this is also the
+        // only test that can catch those two being swapped at PathProbe's call site. Asserting
+        // the markers merely exist passes with them the wrong way round, and passes on the
+        // summary line's own G besides.
+        assertEquals(PathRenderer.START, charAt(report.map(), 0, ProbeWorld.WALK_Y, 0),
+            "a failed render must say where the search began, and say it in the right place\n"
+                + report.map());
+        assertEquals(PathRenderer.GOAL, charAt(report.map(), 6, ProbeWorld.WALK_Y, 0),
+            "and where it was trying to get to, likewise\n" + report.map());
     }
 
     @Test
