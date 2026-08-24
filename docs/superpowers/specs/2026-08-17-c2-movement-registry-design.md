@@ -260,7 +260,7 @@ bit-identical.
 
 A total order by `id()` over all movements was rejected as D7. It would have perturbed the
 discovery sequence feeding `QueuedNodeOrder`'s third leg, putting
-`AStarPathfinderTest.theMovementIterationOrderIsPinnedSoAReorderingCannotPassUnnoticed` at risk —
+`AStarPathfinderTest.cardinalsStepOrderIsPinnedSoAReorderingCannotPassUnnoticed` at risk —
 a test whose own comment records that an earlier fixture was rejected for having no genuine tie to
 break. Perturbing a hard-won guard to buy nothing is a bad trade.
 
