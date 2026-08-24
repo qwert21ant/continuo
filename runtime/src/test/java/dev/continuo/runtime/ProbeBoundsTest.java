@@ -75,6 +75,24 @@ class ProbeBoundsTest {
     }
 
     @Test
+    void aClampedAxisIsAnchoredOnTheStartAndExtendsTowardTheGoal() {
+        // Centring the window on the span's midpoint put it in the empty space between a distant
+        // start and goal, so the map came back blank - no start, no goal, no route. Anchoring on
+        // the start keeps the beginning of the search drawn, whichever way the goal lies.
+        ProbeBounds ahead = ProbeBounds.around(world(0, 256),
+            new Pos(0, 64, 0), new Pos(500, 64, 0), Collections.<Pos>emptyList());
+
+        assertEquals(-ProbeBounds.PADDING, ahead.minX, "the start sits at the near edge");
+        assertEquals(-ProbeBounds.PADDING + ProbeBounds.MAX_EXTENT - 1, ahead.maxX);
+
+        ProbeBounds behind = ProbeBounds.around(world(0, 256),
+            new Pos(0, 64, 0), new Pos(-500, 64, 0), Collections.<Pos>emptyList());
+
+        assertEquals(ProbeBounds.PADDING, behind.maxX, "and at the far edge going the other way");
+        assertEquals(ProbeBounds.PADDING - ProbeBounds.MAX_EXTENT + 1, behind.minX);
+    }
+
+    @Test
     void theBoxNeverLeavesTheWorldsOwnYLimits() {
         // maxY is one past the top, per BlockSource. The box's maxY is inclusive, so the
         // highest legal layer is maxY() - 1.

@@ -18,6 +18,52 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PathProbeTest {
 
+    /**
+     * The character the map draws at a world position, or {@code '\0'} if the position falls
+     * outside the drawn window.
+     *
+     * <p><b>Only the terrain slices are read, and that is the point of having this at all.</b>
+     * A bare {@code map().indexOf('G')} also matches the G in the trailing
+     * {@code "// BUDGET_EXCEEDED, ..."} summary, so a marker assertion written that way passes on
+     * a map with no goal marker in it — a trap that has already fooled one reader of this file.
+     * {@code PathRendererTest.aPassableNonAirBlockUnderAnOverlayComesBackAsAir} cuts the string
+     * the same way, for the same reason.
+     *
+     * <p>Position rather than presence matters because the renderer consults its {@code start}
+     * and {@code goal} arguments only when the path is empty — exactly the {@code NO_PATH} and
+     * {@code BUDGET_EXCEEDED} cases this feature exists to capture. Swapping the two at the call
+     * site is invisible to any assertion that only asks whether an S and a G appear somewhere.
+     */
+    private static char charAt(String map, int x, int y, int z) {
+        int summary = map.indexOf("// ");
+        String terrain = summary < 0 ? map : map.substring(0, summary);
+        String[] lines = terrain.split("\n", -1);
+
+        String[] origin = lines[0].substring(lines[0].indexOf(':') + 1).split(",");
+        int minX = Integer.parseInt(origin[0].trim());
+        int minZ = Integer.parseInt(origin[2].trim());
+
+        int layerY = Integer.MIN_VALUE;
+        int rowZ = 0;
+        for (int i = 1; i < lines.length; i++) {
+            String line = lines[i];
+            if (line.startsWith("--- y=")) {
+                layerY = Integer.parseInt(line.substring("--- y=".length()).trim());
+                rowZ = minZ;
+                continue;
+            }
+            if (line.length() == 0) {
+                continue;
+            }
+            if (layerY == y && rowZ == z) {
+                int column = x - minX;
+                return column >= 0 && column < line.length() ? line.charAt(column) : '\0';
+            }
+            rowZ++;
+        }
+        return '\0';
+    }
+
     @Test
     void markingAGoalThenRunningFindsTheRoute() {
         ProbeWorld world = new ProbeWorld();
@@ -95,6 +141,29 @@ class PathProbeTest {
             "a truncated map must say so, or it reads as a search that stopped for no reason\n"
                 + report.map());
         assertTrue(report.summary().contains("clamped"), report.summary());
+    }
+
+    @Test
+    void aClampedMapIsAnchoredOnTheStartRatherThanBeingBlank() {
+        // The clamp tests above pass on 1,600 characters of air: one asks only that the word
+        // "clamped" appears and the other only that the map starts with "origin:", and both are
+        // true of a window centred on the empty space between a start and a distant goal. That
+        // window contained no S, no G and no part of the search, so pasting it back gave a
+        // fixture with start() == null and goal() == null - and clamping happens precisely in the
+        // failed and budget-exceeded cases the feature exists to capture.
+        ProbeWorld world = new ProbeWorld();
+        PathProbe probe = new PathProbe(50);
+        probe.markGoal(400, ProbeWorld.WALK_Y, 0);
+
+        ProbeReport report = probe.run(world, 0, ProbeWorld.WALK_Y, 0);
+
+        assertTrue(report.map().contains("clamped"), report.map());
+        assertEquals(PathRenderer.START, charAt(report.map(), 0, ProbeWorld.WALK_Y, 0),
+            "a clamped window must be anchored so the start is inside it\n" + report.map());
+        assertTrue(report.map().contains("anchored on the start"),
+            "and the notice must say the window is anchored, because the goal may now be outside"
+                + " it and a reader who is not told will read that as a missing goal\n"
+                + report.map());
     }
 
     @Test

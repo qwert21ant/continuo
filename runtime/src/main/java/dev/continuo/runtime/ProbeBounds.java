@@ -18,6 +18,10 @@ import java.util.List;
  * truncated map looks like a search that stopped for no reason, and there is nothing in it to
  * tell the two apart. Clamping to the world's own Y limits is not the same thing and does not
  * set the flag: there is no terrain outside them to lose.
+ *
+ * <p><b>A clamped axis is anchored on the start, not centred.</b> The goal may therefore fall
+ * outside the window; the start never does. See {@code clampAxis} for why centring produced a
+ * blank map.
  */
 final class ProbeBounds {
 
@@ -85,9 +89,9 @@ final class ProbeBounds {
         maxZ += PADDING;
 
         boolean clamped = false;
-        int[] x = clampAxis(minX, maxX);
-        int[] y = clampAxis(minY, maxY);
-        int[] z = clampAxis(minZ, maxZ);
+        int[] x = clampAxis(minX, maxX, start.x(), goal.x());
+        int[] y = clampAxis(minY, maxY, start.y(), goal.y());
+        int[] z = clampAxis(minZ, maxZ, start.z(), goal.z());
         clamped = x[2] == 1 || y[2] == 1 || z[2] == 1;
 
         // The world's own limits come last, so they cannot be undone by the extent clamp. maxY()
@@ -102,16 +106,38 @@ final class ProbeBounds {
     }
 
     /**
-     * @return {@code {min, max, wasClamped}}, keeping the centre of the original span
+     * Reduces one axis to at most {@link #MAX_EXTENT}, anchored on the start.
+     *
+     * <p>An axis that already fits is returned untouched. One that does not keeps the start —
+     * padded — at the near edge and extends toward the goal, rather than keeping the span's
+     * geometric centre. Centring looks fairer and is useless: for a distant goal the midpoint is
+     * empty space <em>between</em> start and goal, so the window contains no {@code S}, no
+     * {@code G}, no route and no expanded node — {@link #MAX_EXTENT} squared characters of air.
+     * Pasting that back as a fixture yields a world with neither a start nor a goal. Anchoring on
+     * the start guarantees the start marker and the beginning of the search are always drawn,
+     * which is what the failed and budget-exceeded cases — the ones most worth looking at, and
+     * the only ones that clamp in practice — actually need.
+     *
+     * @param min the padded low bound of the axis
+     * @param max the padded high bound of the axis
+     * @param startCoord where the search began, on this axis
+     * @param goalCoord what it was trying to reach, on this axis
+     * @return {@code {min, max, wasClamped}}
      */
-    private static int[] clampAxis(int min, int max) {
+    private static int[] clampAxis(int min, int max, int startCoord, int goalCoord) {
         int span = max - min + 1;
         if (span <= MAX_EXTENT) {
             return new int[] {min, max, 0};
         }
-        int centre = min + span / 2;
-        int half = MAX_EXTENT / 2;
-        int newMin = centre - half;
-        return new int[] {newMin, newMin + MAX_EXTENT - 1, 1};
+        int newMin;
+        int newMax;
+        if (goalCoord >= startCoord) {
+            newMin = startCoord - PADDING;
+            newMax = newMin + MAX_EXTENT - 1;
+        } else {
+            newMax = startCoord + PADDING;
+            newMin = newMax - MAX_EXTENT + 1;
+        }
+        return new int[] {newMin, newMax, 1};
     }
 }

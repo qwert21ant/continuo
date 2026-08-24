@@ -108,7 +108,8 @@ public final class PathProbe {
 
         if (bounds.clamped) {
             String notice = "the map is clamped to " + ProbeBounds.MAX_EXTENT
-                + " blocks per axis, so terrain outside it is not drawn";
+                + " blocks per axis and the window is anchored on the start, so terrain outside"
+                + " it is not drawn and the goal may lie outside it entirely";
             summary.append("; ").append(notice);
             // Appended as a comment line rather than prepended, because the fixture parser
             // requires "origin:" on the first line and skips "//" lines. Prepending it would
