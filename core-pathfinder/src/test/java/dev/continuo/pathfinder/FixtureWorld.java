@@ -80,7 +80,7 @@ final class FixtureWorld implements BlockSource {
      * @return the parsed world
      */
     static FixtureWorld parse(String text, Map<Character, BlockData> extra) {
-        Map<Character, BlockData> legend = new HashMap<Character, BlockData>(FixtureBlocks.legend());
+        Map<Character, BlockData> legend = new HashMap<Character, BlockData>(BlockLegend.legend());
         legend.putAll(extra);
 
         String[] lines = text.split("\r?\n");
@@ -153,7 +153,7 @@ final class FixtureWorld implements BlockSource {
                     } else if (ch == GOAL) {
                         goal = new Pos(x, y, z);
                     }
-                    blocks.put(Long.valueOf(Pos.pack(x, y, z)), FixtureBlocks.AIR);
+                    blocks.put(Long.valueOf(Pos.pack(x, y, z)), BlockLegend.AIR);
                     continue;
                 }
                 BlockData data = legend.get(Character.valueOf(ch));

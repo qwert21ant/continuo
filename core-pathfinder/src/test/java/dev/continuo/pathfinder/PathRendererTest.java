@@ -104,7 +104,7 @@ class PathRendererTest {
             new GoalBlock(4, 65, 0));
 
         assertEquals(PathOutcome.FOUND, result.outcome());
-        assertEquals(FixtureBlocks.CARPET, world.at(2, 65, 0), "the fixture really has carpet");
+        assertEquals(BlockLegend.CARPET, world.at(2, 65, 0), "the fixture really has carpet");
 
         String rendered = PathRenderer.render(world, result);
 
@@ -119,7 +119,7 @@ class PathRendererTest {
 
         FixtureWorld reparsed = FixtureWorld.parse(rendered);
 
-        assertEquals(FixtureBlocks.AIR, reparsed.at(2, 65, 0),
+        assertEquals(BlockLegend.AIR, reparsed.at(2, 65, 0),
             "so the carpet degrades to air on re-parse — the round trip preserves terrain only"
                 + " where no overlay covers it, and carpet is one of the two blocks spec 4.3"
                 + " makes a centrepiece");

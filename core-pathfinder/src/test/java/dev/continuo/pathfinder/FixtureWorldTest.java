@@ -111,7 +111,7 @@ class FixtureWorldTest {
     @Test
     void extraCharactersCanBeRegisteredForOneFixture() {
         Map<Character, BlockData> extra =
-            Collections.singletonMap(Character.valueOf('Z'), FixtureBlocks.STONE);
+            Collections.singletonMap(Character.valueOf('Z'), BlockLegend.STONE);
 
         FixtureWorld world = FixtureWorld.parse("origin: 0,0,0\n--- y=0\nZ\n", extra);
 

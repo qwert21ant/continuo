@@ -44,7 +44,7 @@ final class PathRenderer {
      */
     static String render(FixtureWorld world, PathResult result) {
         Map<BlockData, Character> reverse = new HashMap<BlockData, Character>();
-        for (Map.Entry<Character, BlockData> entry : FixtureBlocks.legend().entrySet()) {
+        for (Map.Entry<Character, BlockData> entry : BlockLegend.legend().entrySet()) {
             if (!reverse.containsKey(entry.getValue())) {
                 reverse.put(entry.getValue(), entry.getKey());
             }
