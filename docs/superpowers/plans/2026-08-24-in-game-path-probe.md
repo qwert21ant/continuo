@@ -13,7 +13,8 @@
 ## Global Constraints
 
 - **Java 8 bytecode, machine-checked.** No `var`, records, `List.of`, text blocks, or switch expressions. **No lambdas in main source** — house style is anonymous inner classes. Lambdas are acceptable in adapter code only where the surrounding adapter already uses them (the 1.21.11 adapter does; the 1.7.10 adapter does not and cannot).
-- **Javadoc is build-failing** in pure modules (`-Xdoclint:all,-missing -Xwerror`). A `{@link}` to a type in a module you do not depend on breaks the build. Use `{@code}` when unsure.
+- **Javadoc is build-failing** in pure modules (`-Xdoclint:all,-missing -Xwerror`). A `{@link}` to a type in a module you do not depend on breaks the build — **and so does a `{@link}` from main sources to a type that is still in test sources.** Use `{@code}` when unsure.
+- **A task is not done until the touched module's `:check` is green — not merely its `:test`.** `test` does not run `javadoc`, and `javadoc` is the task that fails on a bad `{@link}`. A green `:test` with a broken `:check` is the exact shape in which this plan has already shipped one build-breaking commit. Run `./gradlew :<module>:check` before every commit.
 - **`GRADLE_USER_HOME` is already `C:\GradleHome`.** Never set, export or override it.
 - **Never run `./gradlew clean`** — it destroys the 1.7.10 decompiled sources at `adapters/adapter-forge-1.7.10/build/rfg/minecraft-src/java`. Use `./gradlew build --rerun-tasks` for a from-cold guarantee.
 - **A new module or dependency must be registered in `allowedProjectDependencies`** in the root `build.gradle.kts`, or `checkDependencyDirection` fails the whole build. The checked configurations are `api`, `implementation`, `compileOnly`, `runtimeOnly`, `compileOnlyApi` — test-scoped dependencies are deliberately exempt.
@@ -171,7 +172,7 @@ import java.util.Map;
  * <p><b>{@link #characterFor} conflates two different things, and that is the documented
  * behaviour.</b> A block the legend has no character for renders as {@link #UNMAPPED}, which is
  * also {@link #UNKNOWN}'s own character. A live world produces such blocks routinely — see the
- * limits recorded on {@link PathRenderer}.
+ * limits recorded on {@code PathRenderer}.
  */
 public final class BlockLegend {
 
@@ -301,7 +302,7 @@ In `PathRendererTest.java`, replace `FixtureBlocks.CARPET` with `BlockLegend.CAR
 
 - [ ] **Step 6: Run the whole module's tests**
 
-Run: `./gradlew :core-pathfinder:test`
+Run: `./gradlew :core-pathfinder:check`
 Expected: PASS. Every pre-existing test still green — this task changed no behaviour, only where the legend lives.
 
 - [ ] **Step 7: Commit**
@@ -657,7 +658,7 @@ In `PathfinderAcceptanceTest.java:113`, replace `PathRenderer.render(world, resu
 
 - [ ] **Step 6: Run the module's tests**
 
-Run: `./gradlew :core-pathfinder:test`
+Run: `./gradlew :core-pathfinder:check`
 Expected: PASS. Every pre-existing renderer test green through the delegate, plus the three new ones.
 
 - [ ] **Step 7: Prove the inclusivity guard fails on broken code**
@@ -973,10 +974,13 @@ final class ProbeBounds {
 Run: `./gradlew :runtime:test --tests '*ProbeBoundsTest*'`
 Expected: PASS, 5 tests.
 
-- [ ] **Step 6: Verify the dependency direction check accepts the new edges**
+- [ ] **Step 6: Verify the dependency direction check and the module gate**
 
 Run: `./gradlew checkDependencyDirection`
 Expected: PASS. If it reports `:runtime` depends on something not allowed, Step 1's root `build.gradle.kts` edit is wrong or incomplete.
+
+Run: `./gradlew :runtime:check`
+Expected: PASS. **`:test` is not sufficient** — it does not run `javadoc`, which is build-failing here, and a `{@link}` from main sources to a type this module cannot see would pass `:test` and fail the build. This plan has already shipped one such commit.
 
 - [ ] **Step 7: Commit**
 
@@ -1030,18 +1034,27 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A settable world: a stone floor at {@link #FLOOR_Y} with air above, plus whatever a test puts
- * on top of it.
+ * A settable world: a square stone floor at {@link #FLOOR_Y} with air above, plus whatever a
+ * test puts on top of it.
  *
  * <p>Hand-built rather than parsed from text art, because {@code FixtureWorld} lives in
  * {@code :core-pathfinder}'s test sources and this module cannot see it. That is the seam
  * working rather than an inconvenience — the probe codes against {@code BlockSource} and so does
  * this.
+ *
+ * <p><b>The floor is finite, and that is load-bearing rather than tidy.</b> An unbounded floor
+ * has no such thing as a blocked route: {@link #wallAcross} could span any number of blocks and
+ * the search would simply walk around the end of it, so a test meaning to witness
+ * {@code NO_PATH} would quietly witness {@code FOUND} by a longer road. {@link #RADIUS} gives
+ * the world an edge for a wall to reach.
  */
 final class ProbeWorld implements BlockSource {
 
     static final int FLOOR_Y = 63;
     static final int WALK_Y = 64;
+
+    /** The floor spans {@code -RADIUS..RADIUS} on both horizontal axes, inclusive. */
+    static final int RADIUS = 12;
 
     private final Map<Long, BlockData> overrides = new HashMap<Long, BlockData>();
 
@@ -1050,10 +1063,15 @@ final class ProbeWorld implements BlockSource {
         overrides.put(Long.valueOf(key(x, y, z)), data);
     }
 
-    /** Puts a two-tall stone pillar, which no movement can cross. */
-    void wall(int x, int z) {
-        put(x, WALK_Y, z, BlockLegend.STONE);
-        put(x, WALK_Y + 1, z, BlockLegend.STONE);
+    /**
+     * Builds a two-tall wall along the whole Z extent of the floor at one X, so it genuinely
+     * separates the world rather than being something to walk around.
+     */
+    void wallAcross(int x) {
+        for (int z = -RADIUS; z <= RADIUS; z++) {
+            put(x, WALK_Y, z, BlockLegend.STONE);
+            put(x, WALK_Y + 1, z, BlockLegend.STONE);
+        }
     }
 
     @Override
@@ -1061,6 +1079,9 @@ final class ProbeWorld implements BlockSource {
         BlockData override = overrides.get(Long.valueOf(key(x, y, z)));
         if (override != null) {
             return override;
+        }
+        if (x < -RADIUS || x > RADIUS || z < -RADIUS || z > RADIUS) {
+            return BlockLegend.AIR;
         }
         return y == FLOOR_Y ? BlockLegend.STONE : BlockLegend.AIR;
     }
@@ -1134,10 +1155,11 @@ class PathProbeTest {
     @Test
     void aWalledOffGoalReportsNoPathAndStillRendersTheMap() {
         // The case that most needs looking at, and the one a summary line cannot explain.
+        // The wall spans the floor's whole Z extent: a partial wall on a finite floor is a
+        // detour, not a barrier, and this test would then witness FOUND by a longer road while
+        // still looking like it had witnessed NO_PATH.
         ProbeWorld world = new ProbeWorld();
-        for (int z = -8; z <= 8; z++) {
-            world.wall(3, z);
-        }
+        world.wallAcross(3);
         PathProbe probe = new PathProbe();
         probe.markGoal(6, ProbeWorld.WALK_Y, 0);
 
@@ -1454,6 +1476,11 @@ Expected: FAIL on `theParkourMovementIsOnTheClasspathTheProbeSearchesWith`. **Pa
 
 Restore the line.
 
+- [ ] **Step 7b: Run the module gate**
+
+Run: `./gradlew :runtime:check`
+Expected: PASS. **`:test` is not sufficient** — it does not run `javadoc`, which is build-failing here. `PathProbe` and `ProbeReport` both add main-source javadoc with `{@code}` and `{@link}` references, and a link this module cannot resolve would pass `:test` and fail the build.
+
 - [ ] **Step 8: Commit**
 
 ```bash
@@ -1500,7 +1527,9 @@ The core is currently a local `final ContinuoCore core` inside `onInitializeClie
     private final PathProbe probe = new PathProbe();
 ```
 
-and change the local declaration from `final ContinuoCore core = new ContinuoCore();` to `core = new ContinuoCore();`, adding `final ContinuoCore localCore = core;` immediately after it if the existing walk lambda's capture requires an effectively-final local.
+and change the local declaration from `final ContinuoCore core = new ContinuoCore();` to `core = new ContinuoCore();`.
+
+**No local alias is needed.** The existing walk lambda captures `core`, and once `core` is a field that reference compiles to `this.core` — fields have no effective-finality requirement. Only locals do. If the compiler disagrees, report that rather than working around it.
 
 Add imports:
 
@@ -1540,17 +1569,23 @@ After the existing dump-key `END_CLIENT_TICK` registration, add:
         // fresh one, so the classification memo is shared and its level-transition lifecycle is
         // the one ContinuoCore.stop() already discharges.
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Both keys are polled unconditionally, BEFORE the null check. consumeClick() drains a
+            // queued press as a side effect, so returning early on a null player would leave a
+            // title-screen press queued to fire on the first tick after the world loads. The dump
+            // key above drains for the same reason.
+            boolean mark = markKey.consumeClick();
+            boolean path = pathKey.consumeClick();
             if (client.player == null) {
                 return;
             }
             try {
                 BlockPos at = client.player.blockPosition();
-                if (markKey.consumeClick()) {
+                if (mark) {
                     probe.markGoal(at.getX(), at.getY(), at.getZ());
                     LOGGER.info("Continuo: path goal marked at {} {} {}",
                         at.getX(), at.getY(), at.getZ());
                 }
-                if (pathKey.consumeClick()) {
+                if (path) {
                     ProbeReport report = probe.run(
                         core.blocks(), at.getX(), at.getY(), at.getZ());
                     LOGGER.info(report.summary());
@@ -1611,7 +1646,9 @@ Beside the existing `walkKey`, `dumpKey`, `runtime`, `context`:
     private final PathProbe probe = new PathProbe();
 ```
 
-Change `final ContinuoCore core = new ContinuoCore();` in `init` to `core = new ContinuoCore();`, and introduce `final ContinuoCore localCore = core;` immediately after it for the existing anonymous `Runnable` that calls `core.requestWalk()` — an anonymous class may only capture an effectively-final local, so it must capture `localCore` rather than the field-assignment expression.
+Change `final ContinuoCore core = new ContinuoCore();` in `init` to `core = new ContinuoCore();`.
+
+**No local alias is needed.** The existing anonymous `Runnable` calls `core.requestWalk()`; once `core` is a field, that compiles to `ContinuoForgeMod.this.core`. The effective-finality rule binds captured locals, not fields. If the compiler disagrees, report that rather than working around it.
 
 Add imports:
 
@@ -1657,6 +1694,11 @@ Then add the method beside `pollDumpKey`:
      * {@code ContinuoCore.stop()} already discharges.
      */
     private void pollProbeKeys(Minecraft client) {
+        // Both keys are polled unconditionally, BEFORE the null check. isPressed() drains a queued
+        // press as a side effect, so returning early with no player would leave that press queued
+        // to fire on the first tick after one exists. pollDumpKey drains for the same reason.
+        boolean mark = markKey.isPressed();
+        boolean path = pathKey.isPressed();
         if (client.thePlayer == null) {
             return;
         }
@@ -1665,11 +1707,11 @@ Then add the method beside `pollDumpKey`:
             int py = MathHelper.floor_double(client.thePlayer.posY);
             int pz = MathHelper.floor_double(client.thePlayer.posZ);
 
-            if (markKey.isPressed()) {
+            if (mark) {
                 probe.markGoal(px, py, pz);
                 LOGGER.info("Continuo: path goal marked at " + px + " " + py + " " + pz);
             }
-            if (pathKey.isPressed()) {
+            if (path) {
                 ProbeReport report = probe.run(core.blocks(), px, py, pz);
                 LOGGER.info(report.summary());
                 if (report.ran()) {

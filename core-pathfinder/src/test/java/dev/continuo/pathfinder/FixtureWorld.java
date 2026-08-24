@@ -38,10 +38,10 @@ import java.util.Map;
  */
 final class FixtureWorld implements BlockSource {
 
-    static final char START = 'S';
-    static final char GOAL = 'G';
-    static final char PATH = '*';
-    static final char EXPANDED = '+';
+    static final char START = PathRenderer.START;
+    static final char GOAL = PathRenderer.GOAL;
+    static final char PATH = PathRenderer.PATH;
+    static final char EXPANDED = PathRenderer.EXPANDED;
 
     private final Map<Long, BlockData> blocks;
     private final int minX;
@@ -80,7 +80,7 @@ final class FixtureWorld implements BlockSource {
      * @return the parsed world
      */
     static FixtureWorld parse(String text, Map<Character, BlockData> extra) {
-        Map<Character, BlockData> legend = new HashMap<Character, BlockData>(FixtureBlocks.legend());
+        Map<Character, BlockData> legend = new HashMap<Character, BlockData>(BlockLegend.legend());
         legend.putAll(extra);
 
         String[] lines = text.split("\r?\n");
@@ -153,7 +153,7 @@ final class FixtureWorld implements BlockSource {
                     } else if (ch == GOAL) {
                         goal = new Pos(x, y, z);
                     }
-                    blocks.put(Long.valueOf(Pos.pack(x, y, z)), FixtureBlocks.AIR);
+                    blocks.put(Long.valueOf(Pos.pack(x, y, z)), BlockLegend.AIR);
                     continue;
                 }
                 BlockData data = legend.get(Character.valueOf(ch));

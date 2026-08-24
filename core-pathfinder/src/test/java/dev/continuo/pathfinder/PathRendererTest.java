@@ -1,5 +1,13 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.core.BlockData;
+import dev.continuo.core.BlockShape;
+import dev.continuo.core.BlockSource;
+import dev.continuo.core.Fluid;
+import dev.continuo.core.BlockTag;
+
+import java.util.EnumSet;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,7 +30,7 @@ class PathRendererTest {
         PathResult result = new AStarPathfinder().findPath(world, 0, 65, 0,
             new GoalBlock(4, 65, 0));
 
-        String rendered = PathRenderer.render(world, result);
+        String rendered = FixtureRenderer.render(world, result);
 
         assertTrue(rendered.contains("origin: 0,64,0"), rendered);
         assertTrue(rendered.contains("--- y=65"), rendered);
@@ -48,7 +56,7 @@ class PathRendererTest {
 
         assertEquals(PathOutcome.FOUND, result.outcome());
 
-        String rendered = PathRenderer.render(world, result);
+        String rendered = FixtureRenderer.render(world, result);
 
         assertTrue(rendered.indexOf(FixtureWorld.EXPANDED) >= 0,
             "detouring around the wall expands nodes that the final path does not use\n"
@@ -69,7 +77,7 @@ class PathRendererTest {
         PathResult result = new AStarPathfinder().findPath(world, 0, 65, 0,
             new GoalBlock(4, 65, 0));
 
-        FixtureWorld reparsed = FixtureWorld.parse(PathRenderer.render(world, result));
+        FixtureWorld reparsed = FixtureWorld.parse(FixtureRenderer.render(world, result));
 
         for (int y = world.minY(); y < world.maxY(); y++) {
             for (int x = world.minX(); x <= world.maxX(); x++) {
@@ -104,9 +112,9 @@ class PathRendererTest {
             new GoalBlock(4, 65, 0));
 
         assertEquals(PathOutcome.FOUND, result.outcome());
-        assertEquals(FixtureBlocks.CARPET, world.at(2, 65, 0), "the fixture really has carpet");
+        assertEquals(BlockLegend.CARPET, world.at(2, 65, 0), "the fixture really has carpet");
 
-        String rendered = PathRenderer.render(world, result);
+        String rendered = FixtureRenderer.render(world, result);
 
         assertTrue(rendered.contains("S***G"),
             "the path walks straight over the carpet, so an overlay covers it\n" + rendered);
@@ -119,7 +127,7 @@ class PathRendererTest {
 
         FixtureWorld reparsed = FixtureWorld.parse(rendered);
 
-        assertEquals(FixtureBlocks.AIR, reparsed.at(2, 65, 0),
+        assertEquals(BlockLegend.AIR, reparsed.at(2, 65, 0),
             "so the carpet degrades to air on re-parse — the round trip preserves terrain only"
                 + " where no overlay covers it, and carpet is one of the two blocks spec 4.3"
                 + " makes a centrepiece");
@@ -142,7 +150,7 @@ class PathRendererTest {
         PathResult result = new AStarPathfinder().findPath(world, 0, 65, 0,
             new GoalBlock(4, 65, 0));
 
-        FixtureWorld reparsed = FixtureWorld.parse(PathRenderer.render(world, result));
+        FixtureWorld reparsed = FixtureWorld.parse(FixtureRenderer.render(world, result));
 
         assertEquals(world.minX(), reparsed.minX());
         assertEquals(world.maxX(), reparsed.maxX());
@@ -167,7 +175,7 @@ class PathRendererTest {
 
         assertEquals(PathOutcome.NO_PATH, result.outcome());
 
-        String rendered = PathRenderer.render(world, result);
+        String rendered = FixtureRenderer.render(world, result);
 
         assertTrue(rendered.contains("NO_PATH"), "the outcome belongs in the dump\n" + rendered);
         assertTrue(rendered.contains("#"), rendered);
@@ -199,9 +207,95 @@ class PathRendererTest {
 
         // The whole point of the renderer: a failure pastes straight back in and reproduces the
         // same question. That is only true if the query survives, not just the terrain.
-        FixtureWorld reparsed = FixtureWorld.parse(PathRenderer.render(world, result));
+        FixtureWorld reparsed = FixtureWorld.parse(FixtureRenderer.render(world, result));
 
         assertEquals(world.start(), reparsed.start());
         assertEquals(world.goal(), reparsed.goal());
+    }
+
+    /**
+     * The two forms must agree, and the reason is the one parameter whose meaning is not
+     * obvious. BlockSource.maxY() is one past the top, while FixtureWorld's X and Z bounds are
+     * inclusive. The published form takes all six inclusive so a caller reading the signature
+     * cannot be caught by the split, which means the delegate has to pass maxY() - 1. Get that
+     * off by one and the map silently loses or gains its top layer.
+     */
+    @Test
+    void theBlockSourceFormAgreesWithTheFixtureForm() {
+        FixtureWorld world = FixtureWorld.parse(FLAT);
+        PathResult result = new AStarPathfinder().findPath(world, 0, 65, 0,
+            new GoalBlock(4, 65, 0));
+
+        String viaFixture = FixtureRenderer.render(world, result);
+        String viaBlockSource = PathRenderer.render(world,
+            world.minX(), world.minY(), world.minZ(),
+            world.maxX(), world.maxY() - 1, world.maxZ(),
+            world.start(), world.goal(), result);
+
+        assertEquals(viaFixture, viaBlockSource);
+    }
+
+    /**
+     * The top layer is present, which is what an off-by-one in the delegate would silently
+     * remove. FLAT declares y=64, y=65 and y=66, so the render must carry all three.
+     */
+    @Test
+    void theRenderCarriesEveryLayerOfTheWorldIncludingTheTopmost() {
+        FixtureWorld world = FixtureWorld.parse(FLAT);
+        PathResult result = new AStarPathfinder().findPath(world, 0, 65, 0,
+            new GoalBlock(4, 65, 0));
+
+        String rendered = FixtureRenderer.render(world, result);
+
+        assertTrue(rendered.contains("--- y=64"), rendered);
+        assertTrue(rendered.contains("--- y=65"), rendered);
+        assertTrue(rendered.contains("--- y=66"),
+            "the topmost layer is the one an inclusive/exclusive slip drops\n" + rendered);
+    }
+
+    /**
+     * Spec 4.3, pinned rather than merely documented: a live world produces blocks the legend
+     * does not name, and the whole in-game probe rests on those rendering as something readable
+     * instead of throwing. The paste-back consequence is the second half - '?' comes back as
+     * UNKNOWN, which is impassable, so a pasted fixture can be stricter than the world it came
+     * from.
+     */
+    @Test
+    void aBlockOutsideTheLegendRendersAsQuestionMarkAndReParsesAsUnknown() {
+        final BlockData offLegend = new BlockData(BlockShape.PARTIAL, 0.5625, Fluid.NONE,
+            EnumSet.noneOf(BlockTag.class));
+        FixtureWorld world = FixtureWorld.parse(FLAT);
+        BlockSource patched = new BlockSource() {
+            @Override
+            public BlockData at(int x, int y, int z) {
+                return x == 2 && y == 66 && z == 0 ? offLegend : world.at(x, y, z);
+            }
+
+            @Override
+            public int minY() {
+                return world.minY();
+            }
+
+            @Override
+            public int maxY() {
+                return world.maxY();
+            }
+        };
+        PathResult result = new AStarPathfinder().findPath(patched, 0, 65, 0,
+            new GoalBlock(4, 65, 0));
+
+        String rendered = PathRenderer.render(patched,
+            world.minX(), world.minY(), world.minZ(),
+            world.maxX(), world.maxY() - 1, world.maxZ(),
+            new Pos(0, 65, 0), new Pos(4, 65, 0), result);
+
+        String terrain = rendered.substring(0, rendered.indexOf("// "));
+        assertTrue(terrain.indexOf(BlockLegend.UNMAPPED) >= 0,
+            "the off-legend block must render as '?'\n" + rendered);
+
+        FixtureWorld reparsed = FixtureWorld.parse(rendered);
+        assertEquals(BlockLegend.UNKNOWN, reparsed.at(2, 66, 0),
+            "and '?' comes back as UNKNOWN, not as the block it actually was - so a pasted"
+                + " fixture is stricter than the world it was captured from");
     }
 }

@@ -110,6 +110,6 @@ class PathfinderAcceptanceTest {
     }
 
     private static String render(FixtureWorld world, PathResult result) {
-        return "\n" + PathRenderer.render(world, result);
+        return "\n" + FixtureRenderer.render(world, result);
     }
 }
