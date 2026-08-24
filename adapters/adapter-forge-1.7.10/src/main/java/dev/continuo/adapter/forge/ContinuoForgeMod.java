@@ -12,6 +12,8 @@ import dev.continuo.core.ContinuoCore;
 import dev.continuo.runtime.AdapterRuntime;
 import dev.continuo.runtime.BlockDumpWalker;
 import dev.continuo.runtime.ClickSource;
+import dev.continuo.runtime.PathProbe;
+import dev.continuo.runtime.ProbeReport;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.util.MathHelper;
@@ -59,7 +61,11 @@ public final class ContinuoForgeMod {
 
     private KeyBinding walkKey;
     private KeyBinding dumpKey;
+    private KeyBinding markKey;
+    private KeyBinding pathKey;
     private AdapterRuntime runtime;
+    private ContinuoCore core;
+    private final PathProbe probe = new PathProbe();
 
     /**
      * Promoted from a local so {@link #onClientTick} — a separate method from {@link #init} —
@@ -78,7 +84,14 @@ public final class ContinuoForgeMod {
         dumpKey = new KeyBinding("key.continuo.dump", Keyboard.KEY_J, "key.categories.continuo");
         ClientRegistry.registerKeyBinding(dumpKey);
 
-        final ContinuoCore core = new ContinuoCore();
+        // Dev-only, like the dump key: mark a destination, then path to it from wherever you
+        // stand. H and L are free in vanilla and clear of Continuo's existing K and J.
+        markKey = new KeyBinding("key.continuo.mark", Keyboard.KEY_H, "key.categories.continuo");
+        ClientRegistry.registerKeyBinding(markKey);
+        pathKey = new KeyBinding("key.continuo.path", Keyboard.KEY_L, "key.categories.continuo");
+        ClientRegistry.registerKeyBinding(pathKey);
+
+        core = new ContinuoCore();
         context = new ForgePlatformContext(Minecraft.getMinecraft());
 
         runtime = new AdapterRuntime(
@@ -120,6 +133,7 @@ public final class ContinuoForgeMod {
             // branch above (Phase.END) so it cannot run twice in one tick. END is chosen so the
             // dump reflects state after this tick's core processing has already settled.
             pollDumpKey(client);
+            pollProbeKeys(client);
         }
     }
 
@@ -162,6 +176,56 @@ public final class ContinuoForgeMod {
             LOGGER.info("Continuo: wrote block dump to " + out.getAbsolutePath());
         } catch (Exception e) {
             LOGGER.error("Continuo: could not write the block dump", e);
+        }
+    }
+
+    /**
+     * Polls the mark and path keys and, on a click, marks a goal or runs the probe.
+     *
+     * <p>Runs inside a tick callback, so the whole operation is wrapped in a single
+     * {@code try}/{@code catch} for the same reason {@link #pollDumpKey} is: a dev tool that
+     * kills the client on a bad region is worse than one that logs and carries on.
+     *
+     * <p>Reads through {@code ContinuoCore.blocks()} rather than a fresh {@code BlockLookup}, so
+     * the classification memo is shared and its level-transition lifecycle is the one
+     * {@code ContinuoCore.stop()} already discharges.
+     */
+    private void pollProbeKeys(Minecraft client) {
+        if (client.thePlayer == null) {
+            return;
+        }
+        try {
+            int px = MathHelper.floor_double(client.thePlayer.posX);
+            int py = MathHelper.floor_double(client.thePlayer.posY);
+            int pz = MathHelper.floor_double(client.thePlayer.posZ);
+
+            if (markKey.isPressed()) {
+                probe.markGoal(px, py, pz);
+                LOGGER.info("Continuo: path goal marked at " + px + " " + py + " " + pz);
+            }
+            if (pathKey.isPressed()) {
+                ProbeReport report = probe.run(core.blocks(), px, py, pz);
+                LOGGER.info(report.summary());
+                if (report.ran()) {
+                    File out = new File(client.mcDataDir, "continuo-path-probe.txt");
+                    OutputStream stream = null;
+                    try {
+                        stream = new FileOutputStream(out);
+                        stream.write(report.map().getBytes("UTF-8"));
+                    } finally {
+                        if (stream != null) {
+                            try {
+                                stream.close();
+                            } catch (IOException ignored) {
+                                // Already written or already failed; nothing useful to do.
+                            }
+                        }
+                    }
+                    LOGGER.info("Continuo: wrote path probe map to " + out.getAbsolutePath());
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Continuo: the path probe failed", e);
         }
     }
 }
