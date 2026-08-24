@@ -133,7 +133,15 @@ public static String render(BlockSource world,
 ```
 
 Six bounds `int`s rather than a new value type, matching `BlockDumpWalker.dump`'s
-existing shape in the module that will call this. All bounds inclusive, as there.
+existing shape in the module that will call this.
+
+**All six bounds are inclusive, and `maxY` is the one to watch.** The existing
+implementation loops `y < world.maxY()` because `BlockSource.maxY()` is defined as
+*one past* the highest Y, while it loops `x <= world.maxX()` because `FixtureWorld`'s
+own X and Z bounds are inclusive. The published form must not inherit that split —
+a caller reading the signature has no way to guess that one of six parameters means
+something different from the other five. The `FixtureWorld` delegate therefore
+passes `world.maxY() - 1`, and a test pins that the two forms render identically.
 
 `start` and `goal` become explicit parameters because a `BlockSource` has no
 `start()` and `goal()` the way `FixtureWorld` does. The existing implementation
@@ -264,8 +272,19 @@ same category, registered the same way, polled the same way:
 - `key.continuo.mark` marks the goal at the player's current block position
 - `key.continuo.path` runs the search from wherever the player is standing
 
-Default bindings are **K** and **L**, chosen to sit beside the dump key's existing
-**J** and not to collide with it.
+Default bindings are **H** and **L**. Both are free in vanilla on both versions,
+and neither collides with the two keys Continuo already claims — **K** for the walk
+and **J** for the dump.
+
+**The probe reads through `ContinuoCore.blocks()`, not a fresh `BlockLookup`.** The
+core already builds one at `start()` and already clears it on every level
+transition, and its memo turns a repeat state id into a map lookup instead of a
+`describe`-and-classify. Constructing a second lookup in the adapter would duplicate
+that memo, warm it separately, and — worse — sit outside the lifecycle that
+`ContinuoCore.stop()` discharges, which is exactly the "must not outlive the level
+it was built against" hazard `BlockLookup`'s javadoc warns about. This means
+promoting the core from a local to a field in both adapters, which is the same
+change `context` already needed in the 1.7.10 adapter for the dump poll.
 
 Both are polled on the end-of-tick event, as the dump already is, so reads land
 inside `IBlockView`'s delivery window after the tick's core processing has settled.
