@@ -13,7 +13,8 @@
 ## Global Constraints
 
 - **Java 8 bytecode, machine-checked.** No `var`, records, `List.of`, text blocks, or switch expressions. **No lambdas in main source** — house style is anonymous inner classes. Lambdas are acceptable in adapter code only where the surrounding adapter already uses them (the 1.21.11 adapter does; the 1.7.10 adapter does not and cannot).
-- **Javadoc is build-failing** in pure modules (`-Xdoclint:all,-missing -Xwerror`). A `{@link}` to a type in a module you do not depend on breaks the build. Use `{@code}` when unsure.
+- **Javadoc is build-failing** in pure modules (`-Xdoclint:all,-missing -Xwerror`). A `{@link}` to a type in a module you do not depend on breaks the build — **and so does a `{@link}` from main sources to a type that is still in test sources.** Use `{@code}` when unsure.
+- **A task is not done until the touched module's `:check` is green — not merely its `:test`.** `test` does not run `javadoc`, and `javadoc` is the task that fails on a bad `{@link}`. A green `:test` with a broken `:check` is the exact shape in which this plan has already shipped one build-breaking commit. Run `./gradlew :<module>:check` before every commit.
 - **`GRADLE_USER_HOME` is already `C:\GradleHome`.** Never set, export or override it.
 - **Never run `./gradlew clean`** — it destroys the 1.7.10 decompiled sources at `adapters/adapter-forge-1.7.10/build/rfg/minecraft-src/java`. Use `./gradlew build --rerun-tasks` for a from-cold guarantee.
 - **A new module or dependency must be registered in `allowedProjectDependencies`** in the root `build.gradle.kts`, or `checkDependencyDirection` fails the whole build. The checked configurations are `api`, `implementation`, `compileOnly`, `runtimeOnly`, `compileOnlyApi` — test-scoped dependencies are deliberately exempt.
@@ -171,7 +172,7 @@ import java.util.Map;
  * <p><b>{@link #characterFor} conflates two different things, and that is the documented
  * behaviour.</b> A block the legend has no character for renders as {@link #UNMAPPED}, which is
  * also {@link #UNKNOWN}'s own character. A live world produces such blocks routinely — see the
- * limits recorded on {@link PathRenderer}.
+ * limits recorded on {@code PathRenderer}.
  */
 public final class BlockLegend {
 
@@ -301,7 +302,7 @@ In `PathRendererTest.java`, replace `FixtureBlocks.CARPET` with `BlockLegend.CAR
 
 - [ ] **Step 6: Run the whole module's tests**
 
-Run: `./gradlew :core-pathfinder:test`
+Run: `./gradlew :core-pathfinder:check`
 Expected: PASS. Every pre-existing test still green — this task changed no behaviour, only where the legend lives.
 
 - [ ] **Step 7: Commit**
@@ -657,7 +658,7 @@ In `PathfinderAcceptanceTest.java:113`, replace `PathRenderer.render(world, resu
 
 - [ ] **Step 6: Run the module's tests**
 
-Run: `./gradlew :core-pathfinder:test`
+Run: `./gradlew :core-pathfinder:check`
 Expected: PASS. Every pre-existing renderer test green through the delegate, plus the three new ones.
 
 - [ ] **Step 7: Prove the inclusivity guard fails on broken code**
@@ -973,10 +974,13 @@ final class ProbeBounds {
 Run: `./gradlew :runtime:test --tests '*ProbeBoundsTest*'`
 Expected: PASS, 5 tests.
 
-- [ ] **Step 6: Verify the dependency direction check accepts the new edges**
+- [ ] **Step 6: Verify the dependency direction check and the module gate**
 
 Run: `./gradlew checkDependencyDirection`
 Expected: PASS. If it reports `:runtime` depends on something not allowed, Step 1's root `build.gradle.kts` edit is wrong or incomplete.
+
+Run: `./gradlew :runtime:check`
+Expected: PASS. **`:test` is not sufficient** — it does not run `javadoc`, which is build-failing here, and a `{@link}` from main sources to a type this module cannot see would pass `:test` and fail the build. This plan has already shipped one such commit.
 
 - [ ] **Step 7: Commit**
 
@@ -1471,6 +1475,11 @@ Run: `./gradlew :runtime:test --tests '*PathProbeTest*'`
 Expected: FAIL on `theParkourMovementIsOnTheClasspathTheProbeSearchesWith`. **Paste the output.** This is the guard that stops the probe silently searching without the movement it claims to exercise. If it passes, the dependency is reaching the test classpath by some other route — **report that** rather than adjusting the test.
 
 Restore the line.
+
+- [ ] **Step 7b: Run the module gate**
+
+Run: `./gradlew :runtime:check`
+Expected: PASS. **`:test` is not sufficient** — it does not run `javadoc`, which is build-failing here. `PathProbe` and `ProbeReport` both add main-source javadoc with `{@code}` and `{@link}` references, and a link this module cannot resolve would pass `:test` and fail the build.
 
 - [ ] **Step 8: Commit**
 
