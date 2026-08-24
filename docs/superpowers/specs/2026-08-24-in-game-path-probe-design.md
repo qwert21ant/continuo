@@ -103,12 +103,29 @@ half answers the question that is actually open.
 The root `build.gradle.kts` entry becomes:
 
 ```kotlin
-":runtime" to setOf(":platform", ":core", ":core-movement", ":core-pathfinder")
+":runtime" to setOf(":platform", ":core", ":core-movement", ":core-pathfinder",
+                    ":movement-parkour")
 ```
 
 `:core-movement` is listed because the probe names `CapabilitySet` and `Capability`
 directly, not only through `:core-pathfinder`. Omitting it would compile through
 the transitive path and misdescribe the direction the check exists to pin.
+
+**`:movement-parkour` is a `runtimeOnly` dependency, and without it the probe is
+quietly pointless.** The adapters depend on `:platform`, `:core` and `:runtime` —
+never on the parkour module — so nothing puts it on the game's classpath.
+`MovementRegistry.discover()` would find no parkour movement, and the probe would
+request `Capability.PARKOUR` from a registry that has nothing to grant it: every
+search would silently run the four built-ins, and §5.3's stated reason for enabling
+the capability at all would be false. Declaring it `runtimeOnly` on `:runtime` puts
+it on the game classpath transitively, and on `:runtime`'s own test runtime
+classpath, without giving anything a compile-time path to it. `runtimeOnly` is one
+of the configurations `checkDependencyDirection` inspects, so the allowlist entry is
+required rather than optional.
+
+This does not weaken C2's seam. The seam is that `:movement-parkour` must not
+compile against `:core-pathfinder`, and it still does not. A consumer loading a
+movement plugin at runtime is the seam being used as designed.
 
 **This does not break M4's purity promise, contrary to the obvious reading.** The
 roadmap's *"pure, headless, no Minecraft anywhere"* binds the core. `:runtime` is
@@ -234,6 +251,13 @@ reported plainly and the map is still written — see §5.5.
 The search runs with `CapabilitySet.of(Capability.PARKOUR)`. Parkour is the
 movement with the thinnest evidence behind it and the entire reason C2 exists, so
 the probe should be exercising it rather than avoiding it.
+
+This is only true if the parkour module is actually on the classpath — see §3. A
+probe that requests a capability nothing supplies looks identical to one that
+exercises it, which is the same "reads as a pass, checked nothing" failure shape
+`MovementContract` was fixed twice to avoid. A `:runtime` test asserts that
+`AStarPathfinder.defaultRegistry()` discovers `walk.parkour`, so the classpath
+wiring cannot silently regress.
 
 ### 5.4 Threading, and why C3 is not a prerequisite
 
