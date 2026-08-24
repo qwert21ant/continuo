@@ -6,6 +6,8 @@ import dev.continuo.core.BlockTableLoader;
 import dev.continuo.core.ContinuoCore;
 import dev.continuo.runtime.AdapterRuntime;
 import dev.continuo.runtime.BlockDumpWalker;
+import dev.continuo.runtime.PathProbe;
+import dev.continuo.runtime.ProbeReport;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -38,7 +40,11 @@ public final class ContinuoFabricMod implements ClientModInitializer {
 
     private KeyMapping walkKey;
     private KeyMapping dumpKey;
+    private KeyMapping markKey;
+    private KeyMapping pathKey;
     private AdapterRuntime runtime;
+    private ContinuoCore core;
+    private final PathProbe probe = new PathProbe();
 
     @Override
     public void onInitializeClient() {
@@ -65,7 +71,22 @@ public final class ContinuoFabricMod implements ClientModInitializer {
             category
         ));
 
-        final ContinuoCore core = new ContinuoCore();
+        // Dev-only, like the dump key: mark a destination, then path to it from wherever you
+        // stand. Unrelated to the four global rules, so polled separately below.
+        markKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+            "key.continuo.mark",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_H,
+            category
+        ));
+        pathKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+            "key.continuo.path",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_L,
+            category
+        ));
+
+        core = new ContinuoCore();
         FabricPlatformContext context = new FabricPlatformContext(Minecraft.getInstance());
 
         runtime = new AdapterRuntime(
@@ -109,6 +130,37 @@ public final class ContinuoFabricMod implements ClientModInitializer {
                 LOGGER.info("Continuo: wrote block dump to {}", out);
             } catch (Exception e) {
                 LOGGER.error("Continuo: could not write the block dump", e);
+            }
+        });
+
+        // Polled on END for the same reason the dump is: the read reflects state after this
+        // tick's core processing has settled. The core's own BlockLookup is used rather than a
+        // fresh one, so the classification memo is shared and its level-transition lifecycle is
+        // the one ContinuoCore.stop() already discharges.
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (client.player == null) {
+                return;
+            }
+            try {
+                BlockPos at = client.player.blockPosition();
+                if (markKey.consumeClick()) {
+                    probe.markGoal(at.getX(), at.getY(), at.getZ());
+                    LOGGER.info("Continuo: path goal marked at {} {} {}",
+                        at.getX(), at.getY(), at.getZ());
+                }
+                if (pathKey.consumeClick()) {
+                    ProbeReport report = probe.run(
+                        core.blocks(), at.getX(), at.getY(), at.getZ());
+                    LOGGER.info(report.summary());
+                    if (report.ran()) {
+                        Path out = client.gameDirectory.toPath()
+                            .resolve("continuo-path-probe.txt");
+                        Files.write(out, report.map().getBytes(StandardCharsets.UTF_8));
+                        LOGGER.info("Continuo: wrote path probe map to {}", out);
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.error("Continuo: the path probe failed", e);
             }
         });
 
