@@ -29,7 +29,7 @@ import java.util.Map;
  * <p><b>{@link #characterFor} conflates two different things, and that is the documented
  * behaviour.</b> A block the legend has no character for renders as {@link #UNMAPPED}, which is
  * also {@link #UNKNOWN}'s own character. A live world produces such blocks routinely — see the
- * limits recorded on {@link PathRenderer}.
+ * limits recorded on {@code PathRenderer}.
  */
 public final class BlockLegend {
 
