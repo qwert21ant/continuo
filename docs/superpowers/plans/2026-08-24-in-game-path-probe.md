@@ -1030,18 +1030,27 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A settable world: a stone floor at {@link #FLOOR_Y} with air above, plus whatever a test puts
- * on top of it.
+ * A settable world: a square stone floor at {@link #FLOOR_Y} with air above, plus whatever a
+ * test puts on top of it.
  *
  * <p>Hand-built rather than parsed from text art, because {@code FixtureWorld} lives in
  * {@code :core-pathfinder}'s test sources and this module cannot see it. That is the seam
  * working rather than an inconvenience — the probe codes against {@code BlockSource} and so does
  * this.
+ *
+ * <p><b>The floor is finite, and that is load-bearing rather than tidy.</b> An unbounded floor
+ * has no such thing as a blocked route: {@link #wallAcross} could span any number of blocks and
+ * the search would simply walk around the end of it, so a test meaning to witness
+ * {@code NO_PATH} would quietly witness {@code FOUND} by a longer road. {@link #RADIUS} gives
+ * the world an edge for a wall to reach.
  */
 final class ProbeWorld implements BlockSource {
 
     static final int FLOOR_Y = 63;
     static final int WALK_Y = 64;
+
+    /** The floor spans {@code -RADIUS..RADIUS} on both horizontal axes, inclusive. */
+    static final int RADIUS = 12;
 
     private final Map<Long, BlockData> overrides = new HashMap<Long, BlockData>();
 
@@ -1050,10 +1059,15 @@ final class ProbeWorld implements BlockSource {
         overrides.put(Long.valueOf(key(x, y, z)), data);
     }
 
-    /** Puts a two-tall stone pillar, which no movement can cross. */
-    void wall(int x, int z) {
-        put(x, WALK_Y, z, BlockLegend.STONE);
-        put(x, WALK_Y + 1, z, BlockLegend.STONE);
+    /**
+     * Builds a two-tall wall along the whole Z extent of the floor at one X, so it genuinely
+     * separates the world rather than being something to walk around.
+     */
+    void wallAcross(int x) {
+        for (int z = -RADIUS; z <= RADIUS; z++) {
+            put(x, WALK_Y, z, BlockLegend.STONE);
+            put(x, WALK_Y + 1, z, BlockLegend.STONE);
+        }
     }
 
     @Override
@@ -1061,6 +1075,9 @@ final class ProbeWorld implements BlockSource {
         BlockData override = overrides.get(Long.valueOf(key(x, y, z)));
         if (override != null) {
             return override;
+        }
+        if (x < -RADIUS || x > RADIUS || z < -RADIUS || z > RADIUS) {
+            return BlockLegend.AIR;
         }
         return y == FLOOR_Y ? BlockLegend.STONE : BlockLegend.AIR;
     }
@@ -1134,10 +1151,11 @@ class PathProbeTest {
     @Test
     void aWalledOffGoalReportsNoPathAndStillRendersTheMap() {
         // The case that most needs looking at, and the one a summary line cannot explain.
+        // The wall spans the floor's whole Z extent: a partial wall on a finite floor is a
+        // detour, not a barrier, and this test would then witness FOUND by a longer road while
+        // still looking like it had witnessed NO_PATH.
         ProbeWorld world = new ProbeWorld();
-        for (int z = -8; z <= 8; z++) {
-            world.wall(3, z);
-        }
+        world.wallAcross(3);
         PathProbe probe = new PathProbe();
         probe.markGoal(6, ProbeWorld.WALK_Y, 0);
 
@@ -1500,7 +1518,9 @@ The core is currently a local `final ContinuoCore core` inside `onInitializeClie
     private final PathProbe probe = new PathProbe();
 ```
 
-and change the local declaration from `final ContinuoCore core = new ContinuoCore();` to `core = new ContinuoCore();`, adding `final ContinuoCore localCore = core;` immediately after it if the existing walk lambda's capture requires an effectively-final local.
+and change the local declaration from `final ContinuoCore core = new ContinuoCore();` to `core = new ContinuoCore();`.
+
+**No local alias is needed.** The existing walk lambda captures `core`, and once `core` is a field that reference compiles to `this.core` — fields have no effective-finality requirement. Only locals do. If the compiler disagrees, report that rather than working around it.
 
 Add imports:
 
@@ -1611,7 +1631,9 @@ Beside the existing `walkKey`, `dumpKey`, `runtime`, `context`:
     private final PathProbe probe = new PathProbe();
 ```
 
-Change `final ContinuoCore core = new ContinuoCore();` in `init` to `core = new ContinuoCore();`, and introduce `final ContinuoCore localCore = core;` immediately after it for the existing anonymous `Runnable` that calls `core.requestWalk()` — an anonymous class may only capture an effectively-final local, so it must capture `localCore` rather than the field-assignment expression.
+Change `final ContinuoCore core = new ContinuoCore();` in `init` to `core = new ContinuoCore();`.
+
+**No local alias is needed.** The existing anonymous `Runnable` calls `core.requestWalk()`; once `core` is a field, that compiles to `ContinuoForgeMod.this.core`. The effective-finality rule binds captured locals, not fields. If the compiler disagrees, report that rather than working around it.
 
 Add imports:
 
