@@ -85,8 +85,9 @@ public final class MovementContract {
     /**
      * @param type the movement to audit; never {@code null}
      * @return a single message describing the first neighbour whose cost falls below the declared
-     *         figure, or a message saying the audit never elicited an offer at all, or an empty
-     *         list when the declaration was exercised and held.
+     *         figure, or a message saying the offer was the movement's own position and so has no
+     *         per-step cost, or a message saying the audit never elicited an offer at all, or an
+     *         empty list when the declaration was exercised and held.
      *         <b>One counterexample, not all of them</b> — the same declaration is wrong at every
      *         position a movement can offer from, so collecting them all would bury the one that
      *         matters under hundreds of copies, and the fix is identical either way
@@ -120,6 +121,24 @@ public final class MovementContract {
                         // offsets from the origin; only Y needs subtracting.
                         int span = Math.max(Math.abs(nx),
                             Math.max(Math.abs(ny - originY), Math.abs(nz)));
+                        // A movement offering the position it was asked to expand from. This
+                        // guard is NOT redundant with the comparison below, which is why it was
+                        // deleted once and restored: cost / 0 is Infinity (or NaN at cost 0),
+                        // and neither is less than the declared figure, so the comparison passes
+                        // a degenerate movement in silence. The no-offer branch does not catch
+                        // it either — the counter above has already incremented, so as far as
+                        // that branch can tell the audit was exercised. Without this, a movement
+                        // whose only edge is a self-offer is the one shape that reads as a clean
+                        // audit while having been checked against nothing.
+                        if (span == 0) {
+                            violations.add(type.id() + " offered its own position (" + nx + ", "
+                                + ny + ", " + nz + "), which is not a move: an edge spanning zero"
+                                + " axis steps has no per-step cost to check the declared"
+                                + " minCostPerAxisStep of " + declared + " against. A* would also"
+                                + " expand it as a zero-length neighbour of itself. Fix expand()"
+                                + " so it never offers the position it was given.");
+                            return;
+                        }
                         double perStep = cost / span;
                         if (perStep < declared - 1.0e-9) {
                             violations.add(type.id() + " declares minCostPerAxisStep " + declared

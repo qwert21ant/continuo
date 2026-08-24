@@ -93,7 +93,7 @@ class ParkourOptimalityTest {
                 "A* returned a costlier path than Dijkstra over the same movements, with a "
                     + "span-2 movement active; seed " + seed);
 
-            if (longestStep(result.path()) >= 2) {
+            if (containsAParkourJump(result.path())) {
                 withAJump++;
             }
         }
@@ -101,8 +101,10 @@ class ParkourOptimalityTest {
         // Both figures are pinned as floors rather than as equalities: they are properties of
         // the fixture, not of the search, and a floor fails loudly if the fixture degenerates
         // while leaving room to retune it. Measured on this fixture: 374 of 400 worlds solvable,
-        // 208 of those 374 optimal paths routed through at least one two-block step, and A*
-        // matched Dijkstra to 1e-9 on all 374.
+        // 207 of those 374 optimal paths routed through at least one parkour jump, and A*
+        // matched Dijkstra to 1e-9 on all 374. The figure was 208 while the classifier counted
+        // by step length: exactly one of those paths contained no jump at all and was credited
+        // to parkour on the strength of a three-block fall.
         //
         // The second floor is the one that matters. Without it this test could pass while
         // asserting nothing C2 is about: if parkour stopped appearing in optimal routes it would
@@ -115,27 +117,36 @@ class ParkourOptimalityTest {
         assertTrue(withAJump >= 150,
             "parkour has stopped appearing in optimal routes, which makes this whole test a "
                 + "re-run of the built-in-movement oracle: only " + withAJump + " of " + solvable
-                + " optimal paths contain a two-block step");
+                + " optimal paths contain a level two-block step");
     }
 
     /**
-     * The Chebyshev length of the longest single step in a path.
+     * Whether the path contains a step only {@link ParkourMove} could have produced.
      *
-     * <p>Two is reachable only by {@link ParkourMove}: every built-in movement spans exactly one
-     * axis step, so a step of two is a jump and nothing else.
+     * <p><b>Step length alone does not identify a jump, and assuming it does is the trap this
+     * replaced.</b> {@code DescendMove} offers landings up to {@code MovementCosts.MAX_SAFE_FALL}
+     * = 3 blocks below, so it produces Chebyshev steps of two and three as well; counting by
+     * length quietly credits some falls to parkour and would mislead whoever next retunes the
+     * floor below.
+     *
+     * <p>What separates them is the axis, not the distance. Every built-in movement spans exactly
+     * one block horizontally, and the only one spanning more than one block at all does it by
+     * falling. So a step that is <em>level</em> and two or more blocks horizontally is a parkour
+     * jump and nothing else.
      */
-    private static int longestStep(List<Pos> path) {
-        int longest = 0;
+    private static boolean containsAParkourJump(List<Pos> path) {
         for (int i = 1; i < path.size(); i++) {
             Pos from = path.get(i - 1);
             Pos to = path.get(i);
-            int step = Math.max(Math.abs(to.x() - from.x()),
-                Math.max(Math.abs(to.y() - from.y()), Math.abs(to.z() - from.z())));
-            if (step > longest) {
-                longest = step;
+            if (to.y() != from.y()) {
+                continue;
+            }
+            int horizontal = Math.max(Math.abs(to.x() - from.x()), Math.abs(to.z() - from.z()));
+            if (horizontal >= 2) {
+                return true;
             }
         }
-        return longest;
+        return false;
     }
 
     private static List<String> idsOf(List<IMovementType> moves) {

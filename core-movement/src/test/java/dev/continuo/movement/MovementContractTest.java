@@ -82,6 +82,21 @@ class MovementContractTest {
     }
 
     @Test
+    void aMovementWhoseOnlyEdgeIsItsOwnPositionIsReportedRatherThanPassed() {
+        // A span of zero, so the offer is the position expand() was handed. Neither of the other
+        // two branches sees it: cost / 0 is Infinity, which is not below any declared figure, and
+        // the no-offer branch cannot fire because an offer really was made. This is the one shape
+        // that reads as a clean audit while nothing was checked, and it is why the guard exists —
+        // it was once deleted as inert on the strength of the Infinity half of that alone.
+        List<String> violations =
+            MovementContract.violations(new FakeMovement("a.stayer", 3.5636, 0, 3.5636));
+
+        assertEquals(1, violations.size(), "expected exactly one violation, got " + violations);
+        assertTrue(violations.get(0).contains("a.stayer"), violations.get(0));
+        assertTrue(violations.get(0).contains("its own position"), violations.get(0));
+    }
+
+    @Test
     void onlyTheFirstOfTwoViolatingOffersInTheSameCallIsReported() {
         // TwoOfferMovement offers two neighbours per call, both violating. FakeMovement offers
         // only one per call and so cannot witness that the audit stops at the first offending
