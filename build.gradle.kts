@@ -14,7 +14,8 @@ val allowedProjectDependencies: Map<String, Set<String>> = mapOf(
     ":core-pathfinder" to setOf(":core", ":core-movement"),
     ":movement-parkour" to setOf(":core", ":core-movement"),
     ":platform-testkit" to setOf(":platform", ":core"),
-    ":runtime" to setOf(":platform", ":core"),
+    ":runtime" to setOf(":platform", ":core", ":core-movement", ":core-pathfinder",
+        ":movement-parkour"),
     // ":adapters" itself is an implicit parent project created by the colon-segmented
     // `include("adapters:adapter-fabric-1.21.11")` in settings.gradle.kts. It has no
     // build.gradle.kts and declares no dependencies, but it is still a real project in
