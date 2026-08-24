@@ -1569,17 +1569,23 @@ After the existing dump-key `END_CLIENT_TICK` registration, add:
         // fresh one, so the classification memo is shared and its level-transition lifecycle is
         // the one ContinuoCore.stop() already discharges.
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Both keys are polled unconditionally, BEFORE the null check. consumeClick() drains a
+            // queued press as a side effect, so returning early on a null player would leave a
+            // title-screen press queued to fire on the first tick after the world loads. The dump
+            // key above drains for the same reason.
+            boolean mark = markKey.consumeClick();
+            boolean path = pathKey.consumeClick();
             if (client.player == null) {
                 return;
             }
             try {
                 BlockPos at = client.player.blockPosition();
-                if (markKey.consumeClick()) {
+                if (mark) {
                     probe.markGoal(at.getX(), at.getY(), at.getZ());
                     LOGGER.info("Continuo: path goal marked at {} {} {}",
                         at.getX(), at.getY(), at.getZ());
                 }
-                if (pathKey.consumeClick()) {
+                if (path) {
                     ProbeReport report = probe.run(
                         core.blocks(), at.getX(), at.getY(), at.getZ());
                     LOGGER.info(report.summary());
@@ -1688,6 +1694,11 @@ Then add the method beside `pollDumpKey`:
      * {@code ContinuoCore.stop()} already discharges.
      */
     private void pollProbeKeys(Minecraft client) {
+        // Both keys are polled unconditionally, BEFORE the null check. isPressed() drains a queued
+        // press as a side effect, so returning early with no player would leave that press queued
+        // to fire on the first tick after one exists. pollDumpKey drains for the same reason.
+        boolean mark = markKey.isPressed();
+        boolean path = pathKey.isPressed();
         if (client.thePlayer == null) {
             return;
         }
@@ -1696,11 +1707,11 @@ Then add the method beside `pollDumpKey`:
             int py = MathHelper.floor_double(client.thePlayer.posY);
             int pz = MathHelper.floor_double(client.thePlayer.posZ);
 
-            if (markKey.isPressed()) {
+            if (mark) {
                 probe.markGoal(px, py, pz);
                 LOGGER.info("Continuo: path goal marked at " + px + " " + py + " " + pz);
             }
-            if (pathKey.isPressed()) {
+            if (path) {
                 ProbeReport report = probe.run(core.blocks(), px, py, pz);
                 LOGGER.info(report.summary());
                 if (report.ran()) {
