@@ -151,8 +151,15 @@ public final class ContinuoForgeMod {
             return;
         }
         try {
+            // Y comes from the bounding box, not posY. In 1.7.10 EntityPlayer.yOffset is 1.62F
+            // and Entity.posY == boundingBox.minY + yOffset - ySize, so floor(posY) is the block
+            // ABOVE the player's feet (two above, standing on a slab). Vanilla uses
+            // floor_double(boundingBox.minY) wherever it wants the block an entity stands in --
+            // EntityLivingBase.isOnLadder is the clearest example, and it likewise takes posX/posZ
+            // raw while going through the box for Y. minY is preferred over posY - yOffset because
+            // the two differ by ySize, which is non-zero for a few ticks after a step up.
             int px = MathHelper.floor_double(client.thePlayer.posX);
-            int py = MathHelper.floor_double(client.thePlayer.posY);
+            int py = MathHelper.floor_double(client.thePlayer.boundingBox.minY);
             int pz = MathHelper.floor_double(client.thePlayer.posZ);
             String text = BlockDumpWalker.dump(
                 context.blocks(),
@@ -200,8 +207,12 @@ public final class ContinuoForgeMod {
             return;
         }
         try {
+            // Feet, via the bounding box -- see the note in pollDumpKey. This one is not cosmetic:
+            // every movement offers only standable destinations and GoalBlock.isReached is exact
+            // equality, so a goal marked one block above the floor is unreachable by construction
+            // and the probe could never report FOUND on 1.7.10.
             int px = MathHelper.floor_double(client.thePlayer.posX);
-            int py = MathHelper.floor_double(client.thePlayer.posY);
+            int py = MathHelper.floor_double(client.thePlayer.boundingBox.minY);
             int pz = MathHelper.floor_double(client.thePlayer.posZ);
 
             if (mark) {
