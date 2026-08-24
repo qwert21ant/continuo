@@ -48,6 +48,25 @@ final class ProbeWorld implements BlockSource {
         }
     }
 
+    /**
+     * Cuts the floor away along the whole Z extent at one X, leaving a one-block-wide bottomless
+     * gap the world is otherwise unchanged around.
+     *
+     * <p>Spans every Z for the same reason {@link #wallAcross} does: on a finite floor a partial
+     * trench is a detour rather than a barrier.
+     *
+     * <p><b>Bottomless rather than a step, deliberately.</b> The column above and below the
+     * removed block is air all the way to {@link #minY()}, so nothing in the gap is standable:
+     * {@code walk.traverse} cannot enter it, {@code walk.descend} has nothing to land on and
+     * {@code walk.ascend} has nothing to climb. Only {@code walk.parkour} crosses, which is what
+     * makes a {@code FOUND} across a trench evidence that parkour ran.
+     */
+    void trenchAcross(int x) {
+        for (int z = -RADIUS; z <= RADIUS; z++) {
+            put(x, FLOOR_Y, z, BlockLegend.AIR);
+        }
+    }
+
     @Override
     public BlockData at(int x, int y, int z) {
         BlockData override = overrides.get(Long.valueOf(key(x, y, z)));

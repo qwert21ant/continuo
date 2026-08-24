@@ -82,6 +82,29 @@ class PathProbeTest {
     }
 
     @Test
+    void aRouteOnlyParkourCanTakeIsFoundThroughTheProbeItself() {
+        // Spec 5.3, behaviourally. The registry test below proves walk.parkour is on the
+        // classpath; this one proves the probe actually asks for it. A one-block bottomless
+        // trench spanning the floor's whole Z extent is crossable by walk.parkour and by nothing
+        // else in the registry - walk.traverse cannot enter a non-standable block, and neither
+        // walk.descend nor walk.ascend has anything to land on or climb in a void column - so
+        // FOUND here can only happen if the movement is both present and requested. Dropping
+        // either the runtimeOnly dependency or PathProbe's CapabilitySet.of(Capability.PARKOUR)
+        // turns this into NO_PATH; both mutations were run.
+        ProbeWorld world = new ProbeWorld();
+        world.trenchAcross(3);
+        PathProbe probe = new PathProbe();
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+
+        ProbeReport report = probe.run(world, 0, ProbeWorld.WALK_Y, 0);
+
+        assertEquals(PathOutcome.FOUND, report.outcome(),
+            "only walk.parkour crosses a bottomless one-block trench, so anything but FOUND means"
+                + " the probe searched without the capability it claims to request\n"
+                + report.map());
+    }
+
+    @Test
     void runningWithNoGoalMarkedIsReportedRatherThanThrown() {
         // The caller is inside the game loop. Global rule 3 makes a throw from there an adapter
         // fault, and "I forgot to press mark" is the most likely thing to happen in practice.
