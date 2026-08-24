@@ -138,6 +138,11 @@ public final class ContinuoFabricMod implements ClientModInitializer {
         // fresh one, so the classification memo is shared and its level-transition lifecycle is
         // the one ContinuoCore.stop() already discharges.
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Before the keys, so a mark made on the same tick as a transition belongs to the
+            // level it was pressed in. This is the level instance AdapterRuntime already compares
+            // to decide when to stop the core, so the marked goal and the BlockLookup beside it
+            // are discharged by one event.
+            probe.onLevel(client.level);
             // Both keys are polled unconditionally: consumeClick() drains a queued press as a side
             // effect, so returning early on a null player would leave a title-screen press queued to
             // fire on the first tick after the world loads. The dump key above drains for the same

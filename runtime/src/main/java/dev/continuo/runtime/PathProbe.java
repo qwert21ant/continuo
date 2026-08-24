@@ -24,12 +24,13 @@ import dev.continuo.pathfinder.Pos;
  * walk back, and search across terrain they chose, without any new SPI surface for naming a
  * destination.
  *
- * <p><b>Known limitation: the marked goal survives level and dimension transitions.</b> Nothing
- * clears it — unlike the {@code BlockLookup} beside it, which {@code ContinuoCore.stop()}
- * discharges — so marking a spot in the Overworld, walking through a portal and pressing the path
- * key searches the Nether for coordinates that meant something in another world. Mark again after
- * any transition. Left as-is on purpose: wiring a reset is a design change, and this is a dev
- * tool nothing calls during normal operation.
+ * <p><b>A marked goal does not survive a level or dimension transition</b>, provided the adapter
+ * calls {@link #onLevel} — which both of them do, from the same poll that reads the keys. Marking
+ * a spot in the Overworld and pressing the path key in the Nether would otherwise search one
+ * world for coordinates that meant something in another, and report {@code NO_PATH} as though the
+ * terrain were at fault. The trigger is deliberately the one {@code AdapterRuntime} already uses
+ * to stop the core, so the goal and the {@code BlockLookup} beside it are discharged by the same
+ * event.
  */
 public final class PathProbe {
 
@@ -47,6 +48,9 @@ public final class PathProbe {
     private final int nodeBudget;
 
     private Pos goal;
+
+    /** The client level instance last seen by {@link #onLevel}, compared by identity. */
+    private Object lastLevel;
 
     /** Uses {@link #NODE_BUDGET}. */
     public PathProbe() {
@@ -72,6 +76,30 @@ public final class PathProbe {
      */
     public void markGoal(int x, int y, int z) {
         this.goal = new Pos(x, y, z);
+    }
+
+    /**
+     * Discards any marked goal when the client level instance changes.
+     *
+     * <p>Call once per tick from the adapter's poll, before the keys are read, passing whatever
+     * the platform calls the current client level — or {@code null} outside a world. Compared by
+     * identity, exactly as {@code AdapterRuntime} compares it to decide when to stop the core,
+     * and deliberately so: a dimension change replaces the level without ending the session, and
+     * that is the case this exists for. Passing the same instance every tick is the normal path
+     * and does nothing.
+     *
+     * <p>Holding the reference does not pin an unloaded world. It is overwritten with the current
+     * level the moment a change is seen, so it only ever names the level loaded now, or
+     * {@code null}.
+     *
+     * @param level the current client level, or {@code null} if none is loaded
+     */
+    public void onLevel(Object level) {
+        if (level == lastLevel) {
+            return;
+        }
+        lastLevel = level;
+        goal = null;
     }
 
     /**

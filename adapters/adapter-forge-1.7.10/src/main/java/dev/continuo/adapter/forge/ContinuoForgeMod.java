@@ -198,6 +198,11 @@ public final class ContinuoForgeMod {
      * {@code ContinuoCore.stop()} already discharges.
      */
     private void pollProbeKeys(Minecraft client) {
+        // Before the keys, so a mark made on the same tick as a transition belongs to the level it
+        // was pressed in. This is the level instance AdapterRuntime already compares to decide when
+        // to stop the core, so the marked goal and the BlockLookup beside it are discharged by one
+        // event.
+        probe.onLevel(client.theWorld);
         // isPressed() drains a queued press as a side effect, so both keys are polled before the
         // null check - otherwise a press made with no player would fire on the first tick after
         // one exists. pollDumpKey drains for the same reason.

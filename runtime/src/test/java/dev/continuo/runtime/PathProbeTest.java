@@ -105,6 +105,60 @@ class PathProbeTest {
     }
 
     @Test
+    void aMarkedGoalDoesNotSurviveADimensionChange() {
+        // A change of client level instance is the same trigger AdapterRuntime already uses to
+        // stop the core, and it is the right one here for the same reason: a dimension change
+        // replaces the level without ending the session, and coordinates that meant something in
+        // the Overworld mean somewhere else entirely in the Nether. Without this the probe
+        // searches the new world for the old world's goal and blames the terrain for the miss.
+        Object overworld = new Object();
+        Object nether = new Object();
+        PathProbe probe = new PathProbe();
+        probe.onLevel(overworld);
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+        probe.onLevel(nether);
+
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        assertFalse(report.ran(), report.summary());
+        assertTrue(report.summary().contains("no goal marked"), report.summary());
+    }
+
+    @Test
+    void aMarkedGoalSurvivesTheTicksThatFollowItOnTheSameLevel() {
+        // The guard that stops the fix from being "clear the goal always". The adapters call
+        // onLevel from their per-tick poll, so an implementation that does not compare by identity
+        // would discard every mark on the tick after it was made and the probe would never path
+        // anywhere again — a regression no other test in this file would notice, since none of
+        // them calls onLevel at all.
+        Object level = new Object();
+        PathProbe probe = new PathProbe();
+        probe.onLevel(level);
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+        probe.onLevel(level);
+        probe.onLevel(level);
+
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        assertEquals(PathOutcome.FOUND, report.outcome(), report.summary());
+    }
+
+    @Test
+    void aMarkedGoalDoesNotSurviveLeavingTheWorld() {
+        // Disconnecting to the title screen nulls the level, and rejoining builds a fresh
+        // instance. A goal kept across that gap is aimed at a world object that no longer exists,
+        // even when the save behind it is the same one.
+        PathProbe probe = new PathProbe();
+        probe.onLevel(new Object());
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+        probe.onLevel(null);
+
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        assertFalse(report.ran(), report.summary());
+    }
+
+    @Test
     void runningWithNoGoalMarkedIsReportedRatherThanThrown() {
         // The caller is inside the game loop. Global rule 3 makes a throw from there an adapter
         // fault, and "I forgot to press mark" is the most likely thing to happen in practice.

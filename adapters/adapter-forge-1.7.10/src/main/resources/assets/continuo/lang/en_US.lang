@@ -1,2 +1,5 @@
 key.continuo.walk=Walk Forward 40 Ticks
+key.continuo.dump=Dump Block Row
+key.continuo.mark=Mark Path Goal
+key.continuo.path=Run Path Probe
 key.categories.continuo=Continuo
