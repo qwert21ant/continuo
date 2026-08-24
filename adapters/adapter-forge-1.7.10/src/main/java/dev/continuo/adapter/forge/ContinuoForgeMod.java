@@ -191,6 +191,11 @@ public final class ContinuoForgeMod {
      * {@code ContinuoCore.stop()} already discharges.
      */
     private void pollProbeKeys(Minecraft client) {
+        // isPressed() drains a queued press as a side effect, so both keys are polled before the
+        // null check - otherwise a press made with no player would fire on the first tick after
+        // one exists. pollDumpKey drains for the same reason.
+        boolean mark = markKey.isPressed();
+        boolean path = pathKey.isPressed();
         if (client.thePlayer == null) {
             return;
         }
@@ -199,11 +204,11 @@ public final class ContinuoForgeMod {
             int py = MathHelper.floor_double(client.thePlayer.posY);
             int pz = MathHelper.floor_double(client.thePlayer.posZ);
 
-            if (markKey.isPressed()) {
+            if (mark) {
                 probe.markGoal(px, py, pz);
                 LOGGER.info("Continuo: path goal marked at " + px + " " + py + " " + pz);
             }
-            if (pathKey.isPressed()) {
+            if (path) {
                 ProbeReport report = probe.run(core.blocks(), px, py, pz);
                 LOGGER.info(report.summary());
                 if (report.ran()) {

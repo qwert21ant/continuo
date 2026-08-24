@@ -138,17 +138,23 @@ public final class ContinuoFabricMod implements ClientModInitializer {
         // fresh one, so the classification memo is shared and its level-transition lifecycle is
         // the one ContinuoCore.stop() already discharges.
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Both keys are polled unconditionally: consumeClick() drains a queued press as a side
+            // effect, so returning early on a null player would leave a title-screen press queued to
+            // fire on the first tick after the world loads. The dump key above drains for the same
+            // reason.
+            boolean mark = markKey.consumeClick();
+            boolean path = pathKey.consumeClick();
             if (client.player == null) {
                 return;
             }
             try {
                 BlockPos at = client.player.blockPosition();
-                if (markKey.consumeClick()) {
+                if (mark) {
                     probe.markGoal(at.getX(), at.getY(), at.getZ());
                     LOGGER.info("Continuo: path goal marked at {} {} {}",
                         at.getX(), at.getY(), at.getZ());
                 }
-                if (pathKey.consumeClick()) {
+                if (path) {
                     ProbeReport report = probe.run(
                         core.blocks(), at.getX(), at.getY(), at.getZ());
                     LOGGER.info(report.summary());
