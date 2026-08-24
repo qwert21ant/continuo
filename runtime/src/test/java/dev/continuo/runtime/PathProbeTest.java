@@ -118,6 +118,15 @@ class PathProbeTest {
                 report.map();
             }
         });
+        // outcome() carries the same contract as map() and had none of the same cover: returning
+        // null instead of refusing went unnoticed, and a null outcome reads in a caller's log as
+        // a search that produced nothing rather than one that never ran.
+        assertThrows(IllegalStateException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                report.outcome();
+            }
+        });
     }
 
     @Test

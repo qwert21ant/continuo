@@ -32,10 +32,16 @@ import java.util.Set;
  * re-parses as {@code BlockData.UNKNOWN}, which is impassable. So a map captured from a running
  * game can be <em>stricter</em> than the world it came from: a {@code ?} that was really a
  * passable block becomes a wall, and the pasted fixture may fail to reproduce the routing
- * question it was captured for. Ordinary terrain is unaffected — stone, dirt and leaves all
- * classify to the legend's full cube, and slabs, stairs, fences, water and lava are named — but
- * <b>a map with {@code ?} anywhere near the route needs checking before it is trusted as a
+ * question it was captured for. Ordinary terrain is mostly unaffected — stone, dirt and leaves
+ * all classify to the legend's full cube, and slabs, stairs, fences, water and lava are named —
+ * but <b>a map with {@code ?} anywhere near the route needs checking before it is trusted as a
  * fixture.</b>
+ *
+ * <p><b>Tagged blocks are the common surprise.</b> Tags participate in {@code BlockData}
+ * equality and every legend value carries an empty tag set (bar lava's {@code AVOID}), while
+ * {@code BlockClassifier} attaches {@code FALLING} to sand and gravel and {@code CLIMBABLE} to
+ * ladders and vines. Those blocks therefore match no legend entry and render as {@code ?} even
+ * though they are perfectly ordinary — a desert or a beach comes back as a wall of them.
  *
  * <p>{@code PathRendererTest} pins all of this: what survives, and what does not.
  */

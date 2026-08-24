@@ -23,6 +23,13 @@ import dev.continuo.pathfinder.Pos;
  * <p>The mark-then-run shape is deliberate: it lets an owner walk to somewhere awkward, mark it,
  * walk back, and search across terrain they chose, without any new SPI surface for naming a
  * destination.
+ *
+ * <p><b>Known limitation: the marked goal survives level and dimension transitions.</b> Nothing
+ * clears it — unlike the {@code BlockLookup} beside it, which {@code ContinuoCore.stop()}
+ * discharges — so marking a spot in the Overworld, walking through a portal and pressing the path
+ * key searches the Nether for coordinates that meant something in another world. Mark again after
+ * any transition. Left as-is on purpose: wiring a reset is a design change, and this is a dev
+ * tool nothing calls during normal operation.
  */
 public final class PathProbe {
 

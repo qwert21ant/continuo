@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.EnumSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class BlockLegendTest {
@@ -41,6 +42,25 @@ class BlockLegendTest {
 
         assertEquals('?', BlockLegend.characterFor(offLegend));
         assertEquals(BlockLegend.UNMAPPED, BlockLegend.characterFor(offLegend));
+    }
+
+    @Test
+    void noLegendCharacterCollidesWithAnOverlayCharacter() {
+        // The round trip rests on overlays being distinguishable from terrain. A legend entry
+        // that took 'S', 'G', '*' or '+' would render as a marker and re-parse as that block, so
+        // a pasted-back fixture would silently gain terrain where the search had drawn its own
+        // route - and the map would still look perfectly well formed. Nothing else guards this;
+        // both sides are edited by hand and neither knows about the other.
+        char[] overlays = new char[] {
+            PathRenderer.START, PathRenderer.GOAL, PathRenderer.PATH, PathRenderer.EXPANDED,
+        };
+        for (Character legendChar : BlockLegend.legend().keySet()) {
+            for (int i = 0; i < overlays.length; i++) {
+                assertNotEquals(overlays[i], legendChar.charValue(),
+                    "legend character " + legendChar + " collides with an overlay character, so a"
+                        + " rendered map would re-parse that overlay as terrain");
+            }
+        }
     }
 
     @Test
