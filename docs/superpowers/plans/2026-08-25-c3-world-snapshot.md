@@ -34,7 +34,7 @@
 | `core/src/main/java/dev/continuo/core/WorldSnapshot.java` | **New.** The filling, main-thread half. `at`, `size`, `reads`, `seal` |
 | `runtime/src/main/java/dev/continuo/runtime/PathProbe.java` | **Modify.** Searches through a snapshot and reports its ratio |
 | `core/src/test/java/dev/continuo/core/PositionKeyTest.java` | **New.** Pins the bits the extraction must not have changed |
-| `core-pathfinder/src/test/java/dev/continuo/pathfinder/PosTest.java` | **New.** Pins that `Pos` still agrees with `PositionKey` |
+| `core-pathfinder/src/test/java/dev/continuo/pathfinder/PosTest.java` | **Modify.** Existing since C1; gains one test pinning that `Pos` agrees with `PositionKey` |
 | `core/src/test/java/dev/continuo/core/SealedSnapshotTest.java` | **New.** Freezing, and the `covers()` distinction M5 needs |
 | `core/src/test/java/dev/continuo/core/RecordingSource.java` | **New.** Test-only `BlockSource` that counts calls per position |
 | `core/src/test/java/dev/continuo/core/WorldSnapshotTest.java` | **New.** Memoising, stability, sealing, use-after-seal |
@@ -51,7 +51,9 @@
 - Create: `core/src/main/java/dev/continuo/core/PositionKey.java`
 - Create: `core/src/test/java/dev/continuo/core/PositionKeyTest.java`
 - Modify: `core-pathfinder/src/main/java/dev/continuo/pathfinder/Pos.java:16-17` (the two mask constants) and `:60-88` (the four static methods)
-- Create: `core-pathfinder/src/test/java/dev/continuo/pathfinder/PosTest.java`
+- Modify: `core-pathfinder/src/test/java/dev/continuo/pathfinder/PosTest.java` — **this file already exists** (committed in C1 as `a784951`). Add one test method and one import. Do not recreate it and do not touch the six tests already in it.
+
+**Pre-flight already checked, so you do not need to:** `XZ_MASK` and `Y_MASK` are `private` and referenced only inside `Pos.java`, so deleting them breaks nothing. `Pos.pack`/`unpack*` are called from `AStarPathfinder`, `PathRenderer`, `DijkstraOracle`, `FixtureWorld`, `QueuedNodeOrderTest`, `PosTest` and `ParkourDijkstraOracle` — all through the public static signatures this task preserves unchanged.
 
 **Interfaces:**
 - Consumes: nothing.
@@ -211,70 +213,58 @@ Run: `./gradlew :core:test --tests '*PositionKeyTest*'`
 
 Expected: PASS, 3 tests.
 
-- [ ] **Step 5: Write the delegation test**
+- [ ] **Step 5: Add the delegation test to the existing `PosTest`**
 
-Create `core-pathfinder/src/test/java/dev/continuo/pathfinder/PosTest.java`:
+`PosTest` already has six tests covering round-trips through the origin, negatives, both world heights, far horizontal coordinates, distinctness and `equals`/`hashCode`. **Leave all six exactly as they are.** They test `Pos` against itself; what is missing is `Pos` against the single definition it is about to delegate to.
+
+Add one import to `core-pathfinder/src/test/java/dev/continuo/pathfinder/PosTest.java`:
 
 ```java
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.PositionKey;
 import org.junit.jupiter.api.Test;
+```
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+and one test method, after `equalPositionsAreEqualAndHashAlike` and before the private `assertRoundTrip` helper:
 
-/**
- * {@link Pos} had no test of its own before C3 — its packing was covered only through the search
- * that uses it. This is the net under the extraction: whatever {@code Pos} promises, it must be
- * what {@link PositionKey} does.
- */
-class PosTest {
-
-    private static final int[][] AWKWARD = {
-        {0, 0, 0},
-        {0, 64, 0},
-        {-1, -1, -1},
-        {0, -64, 0},
-        {0, 319, 0},
-        {-30000000, -64, 30000000},
-        {30000000, 319, -30000000},
-    };
-
+```java
     @Test
-    void posAgreesWithPositionKeyOnEveryAxisAndSign() {
-        for (int i = 0; i < AWKWARD.length; i++) {
-            int x = AWKWARD[i][0];
-            int y = AWKWARD[i][1];
-            int z = AWKWARD[i][2];
-            String where = "(" + x + ", " + y + ", " + z + ")";
+    void packingIsPositionKeysPacking() {
+        // The net under C3's extraction of the bit layout into :core, where WorldSnapshot can
+        // reach it. Every other test in this file checks Pos against itself and would go on
+        // passing if the two definitions drifted apart; only this one would fail.
+        int[][] awkward = {
+            {0, 0, 0},
+            {0, 64, 0},
+            {-1, -1, -1},
+            {0, -64, 0},
+            {0, 319, 0},
+            {0, 255, 0},
+            {-30000000, -64, 30000000},
+            {30000000, 319, -30000000},
+        };
 
-            long viaPos = Pos.pack(x, y, z);
-            assertEquals(PositionKey.pack(x, y, z), viaPos, "pack of " + where);
-            assertEquals(PositionKey.unpackX(viaPos), Pos.unpackX(viaPos), "X of " + where);
-            assertEquals(PositionKey.unpackY(viaPos), Pos.unpackY(viaPos), "Y of " + where);
-            assertEquals(PositionKey.unpackZ(viaPos), Pos.unpackZ(viaPos), "Z of " + where);
+        for (int i = 0; i < awkward.length; i++) {
+            int x = awkward[i][0];
+            int y = awkward[i][1];
+            int z = awkward[i][2];
+            String where = "(" + x + ", " + y + ", " + z + ")";
+            long packed = Pos.pack(x, y, z);
+
+            assertEquals(PositionKey.pack(x, y, z), packed, "pack of " + where);
+            assertEquals(PositionKey.unpackX(packed), Pos.unpackX(packed), "x of " + where);
+            assertEquals(PositionKey.unpackY(packed), Pos.unpackY(packed), "y of " + where);
+            assertEquals(PositionKey.unpackZ(packed), Pos.unpackZ(packed), "z of " + where);
         }
     }
-
-    @Test
-    void theInstanceApiIsUnchangedByTheDelegation() {
-        Pos pos = new Pos(-30000000, -64, 30000000);
-
-        assertEquals(-30000000, pos.x());
-        assertEquals(-64, pos.y());
-        assertEquals(30000000, pos.z());
-        assertEquals(PositionKey.pack(-30000000, -64, 30000000), pos.packed());
-        assertEquals(pos, Pos.unpack(pos.packed()));
-        assertEquals(pos.hashCode(), Pos.unpack(pos.packed()).hashCode());
-    }
-}
 ```
 
 - [ ] **Step 6: Run it and verify it passes against the un-delegated `Pos`**
 
 Run: `./gradlew :core-pathfinder:test --tests '*PosTest*'`
 
-Expected: **PASS**. This is deliberate — `Pos` and `PositionKey` currently hold identical copies of the arithmetic, so the test passes *before* the refactor. That is what makes it a safety net: it is asserting the property the refactor must preserve, and it can only start failing if the refactor breaks it.
+Expected: **PASS, 7 tests.** The new one passing *before* the refactor is deliberate — `Pos` and `PositionKey` currently hold identical copies of the arithmetic. That is what makes it a safety net rather than a demonstration: it asserts the property the refactor must preserve, and can only start failing if the refactor breaks it.
 
 - [ ] **Step 7: Make `Pos` delegate**
 
@@ -350,13 +340,13 @@ Temporarily break `PositionKey.unpackZ` by changing its shift:
 
 Run: `./gradlew :core:test --tests '*PositionKeyTest*' :core-pathfinder:test --tests '*PosTest*'`
 
-Expected: **both** `everyAwkwardPositionRoundTrips` and `posAgreesWithPositionKeyOnEveryAxisAndSign` FAIL. Then revert the shift to `>> 38` and re-run to confirm green. **Record the observed failure output in the commit message.**
+Expected: **both** `everyAwkwardPositionRoundTrips` and `packingIsPositionKeysPacking` FAIL. Then revert the shift to `>> 38` and re-run to confirm green. **Record the observed failure output in the commit message.**
 
 - [ ] **Step 10: Full build**
 
 Run: `./gradlew build --rerun-tasks`
 
-Expected: BUILD SUCCESSFUL. Roughly 424 tests (419 before this task, plus 3 in `PositionKeyTest` and 2 in `PosTest`). Report the number you actually see rather than this one.
+Expected: BUILD SUCCESSFUL. Roughly 423 tests (419 before this task, plus 3 in `PositionKeyTest` and 1 added to `PosTest`). Report the number you actually see rather than this one.
 
 - [ ] **Step 11: Commit**
 
@@ -373,7 +363,9 @@ layout now and Pos delegates, so the scheme is defined once instead of
 copied. Pos keeps its entire public API and no call site outside Pos.java
 changes.
 
-Pos had no test of its own; PosTest is the net under the extraction.
+PosTest's six existing tests all check Pos against itself and would go on
+passing if the two definitions drifted apart. The one added here is the only
+one that would fail.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
