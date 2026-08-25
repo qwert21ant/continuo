@@ -143,8 +143,8 @@ class ParkourMoveTest {
     void itSpansTwoAxisStepsSoItDeclaresHalfItsCost() {
         double cost = 2 * MovementCosts.TRAVERSE + MovementCosts.JUMP_SURCHARGE;
 
-        assertEquals(cost / 2.0, new ParkourMove().minCostPerAxisStep(), 1.0e-9);
-        assertTrue(new ParkourMove().minCostPerAxisStep() > MovementCosts.TRAVERSE,
+        assertEquals(cost / 2.0, new ParkourMove().minCostPerHorizontalUnit(), 1.0e-9);
+        assertTrue(new ParkourMove().minCostPerHorizontalUnit() > MovementCosts.TRAVERSE,
             "parkour must not become the cheapest axis step, or it would loosen the heuristic "
                 + "for every search including ones that cannot use it");
     }

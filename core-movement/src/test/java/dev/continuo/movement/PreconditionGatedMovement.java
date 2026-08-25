@@ -69,8 +69,13 @@ final class PreconditionGatedMovement implements IMovementType {
     }
 
     @Override
-    public double minCostPerAxisStep() {
+    public double minCostPerHorizontalUnit() {
         return DECLARED;
+    }
+
+    @Override
+    public double minCostPerVerticalStep() {
+        return Double.POSITIVE_INFINITY;
     }
 
     @Override

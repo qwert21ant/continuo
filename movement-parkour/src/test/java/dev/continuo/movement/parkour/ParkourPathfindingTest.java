@@ -120,8 +120,8 @@ class ParkourPathfindingTest {
         MovementRegistry registry = AStarPathfinder.defaultRegistry();
 
         assertEquals(
-            registry.activeFor(CapabilitySet.none()).cheapestAxisStep(),
-            registry.activeFor(CapabilitySet.of(Capability.PARKOUR)).cheapestAxisStep(),
+            registry.activeFor(CapabilitySet.none()).rates().horizontal(),
+            registry.activeFor(CapabilitySet.of(Capability.PARKOUR)).rates().horizontal(),
             1.0e-9,
             "parkour costs more per axis step than traverse, so turning it on must not loosen "
                 + "the heuristic — if this ever changes, every search gets slower");

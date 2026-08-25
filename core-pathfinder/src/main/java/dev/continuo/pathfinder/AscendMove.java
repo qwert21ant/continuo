@@ -31,7 +31,12 @@ final class AscendMove implements IMovementType {
     }
 
     @Override
-    public double minCostPerAxisStep() {
+    public double minCostPerHorizontalUnit() {
+        return MovementCosts.ASCEND;
+    }
+
+    @Override
+    public double minCostPerVerticalStep() {
         return MovementCosts.ASCEND;
     }
 

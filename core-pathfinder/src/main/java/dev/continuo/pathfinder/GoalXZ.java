@@ -1,5 +1,7 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.HeuristicRates;
+
 /**
  * A column: any height at one X and Z.
  *
@@ -26,9 +28,8 @@ public final class GoalXZ implements Goal {
     }
 
     @Override
-    public double heuristic(int px, int py, int pz, double cheapestAxisStep) {
-        int moves = Math.max(Math.abs(x - px), Math.abs(z - pz));
-        return moves * cheapestAxisStep;
+    public double heuristic(int px, int py, int pz, HeuristicRates rates) {
+        return rates.horizontalEstimate(x - px, z - pz);
     }
 
     @Override

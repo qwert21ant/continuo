@@ -1,6 +1,8 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.CapabilitySet;
+import dev.continuo.movement.HeuristicRates;
 import dev.continuo.movement.IMovementType;
 import dev.continuo.movement.MovementCosts;
 import org.junit.jupiter.api.Test;
@@ -461,12 +463,12 @@ class AStarPathfinderTest {
         Goal goal = new GoalBlock(4, 65, 2);
 
         assertEquals(PathOutcome.FOUND, result.outcome());
-        // The search runs on the multiplier *derived* from the active set, not on TRAVERSE. This
-        // assertion is only about the same heuristic the search used because
-        // DefaultRegistryTest.theMultiplierOverC1sMovementsIsWhatC1sConstantWas pins the two
-        // equal over the default registry with no capabilities granted. If that pin ever goes,
-        // this line silently starts checking a different heuristic than the one under test.
-        assertTrue(goal.heuristic(0, 65, 0, MovementCosts.TRAVERSE) <= result.cost(),
+        // The rates the search itself derived from its active movement set, not a hand-built
+        // stand-in. Asserting against these means this is checking the exact heuristic under test
+        // and cannot drift from it: there is no separate pin to keep in sync.
+        HeuristicRates rates = AStarPathfinder.defaultRegistry().activeFor(CapabilitySet.none())
+            .rates();
+        assertTrue(goal.heuristic(0, 65, 0, rates) <= result.cost(),
             "an overestimating heuristic silently gives up the shortest-path guarantee");
     }
 

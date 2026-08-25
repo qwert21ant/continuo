@@ -56,7 +56,7 @@ class MovementRegistryTest {
         registry.register(new FakeMovement("a.cheap", 3.5636));
         registry.register(new FakeMovement("b.dear", 6.5582));
 
-        assertEquals(3.5636, registry.activeFor(CapabilitySet.none()).cheapestAxisStep(), 1.0e-9);
+        assertEquals(3.5636, registry.activeFor(CapabilitySet.none()).rates().horizontal(), 1.0e-9);
     }
 
     @Test
@@ -65,10 +65,10 @@ class MovementRegistryTest {
         registry.register(new FakeMovement("a.walk", 3.5636));
         registry.register(new FakeMovement("b.glide", 1.2, 4, 4.8, Capability.PARKOUR));
 
-        assertEquals(3.5636, registry.activeFor(CapabilitySet.none()).cheapestAxisStep(), 1.0e-9,
+        assertEquals(3.5636, registry.activeFor(CapabilitySet.none()).rates().horizontal(), 1.0e-9,
             "while it is filtered out it must not affect the multiplier");
         assertEquals(1.2,
-            registry.activeFor(CapabilitySet.of(Capability.PARKOUR)).cheapestAxisStep(), 1.0e-9,
+            registry.activeFor(CapabilitySet.of(Capability.PARKOUR)).rates().horizontal(), 1.0e-9,
             "once active, the cheapest axis step is its axis step, or the heuristic "
                 + "overestimates and A* stops returning shortest paths");
     }
@@ -157,5 +157,78 @@ class MovementRegistryTest {
         assertEquals(Arrays.asList("a.free"), idsOf(active),
             "ActiveMovements must copy its constructor argument; aliasing the caller's list would "
                 + "let it be mutated out from under an already-constructed ActiveMovements");
+    }
+
+    @Test
+    void theTwoRatesAreMinimisedIndependently() {
+        // D2's entire justification. A movement that is cheap vertically must not lower the
+        // horizontal rate, because it may not travel horizontally at all -- a ladder is exactly
+        // that. Under one shared multiplier its number would degrade every horizontal estimate
+        // the search ever makes, and no other test in this suite would notice.
+        MovementRegistry registry = new MovementRegistry();
+        registry.register(new TwoRateMovement("a.walk", 3.5636, Double.POSITIVE_INFINITY));
+        registry.register(new TwoRateMovement("b.ladder", Double.POSITIVE_INFINITY, 0.5));
+
+        HeuristicRates rates = registry.activeFor(CapabilitySet.none()).rates();
+
+        assertEquals(3.5636, rates.horizontal(), 1.0e-9,
+            "a movement that cannot travel horizontally must not set the horizontal rate");
+        assertEquals(0.5, rates.vertical(), 1.0e-9);
+    }
+
+    @Test
+    void aMovementDeclaringNeitherAxisIsRejected() {
+        final MovementRegistry registry = new MovementRegistry();
+        assertThrows(IllegalArgumentException.class,
+            new org.junit.jupiter.api.function.Executable() {
+                @Override
+                public void execute() {
+                    registry.register(new TwoRateMovement("a.nowhere",
+                        Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY));
+                }
+            });
+    }
+
+    @Test
+    void aNanHorizontalDeclarationIsRejected() {
+        final MovementRegistry registry = new MovementRegistry();
+        assertThrows(IllegalArgumentException.class,
+            new org.junit.jupiter.api.function.Executable() {
+                @Override
+                public void execute() {
+                    registry.register(new TwoRateMovement("a.nan", Double.NaN, 1.0));
+                }
+            });
+    }
+
+    @Test
+    void aNanVerticalDeclarationIsRejected() {
+        final MovementRegistry registry = new MovementRegistry();
+        assertThrows(IllegalArgumentException.class,
+            new org.junit.jupiter.api.function.Executable() {
+                @Override
+                public void execute() {
+                    registry.register(new TwoRateMovement("a.nan", 1.0, Double.NaN));
+                }
+            });
+    }
+
+    @Test
+    void aNonPositiveDeclarationIsRejectedOnEitherAxis() {
+        final MovementRegistry registry = new MovementRegistry();
+        assertThrows(IllegalArgumentException.class,
+            new org.junit.jupiter.api.function.Executable() {
+                @Override
+                public void execute() {
+                    registry.register(new TwoRateMovement("a.zero", 0.0, 1.0));
+                }
+            });
+        assertThrows(IllegalArgumentException.class,
+            new org.junit.jupiter.api.function.Executable() {
+                @Override
+                public void execute() {
+                    registry.register(new TwoRateMovement("b.zero", 1.0, 0.0));
+                }
+            });
     }
 }

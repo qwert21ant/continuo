@@ -21,8 +21,13 @@ public final class DiscoverableMovement implements IMovementType {
     }
 
     @Override
-    public double minCostPerAxisStep() {
+    public double minCostPerHorizontalUnit() {
         return 7.0;
+    }
+
+    @Override
+    public double minCostPerVerticalStep() {
+        return Double.POSITIVE_INFINITY;
     }
 
     @Override

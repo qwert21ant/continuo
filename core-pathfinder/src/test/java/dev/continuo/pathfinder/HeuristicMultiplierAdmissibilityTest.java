@@ -28,14 +28,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ({@code TRAVERSE + fallTicks(1)} &asymp; 8.1783) instead of its worst per-axis-step ratio
  * (&asymp; 4.0108) — a genuine admissibility bug — and the 400-seed oracle stayed green. That is not
  * a sizing problem and more seeds would never have fixed it, because under the default registry the
- * mutation is invisible <em>by construction</em>: {@link ActiveMovements#cheapestAxisStep()} is a
+ * mutation is invisible <em>by construction</em>: {@link ActiveMovements#rates()} is a
  * minimum, and {@code walk.traverse}'s 3.5636 sits below both 4.0108 and 8.1783, so the multiplier
  * — and therefore every {@code Goal.heuristic} call, and therefore every search — is bit-identical
  * under both.
  *
  * <p>The principle that follows, which is worth stating because it is nowhere in the spec:
  *
- * <blockquote>A too-high {@code minCostPerAxisStep()} declaration can only break admissibility if
+ * <blockquote>A too-high {@code minCostPerHorizontalUnit()} declaration can only break admissibility if
  * that movement would otherwise have been the minimum.</blockquote>
  *
  * <p>So the fixture below is a registry in which the mis-declarable movement <em>is</em> the
@@ -112,8 +112,13 @@ class HeuristicMultiplierAdmissibilityTest {
         }
 
         @Override
-        public final double minCostPerAxisStep() {
+        public final double minCostPerHorizontalUnit() {
             return declares;
+        }
+
+        @Override
+        public final double minCostPerVerticalStep() {
+            return Double.POSITIVE_INFINITY;
         }
     }
 
@@ -172,7 +177,7 @@ class HeuristicMultiplierAdmissibilityTest {
         for (int i = 0; i < active.movements().size(); i++) {
             IMovementType type = active.movements().get(i);
             if (!"rail.glide".equals(type.id())) {
-                assertTrue(type.minCostPerAxisStep() > active.cheapestAxisStep(),
+                assertTrue(type.minCostPerHorizontalUnit() > active.rates().horizontal(),
                     type.id() + " must declare strictly more per axis step than rail.glide, or "
                         + "this fixture silently degrades into the same blind spot the default "
                         + "registry has — where the mis-declaring movement is not the minimum, so "
@@ -180,7 +185,7 @@ class HeuristicMultiplierAdmissibilityTest {
             }
         }
 
-        assertEquals(1.0, active.cheapestAxisStep(), 1.0e-9,
+        assertEquals(1.0, active.rates().horizontal(), 1.0e-9,
             "three axis steps for a cost of 3.0 is 1.0 per axis step, and being the minimum it is "
                 + "what Goal.heuristic is handed");
     }

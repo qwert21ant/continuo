@@ -17,7 +17,7 @@ import java.util.List;
 public final class ActiveMovements {
 
     private final List<IMovementType> movements;
-    private final double cheapestAxisStep;
+    private final HeuristicRates rates;
 
     /**
      * @param movements the active movements, in the order the search must expand them; copied
@@ -28,18 +28,24 @@ public final class ActiveMovements {
         if (movements.isEmpty()) {
             throw new IllegalStateException(
                 "no movement is active for these capabilities; a search with no movements has no "
-                    + "cheapest axis step and could not be admissible");
+                    + "rates to derive and could not be admissible");
         }
         this.movements = Collections.unmodifiableList(new ArrayList<IMovementType>(movements));
 
-        double cheapest = Double.POSITIVE_INFINITY;
+        double horizontal = Double.POSITIVE_INFINITY;
+        double vertical = Double.POSITIVE_INFINITY;
         for (int i = 0; i < this.movements.size(); i++) {
-            double declared = this.movements.get(i).minCostPerAxisStep();
-            if (declared < cheapest) {
-                cheapest = declared;
+            IMovementType type = this.movements.get(i);
+            double declaredHorizontal = type.minCostPerHorizontalUnit();
+            if (declaredHorizontal < horizontal) {
+                horizontal = declaredHorizontal;
+            }
+            double declaredVertical = type.minCostPerVerticalStep();
+            if (declaredVertical < vertical) {
+                vertical = declaredVertical;
             }
         }
-        this.cheapestAxisStep = cheapest;
+        this.rates = new HeuristicRates(horizontal, vertical);
     }
 
     /** @return the active movements in expansion order, unmodifiable; never empty */
@@ -48,18 +54,18 @@ public final class ActiveMovements {
     }
 
     /**
-     * The heuristic's multiplier: the smallest cost any active movement can charge for one axis
-     * step.
+     * The rates the heuristic scales its distance estimate by.
      *
-     * <p><b>This is what makes A* admissible, and it is now structural rather than numeric.</b>
-     * Because it is a minimum over exactly the movements the search will use, every movement
-     * satisfies {@code cost >= axisSpan * cheapestAxisStep} by definition. C1 could only assert
-     * that as a checked property of a closed cost table; adding a cheap wide movement used to
-     * break admissibility silently and now merely loosens the heuristic.
+     * <p><b>This is what makes A* admissible, and it is structural rather than numeric.</b> Each
+     * rate is a minimum over exactly the movements the search will use, so every movement
+     * satisfies {@code cost >= horizontal × octileUnits(dx, dz)} and
+     * {@code cost >= vertical × |dy|} by definition, and therefore bounds the estimate's decrease
+     * across any edge it offers. Adding a cheap wide movement merely loosens the heuristic rather
+     * than breaking it.
      *
-     * @return the multiplier, in ticks per axis step; always positive
+     * @return the rates; never {@code null}
      */
-    public double cheapestAxisStep() {
-        return cheapestAxisStep;
+    public HeuristicRates rates() {
+        return rates;
     }
 }

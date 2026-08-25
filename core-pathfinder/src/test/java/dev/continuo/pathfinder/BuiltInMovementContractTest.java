@@ -27,16 +27,30 @@ class BuiltInMovementContractTest {
     }
 
     @Test
-    void descendDeclaresItsWorstRatioNotItsCheapestCost() {
+    void descendDeclaresItsWorstRatioAsItsVerticalRate() {
         assertEquals(
             (dev.continuo.movement.MovementCosts.TRAVERSE
                 + dev.continuo.movement.MovementCosts.fallTicks(
                     dev.continuo.movement.MovementCosts.MAX_SAFE_FALL))
                 / dev.continuo.movement.MovementCosts.MAX_SAFE_FALL,
-            new DescendMove().minCostPerAxisStep(), 1.0e-9,
-            "a one-block descend is cheaper in absolute terms but spans one axis step; the "
-                + "binding ratio is the deepest fall, and declaring the cheap one would push the "
-                + "heuristic's multiplier up and cost admissibility");
+            new DescendMove().minCostPerVerticalStep(), 1.0e-9,
+            "a fall accelerates, so its marginal cost per block of height falls away while the "
+                + "heuristic's credit per block does not; the binding ratio is the deepest fall, "
+                + "and declaring a shallower one would push the vertical rate up and cost "
+                + "admissibility");
+    }
+
+    @Test
+    void descendDeclaresItsShallowestWholeCostAsItsHorizontalRate() {
+        // Every descend offer displaces exactly one horizontal unit whatever the drop, so the
+        // horizontal rate is a whole cost rather than a ratio -- and the cheapest whole cost is
+        // the shallowest drop, since falling further only costs more. Pinned because C1a moved
+        // this number and nothing else asserts it: 3.5636 + 4.6147 = 8.1783.
+        assertEquals(
+            dev.continuo.movement.MovementCosts.TRAVERSE
+                + dev.continuo.movement.MovementCosts.fallTicks(1),
+            new DescendMove().minCostPerHorizontalUnit(), 1.0e-9,
+            "the horizontal rate must be the shallowest drop's whole cost, not a per-block ratio");
     }
 
     /**

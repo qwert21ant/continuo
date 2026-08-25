@@ -3,6 +3,7 @@ package dev.continuo.movement.parkour;
 import dev.continuo.movement.Capability;
 import dev.continuo.movement.Cardinals;
 import dev.continuo.movement.ExpansionContext;
+import dev.continuo.movement.HeuristicRates;
 import dev.continuo.movement.IMovementType;
 import dev.continuo.movement.MoveSink;
 import dev.continuo.movement.MovementCosts;
@@ -40,8 +41,9 @@ public final class ParkourMove implements IMovementType {
      */
     public static final double COST = 2 * MovementCosts.TRAVERSE + MovementCosts.JUMP_SURCHARGE;
 
-    /** Two blocks along one axis, so half the cost. */
-    private static final double MIN_COST_PER_AXIS_STEP = COST / 2.0;
+    /** Two blocks along one axis, which is two octile units, so half the cost. */
+    private static final double MIN_COST_PER_HORIZONTAL_UNIT =
+        COST / HeuristicRates.octileUnits(2, 0);
 
     private static final Set<Capability> REQUIRES =
         Collections.unmodifiableSet(EnumSet.of(Capability.PARKOUR));
@@ -61,8 +63,13 @@ public final class ParkourMove implements IMovementType {
     }
 
     @Override
-    public double minCostPerAxisStep() {
-        return MIN_COST_PER_AXIS_STEP;
+    public double minCostPerHorizontalUnit() {
+        return MIN_COST_PER_HORIZONTAL_UNIT;
+    }
+
+    @Override
+    public double minCostPerVerticalStep() {
+        return Double.POSITIVE_INFINITY;
     }
 
     @Override

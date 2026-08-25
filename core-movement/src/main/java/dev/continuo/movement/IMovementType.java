@@ -37,25 +37,42 @@ public interface IMovementType {
     Set<Capability> requires();
 
     /**
-     * A lower bound on what one <em>axis step</em> of this movement costs.
+     * A lower bound on what one <em>octile unit</em> of horizontal travel costs this movement.
      *
      * <p><b>Get this wrong and the search silently stops returning shortest paths.</b> The
-     * heuristic is a Chebyshev distance times the smallest value any active movement declares
-     * here, so one movement can shrink the heuristic by this value times the number of blocks it
-     * travels along its longest axis. Declaring too high a figure makes the heuristic
-     * overestimate, which costs admissibility with no test failing anywhere else.
+     * heuristic is an octile distance times the smallest value any active movement declares here.
+     * Declaring too high a figure makes the heuristic overestimate, which costs admissibility with
+     * no test failing anywhere else.
      *
      * <p>Concretely, the contract is: <b>the smallest
-     * {@code cost / max(|dx|, |dy|, |dz|)} of any neighbour this movement can ever offer.</b>
-     * For a movement that travels one block along each axis this is simply its cheapest cost. For
-     * one that spans further — a fall of three blocks, a jump across two — divide.
+     * {@code cost / HeuristicRates.octileUnits(dx, dz)} of any neighbour this movement can ever
+     * offer.</b> A movement stepping one block along one axis declares its cheapest cost. One
+     * stepping diagonally divides by {@code √2}. One jumping two blocks along an axis divides
+     * by two.
+     *
+     * <p>Return {@link Double#POSITIVE_INFINITY} if this movement never displaces horizontally.
      *
      * <p>It is a declaration, so it is checked rather than trusted:
      * {@code MovementContract#violations(IMovementType)} audits it against real expansions.
      *
-     * @return the lower bound, in ticks; must be positive
+     * @return the lower bound, in ticks; must be positive, and may be infinite
      */
-    double minCostPerAxisStep();
+    double minCostPerHorizontalUnit();
+
+    /**
+     * A lower bound on what one block of vertical travel costs this movement.
+     *
+     * <p>The smallest {@code cost / |dy|} of any neighbour this movement can ever offer.
+     * Minimised separately from {@link #minCostPerHorizontalUnit()} so that a movement which is
+     * cheap per block of height — a fall, or a ladder later — cannot degrade the estimate for
+     * horizontal travel it may not be capable of at all.
+     *
+     * <p>Return {@link Double#POSITIVE_INFINITY} if this movement never displaces vertically.
+     * A movement declaring both rates infinite reaches nothing and is rejected at registration.
+     *
+     * @return the lower bound, in ticks; must be positive, and may be infinite
+     */
+    double minCostPerVerticalStep();
 
     /**
      * Offers every neighbour reachable from the context's position.

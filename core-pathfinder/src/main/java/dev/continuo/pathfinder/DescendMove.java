@@ -24,13 +24,29 @@ import java.util.Set;
 final class DescendMove implements IMovementType {
 
     /**
-     * The deepest fall gives the worst cost per axis step, because a fall accelerates: its
+     * Every descend offer displaces exactly one horizontal unit whatever the drop, so the
+     * horizontal rate is its cheapest whole cost — the <em>shallowest</em> drop.
+     */
+    private static final double MIN_COST_PER_HORIZONTAL_UNIT = cheapestOffer();
+
+    /**
+     * The deepest fall gives the worst cost per block of height, because a fall accelerates: its
      * marginal cost per block falls away while the heuristic's credit per block does not.
      * Computed rather than written as a literal, so that re-deriving {@code MAX_SAFE_FALL} or
-     * {@code fallTicks} cannot leave a stale figure behind — which is the whole reason the
-     * search derives its multiplier instead of trusting a constant.
+     * {@code fallTicks} cannot leave a stale figure behind.
      */
-    private static final double MIN_COST_PER_AXIS_STEP = worstRatio();
+    private static final double MIN_COST_PER_VERTICAL_STEP = worstRatio();
+
+    private static double cheapestOffer() {
+        double cheapest = Double.POSITIVE_INFINITY;
+        for (int drop = 1; drop <= MovementCosts.MAX_SAFE_FALL; drop++) {
+            double cost = MovementCosts.TRAVERSE + MovementCosts.fallTicks(drop);
+            if (cost < cheapest) {
+                cheapest = cost;
+            }
+        }
+        return cheapest;
+    }
 
     private static double worstRatio() {
         double worst = Double.POSITIVE_INFINITY;
@@ -54,8 +70,13 @@ final class DescendMove implements IMovementType {
     }
 
     @Override
-    public double minCostPerAxisStep() {
-        return MIN_COST_PER_AXIS_STEP;
+    public double minCostPerHorizontalUnit() {
+        return MIN_COST_PER_HORIZONTAL_UNIT;
+    }
+
+    @Override
+    public double minCostPerVerticalStep() {
+        return MIN_COST_PER_VERTICAL_STEP;
     }
 
     @Override

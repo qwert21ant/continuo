@@ -12,7 +12,8 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Audits a movement's {@link IMovementType#minCostPerAxisStep()} against what it actually offers.
+ * Audits a movement's {@link IMovementType#minCostPerHorizontalUnit()} and
+ * {@link IMovementType#minCostPerVerticalStep()} against what it actually offers.
  *
  * <p>That figure is a declaration, and a wrong one is silently fatal: it scales the search's
  * heuristic, so declaring too high a value costs admissibility with no other test failing. This
@@ -96,7 +97,8 @@ public final class MovementContract {
         if (type == null) {
             throw new IllegalArgumentException("type must not be null");
         }
-        final double declared = type.minCostPerAxisStep();
+        final double declaredHorizontal = type.minCostPerHorizontalUnit();
+        final double declaredVertical = type.minCostPerVerticalStep();
         final List<String> violations = new ArrayList<String>();
         // Whether the audit ever got the movement to offer anything. Without this an empty
         // result means either "the declaration holds" or "nothing was ever checked", and every
@@ -119,34 +121,43 @@ public final class MovementContract {
                         }
                         // The context always sits at x = 0, z = 0, so nx and nz are already
                         // offsets from the origin; only Y needs subtracting.
-                        int span = Math.max(Math.abs(nx),
-                            Math.max(Math.abs(ny - originY), Math.abs(nz)));
+                        int ady = Math.abs(ny - originY);
+                        double units = HeuristicRates.octileUnits(nx, nz);
                         // A movement offering the position it was asked to expand from. This
-                        // guard is NOT redundant with the comparison below, which is why it was
-                        // deleted once and restored: cost / 0 is Infinity (or NaN at cost 0),
-                        // and neither is less than the declared figure, so the comparison passes
-                        // a degenerate movement in silence. The no-offer branch does not catch
-                        // it either — the counter above has already incremented, so as far as
-                        // that branch can tell the audit was exercised. Without this, a movement
-                        // whose only edge is a self-offer is the one shape that reads as a clean
-                        // audit while having been checked against nothing.
-                        if (span == 0) {
+                        // guard is NOT redundant with the comparisons below, which is why it was
+                        // deleted once and restored: dividing by zero gives Infinity (or NaN at
+                        // cost 0), and neither is less than a declared figure, so the comparison
+                        // passes a degenerate movement in silence. The no-offer branch does not
+                        // catch it either -- the counter above has already incremented, so as far
+                        // as that branch can tell the audit was exercised.
+                        if (units == 0.0 && ady == 0) {
                             violations.add(type.id() + " offered its own position (" + nx + ", "
-                                + ny + ", " + nz + "), which is not a move: an edge spanning zero"
-                                + " axis steps has no per-step cost to check the declared"
-                                + " minCostPerAxisStep of " + declared + " against. A* would also"
-                                + " expand it as a zero-length neighbour of itself. Fix expand()"
-                                + " so it never offers the position it was given.");
+                                + ny + ", " + nz + "), which is not a move: an edge spanning no"
+                                + " distance has no per-unit cost to check its declarations"
+                                + " against. A* would also expand it as a zero-length neighbour of"
+                                + " itself. Fix expand() so it never offers the position it was"
+                                + " given.");
                             return;
                         }
-                        double perStep = cost / span;
-                        if (perStep < declared - 1.0e-9) {
-                            violations.add(type.id() + " declares minCostPerAxisStep " + declared
-                                + " but offered (" + nx + ", " + ny + ", " + nz + ") from (0, "
-                                + originY + ", 0) for " + cost + " across " + span
-                                + " axis steps, which is " + perStep + " per step; the heuristic"
-                                + " would overestimate and A* would stop returning shortest"
-                                + " paths");
+                        // Each half is checked only where the offer is evidence about it. An
+                        // offer that does not move horizontally says nothing about the horizontal
+                        // declaration, and must be skipped rather than treated as a violation.
+                        if (units > 0.0 && cost / units < declaredHorizontal - 1.0e-9) {
+                            violations.add(type.id() + " declares minCostPerHorizontalUnit "
+                                + declaredHorizontal + " but offered (" + nx + ", " + ny + ", "
+                                + nz + ") from (0, " + originY + ", 0) for " + cost + " across "
+                                + units + " octile units, which is " + (cost / units)
+                                + " per unit; the heuristic would overestimate and A* would stop"
+                                + " returning shortest paths");
+                            return;
+                        }
+                        if (ady > 0 && cost / ady < declaredVertical - 1.0e-9) {
+                            violations.add(type.id() + " declares minCostPerVerticalStep "
+                                + declaredVertical + " but offered (" + nx + ", " + ny + ", " + nz
+                                + ") from (0, " + originY + ", 0) for " + cost + " across " + ady
+                                + " blocks of height, which is " + (cost / ady) + " per block; the"
+                                + " heuristic would overestimate and A* would stop returning"
+                                + " shortest paths");
                         }
                     }
                 });
@@ -155,7 +166,7 @@ public final class MovementContract {
 
         if (violations.isEmpty() && offers[0] == 0) {
             violations.add(type.id() + " offered nothing anywhere in " + WORLDS + " seeded"
-                + " worlds, so its declared minCostPerAxisStep of " + declared + " was never"
+                + " worlds, so its declarations were never"
                 + " checked against a single edge. THIS IS NOT A PASS: the audit could not reach"
                 + " the preconditions expand() requires, so it has no evidence either way, and an"
                 + " empty result here would otherwise be indistinguishable from an honest"

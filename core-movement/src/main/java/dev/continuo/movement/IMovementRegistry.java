@@ -11,8 +11,9 @@ public interface IMovementRegistry {
     /**
      * @param type the movement to add; never {@code null}
      * @throws IllegalArgumentException if {@code type} is {@code null}, its {@link
-     *         IMovementType#id()} is null, empty or already registered, or its
-     *         {@link IMovementType#minCostPerAxisStep()} is not positive
+     *         IMovementType#id()} is null, empty or already registered, its
+     *         {@link IMovementType#minCostPerHorizontalUnit()} or
+     *         {@link IMovementType#minCostPerVerticalStep()} is not positive, or both are infinite
      */
     void register(IMovementType type);
 

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MovementContractTest {
@@ -105,5 +106,41 @@ class MovementContractTest {
             MovementContract.violations(new TwoOfferMovement("a.twiceLiar", 4.8));
 
         assertEquals(1, violations.size(), "expected exactly one violation, got " + violations);
+    }
+
+    @Test
+    void aDiagonalOfferUnderstatingItsCostIsCaught() {
+        // A movement offering a diagonal for the cost of a single cardinal step. Under the old
+        // Chebyshev span that offer measured one axis step and passed; a diagonal is worth sqrt(2)
+        // units, and conflating the two is the same mistake that made the heuristic loose.
+        List<String> violations = MovementContract.violations(
+            new DiagonalOfferMovement("bad.diagonal", 3.0, 3.0));
+
+        assertFalse(violations.isEmpty(),
+            "a diagonal offered at the cost of a single cardinal step understates its rate");
+        assertTrue(violations.get(0).contains("bad.diagonal"), violations.get(0));
+    }
+
+    @Test
+    void anHonestDiagonalOfferPasses() {
+        // The same movement paying the full sqrt(2) units. Without this the test above passes on
+        // an audit that rejects every diagonal, which checks nothing.
+        List<String> violations = MovementContract.violations(
+            new DiagonalOfferMovement("good.diagonal", 3.0, 3.0 * Math.sqrt(2.0)));
+
+        assertTrue(violations.isEmpty(), String.valueOf(violations));
+    }
+
+    @Test
+    void aVerticalOfferUnderstatingItsCostIsCaught() {
+        // The vertical half of the audit, which has no coverage otherwise: every other double in
+        // this suite declares an infinite vertical rate and never moves in Y.
+        List<String> violations = MovementContract.violations(
+            new DropOfferMovement("bad.drop", 5.0, 3.0));
+
+        assertFalse(violations.isEmpty(),
+            "a three-block drop offered for less than three times the declared vertical rate"
+                + " understates it");
+        assertTrue(violations.get(0).contains("bad.drop"), violations.get(0));
     }
 }

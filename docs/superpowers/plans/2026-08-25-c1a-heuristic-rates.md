@@ -406,12 +406,19 @@ false and stop A* being A* with nothing else failing."
 - Modify: `core-movement/src/test/java/dev/continuo/movement/{FakeMovement,DiscoverableMovement,PreconditionGatedMovement,TwoOfferMovement}.java`
 - Modify: `core-pathfinder/src/test/java/dev/continuo/pathfinder/FakeMovement.java`
 - Modify: `core-movement/src/test/java/dev/continuo/movement/MovementRegistryTest.java`
+- Modify: `core-movement/src/main/java/dev/continuo/movement/MovementContract.java:95-168`
+- Modify: `core-movement/src/test/java/dev/continuo/movement/MovementContractTest.java`
+- Create: `core-movement/src/test/java/dev/continuo/movement/{TwoRateMovement,DiagonalOfferMovement,DropOfferMovement}.java`
 
 **Interfaces:**
 - Consumes: `HeuristicRates` from Task 1.
 - Produces: `IMovementType.minCostPerHorizontalUnit()`, `IMovementType.minCostPerVerticalStep()`, `ActiveMovements.rates()` returning `HeuristicRates`. `ActiveMovements.cheapestAxisStep()` and `IMovementType.minCostPerAxisStep()` no longer exist.
 
-**This task cannot be split.** Changing a Java interface breaks every implementor at compile time, so the interface, all five production movements, all six test doubles and the registry must move together or nothing compiles.
+**This task cannot be split, and it includes `MovementContract`'s audit.** Changing a Java interface breaks every implementor at compile time, so the interface, all five production movements, all six test doubles and the registry must move together or nothing compiles.
+
+The audit has to move in the same commit, and this was verified by arithmetic rather than assumed. `FALL_TICKS = {4.6147, 6.7881, 8.4687}` and `TRAVERSE = 3.5636`, so `DescendMove`'s new horizontal rate is its shallowest whole cost, `3.5636 + 4.6147 = 8.1783`. If the audit kept dividing by a Chebyshev span, a 3-block drop would measure `12.0323 / 3 = 4.0108` against a declared `8.1783` and `BuiltInMovementContractTest` would fail inside this task. **The declarations and the audit that polices them change meaning together.**
+
+For reference, every built-in movement meets its new declaration under the new audit, at equality or above: traverse `3.5636/1`, diagonal `5.0397/√2 = 3.5636`, ascend `6.5582/1` on both axes, descend `12.0323/1` horizontal and `12.0323/3 = 4.0108` vertical, parkour `10.1218/2 = 5.0609`. **If any of them reports a violation, stop and report** — a declared rate is too high and the heuristic would overestimate.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -522,9 +529,145 @@ final class TwoRateMovement implements IMovementType {
 }
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+Also add to `core-movement/src/test/java/dev/continuo/movement/MovementContractTest.java`:
 
-Run: `./gradlew :core-movement:test --tests 'dev.continuo.movement.MovementRegistryTest'`
+```java
+    @Test
+    void aDiagonalOfferUnderstatingItsCostIsCaught() {
+        // A movement offering a diagonal for the cost of a single cardinal step. Under the old
+        // Chebyshev span that offer measured one axis step and passed; a diagonal is worth sqrt(2)
+        // units, and conflating the two is the same mistake that made the heuristic loose.
+        List<String> violations = MovementContract.violations(
+            new DiagonalOfferMovement("bad.diagonal", 3.0, 3.0));
+
+        assertFalse(violations.isEmpty(),
+            "a diagonal offered at the cost of a single cardinal step understates its rate");
+        assertTrue(violations.get(0).contains("bad.diagonal"), violations.get(0));
+    }
+
+    @Test
+    void anHonestDiagonalOfferPasses() {
+        // The same movement paying the full sqrt(2) units. Without this the test above passes on
+        // an audit that rejects every diagonal, which checks nothing.
+        List<String> violations = MovementContract.violations(
+            new DiagonalOfferMovement("good.diagonal", 3.0, 3.0 * Math.sqrt(2.0)));
+
+        assertTrue(violations.isEmpty(), String.valueOf(violations));
+    }
+
+    @Test
+    void aVerticalOfferUnderstatingItsCostIsCaught() {
+        // The vertical half of the audit, which has no coverage otherwise: every other double in
+        // this suite declares an infinite vertical rate and never moves in Y.
+        List<String> violations = MovementContract.violations(
+            new DropOfferMovement("bad.drop", 5.0, 3.0));
+
+        assertFalse(violations.isEmpty(),
+            "a three-block drop offered for less than three times the declared vertical rate"
+                + " understates it");
+        assertTrue(violations.get(0).contains("bad.drop"), violations.get(0));
+    }
+```
+
+Create `core-movement/src/test/java/dev/continuo/movement/DiagonalOfferMovement.java`:
+
+```java
+package dev.continuo.movement;
+
+import java.util.EnumSet;
+import java.util.Set;
+
+/** Offers exactly one diagonal neighbour, at a cost the test chooses. */
+final class DiagonalOfferMovement implements IMovementType {
+
+    private final String id;
+    private final double horizontal;
+    private final double cost;
+
+    DiagonalOfferMovement(String id, double horizontal, double cost) {
+        this.id = id;
+        this.horizontal = horizontal;
+        this.cost = cost;
+    }
+
+    @Override
+    public String id() {
+        return id;
+    }
+
+    @Override
+    public Set<Capability> requires() {
+        return EnumSet.noneOf(Capability.class);
+    }
+
+    @Override
+    public double minCostPerHorizontalUnit() {
+        return horizontal;
+    }
+
+    @Override
+    public double minCostPerVerticalStep() {
+        return Double.POSITIVE_INFINITY;
+    }
+
+    @Override
+    public void expand(ExpansionContext ctx, MoveSink sink) {
+        sink.offer(ctx.x() + 1, ctx.y(), ctx.z() + 1, cost);
+    }
+}
+```
+
+Create `core-movement/src/test/java/dev/continuo/movement/DropOfferMovement.java`:
+
+```java
+package dev.continuo.movement;
+
+import java.util.EnumSet;
+import java.util.Set;
+
+/** Offers exactly one three-block drop, at a cost the test chooses. */
+final class DropOfferMovement implements IMovementType {
+
+    private final String id;
+    private final double vertical;
+    private final double cost;
+
+    DropOfferMovement(String id, double vertical, double cost) {
+        this.id = id;
+        this.vertical = vertical;
+        this.cost = cost;
+    }
+
+    @Override
+    public String id() {
+        return id;
+    }
+
+    @Override
+    public Set<Capability> requires() {
+        return EnumSet.noneOf(Capability.class);
+    }
+
+    @Override
+    public double minCostPerHorizontalUnit() {
+        return Double.POSITIVE_INFINITY;
+    }
+
+    @Override
+    public double minCostPerVerticalStep() {
+        return vertical;
+    }
+
+    @Override
+    public void expand(ExpansionContext ctx, MoveSink sink) {
+        sink.offer(ctx.x(), ctx.y() - 3, ctx.z(), cost);
+    }
+}
+```
+
+- [ ] **Step 2: Run the tests and verify they fail**
+
+Run: `./gradlew :core-movement:test --tests 'dev.continuo.movement.MovementRegistryTest' --tests 'dev.continuo.movement.MovementContractTest'`
 
 Expected: compile failure — `minCostPerHorizontalUnit()` is not a member of `IMovementType`, and `ActiveMovements.rates()` does not exist.
 
@@ -619,6 +762,33 @@ Replace `cheapestAxisStep()` with:
         return rates;
     }
 ```
+
+**Then fix the one main-source caller, in the same step.** `AStarPathfinder.java:139` reads
+`final double cheapestAxisStep = active.cheapestAxisStep();`, and `:core-pathfinder` will not
+compile without it. Change **only that line** to:
+
+```java
+        final double cheapestAxisStep = active.rates().horizontal();
+```
+
+Leave the local variable's name alone and **do not touch `GoalBlock`, `GoalXZ` or the two
+`goal.heuristic(...)` call sites** — the signature change is Task 3's, and doing it here would drag
+three more test files in with it.
+
+**`Goal.java` needs one narrow exception, and only for its javadoc.** Its class javadoc (line 12)
+and its `@param` block (line 30) both contain
+`{@link dev.continuo.movement.ActiveMovements#cheapestAxisStep()}`. Removing that method makes both
+links dead, and `-Xdoclint:all,-missing -Xwerror` fails `:core-pathfinder:javadoc` on a dead link —
+so the build goes red whatever the signature does. Replace **only those two `{@link}` tags** with
+`{@code ActiveMovements.rates()}`. Leave the method signature, the parameter name, and everything
+else in the file alone; Task 3 rewrites this javadoc properly. The `{@code ... × cheapestAxisStep}`
+prose on line 10 is not a link and does not break the build — leave it for Task 3 too.
+
+This is exactly behaviour-preserving, which is why it is a one-line change rather than a merge of
+Task 3. `cheapestAxisStep()` was `min(3.5636 traverse, 6.5582 ascend, 4.0108 descend, 5.0397
+diagonal) = 3.5636`; `rates().horizontal()` is `min(3.5636, 6.5582, 8.1783, 3.5636) = 3.5636`. The
+same holds for the synthetic registries in the test suite, whose doubles declare one number that
+becomes their horizontal rate unchanged.
 
 - [ ] **Step 5: Change `MovementRegistry.register`**
 
@@ -789,7 +959,65 @@ Leave the private field name `minCostPerAxisStep` alone in these doubles if rena
 
 Also update `HeuristicMultiplierAdmissibilityTest`'s inner movement classes in `core-pathfinder/src/test/.../HeuristicMultiplierAdmissibilityTest.java` if they override `minCostPerAxisStep()` directly rather than extending `FakeMovement` — they offer along X and Z only, so the same substitution applies.
 
-- [ ] **Step 8: Update the assertions that read the multiplier**
+- [ ] **Step 8: Change the audit in `MovementContract`**
+
+In `MovementContract.violations`, replace `final double declared = type.minCostPerAxisStep();` with:
+
+```java
+        final double declaredHorizontal = type.minCostPerHorizontalUnit();
+        final double declaredVertical = type.minCostPerVerticalStep();
+```
+
+Inside the `offer` method, replace the span computation, the self-offer guard and the comparison with:
+
+```java
+                        // The context always sits at x = 0, z = 0, so nx and nz are already
+                        // offsets from the origin; only Y needs subtracting.
+                        int ady = Math.abs(ny - originY);
+                        double units = HeuristicRates.octileUnits(nx, nz);
+                        // A movement offering the position it was asked to expand from. This
+                        // guard is NOT redundant with the comparisons below, which is why it was
+                        // deleted once and restored: dividing by zero gives Infinity (or NaN at
+                        // cost 0), and neither is less than a declared figure, so the comparison
+                        // passes a degenerate movement in silence. The no-offer branch does not
+                        // catch it either -- the counter above has already incremented, so as far
+                        // as that branch can tell the audit was exercised.
+                        if (units == 0.0 && ady == 0) {
+                            violations.add(type.id() + " offered its own position (" + nx + ", "
+                                + ny + ", " + nz + "), which is not a move: an edge spanning no"
+                                + " distance has no per-unit cost to check its declarations"
+                                + " against. A* would also expand it as a zero-length neighbour of"
+                                + " itself. Fix expand() so it never offers the position it was"
+                                + " given.");
+                            return;
+                        }
+                        // Each half is checked only where the offer is evidence about it. An
+                        // offer that does not move horizontally says nothing about the horizontal
+                        // declaration, and must be skipped rather than treated as a violation.
+                        if (units > 0.0 && cost / units < declaredHorizontal - 1.0e-9) {
+                            violations.add(type.id() + " declares minCostPerHorizontalUnit "
+                                + declaredHorizontal + " but offered (" + nx + ", " + ny + ", "
+                                + nz + ") from (0, " + originY + ", 0) for " + cost + " across "
+                                + units + " octile units, which is " + (cost / units)
+                                + " per unit; the heuristic would overestimate and A* would stop"
+                                + " returning shortest paths");
+                            return;
+                        }
+                        if (ady > 0 && cost / ady < declaredVertical - 1.0e-9) {
+                            violations.add(type.id() + " declares minCostPerVerticalStep "
+                                + declaredVertical + " but offered (" + nx + ", " + ny + ", " + nz
+                                + ") from (0, " + originY + ", 0) for " + cost + " across " + ady
+                                + " blocks of height, which is " + (cost / ady) + " per block; the"
+                                + " heuristic would overestimate and A* would stop returning"
+                                + " shortest paths");
+                        }
+```
+
+`HeuristicRates` is in the same package, so no import is needed.
+
+In the never-offered message at the end of the method, replace `its declared minCostPerAxisStep of " + declared + "` with `its declarations were never`, keeping the rest of that long message verbatim — it explains the seeded-world palette and is the reason the guard is useful.
+
+- [ ] **Step 9: Update the assertions that read the multiplier**
 
 Mechanical rename, **same expected values**, because every movement involved offers along a single axis where octile and Chebyshev agree:
 
@@ -803,15 +1031,46 @@ Mechanical rename, **same expected values**, because every movement involved off
 | `core-pathfinder/.../BuiltInMovementContractTest.java` | `minCostPerAxisStep()` → `minCostPerHorizontalUnit()` |
 | `core-movement/.../MovementCostsTest.java` | javadoc reference only |
 
+**`BuiltInMovementContractTest.descendDeclaresItsWorstRatioNotItsCheapestCost` is NOT a bare rename.** It asserts `(TRAVERSE + fallTicks(MAX_SAFE_FALL)) / MAX_SAFE_FALL = 4.0108` — the worst ratio — and that semantics has moved to the **vertical** rate under this design, while `minCostPerHorizontalUnit()` is now the shallowest drop's whole cost, `8.1783`. A bare rename to `minCostPerHorizontalUnit()` fails with `expected: <4.010766666666666> but was: <8.1783>`. Do this instead — the original test's intent survives on the axis where it still applies, and the new number gets pinned rather than left floating:
+
+```java
+    @Test
+    void descendDeclaresItsWorstRatioAsItsVerticalRate() {
+        assertEquals(
+            (dev.continuo.movement.MovementCosts.TRAVERSE
+                + dev.continuo.movement.MovementCosts.fallTicks(
+                    dev.continuo.movement.MovementCosts.MAX_SAFE_FALL))
+                / dev.continuo.movement.MovementCosts.MAX_SAFE_FALL,
+            new DescendMove().minCostPerVerticalStep(), 1.0e-9,
+            "a fall accelerates, so its marginal cost per block of height falls away while the "
+                + "heuristic's credit per block does not; the binding ratio is the deepest fall, "
+                + "and declaring a shallower one would push the vertical rate up and cost "
+                + "admissibility");
+    }
+
+    @Test
+    void descendDeclaresItsShallowestWholeCostAsItsHorizontalRate() {
+        // Every descend offer displaces exactly one horizontal unit whatever the drop, so the
+        // horizontal rate is a whole cost rather than a ratio -- and the cheapest whole cost is
+        // the shallowest drop, since falling further only costs more. Pinned because C1a moved
+        // this number and nothing else asserts it: 3.5636 + 4.6147 = 8.1783.
+        assertEquals(
+            dev.continuo.movement.MovementCosts.TRAVERSE
+                + dev.continuo.movement.MovementCosts.fallTicks(1),
+            new DescendMove().minCostPerHorizontalUnit(), 1.0e-9,
+            "the horizontal rate must be the shallowest drop's whole cost, not a per-block ratio");
+    }
+```
+
 **`DefaultRegistryTest` is the exception to "same expected values".** It asserts the default registry's multiplier. `walk.diagonal` now declares `3.5636` instead of `5.0397`, but `walk.traverse` already declared `3.5636` and was already the minimum, so the multiplier is **unchanged at 3.5636**. If it comes out different, stop and report — do not adjust the expectation.
 
-- [ ] **Step 9: Run the full build**
+- [ ] **Step 10: Run the full build**
 
 Run: `./gradlew build --rerun-tasks`
 
 Expected: BUILD SUCCESSFUL. `:core-pathfinder`'s search still uses the Chebyshev formula at this point (Task 3 changes that), so no search behaviour has changed yet and every existing path test must still pass. **If any path or cost test fails here, stop and report** — this task is meant to be behaviour-preserving.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add -A
@@ -823,10 +1082,17 @@ rates(). The two are minimised independently so that a movement which is
 cheap per block of height cannot degrade the estimate for horizontal travel
 it may not be capable of at all -- the seam a ladder lands on later.
 
-Behaviour-preserving. Only walk.diagonal's declared number moves, from
-DIAGONAL to DIAGONAL/sqrt(2), and only because its unit changed underneath
-it; walk.traverse was already the minimum at the same figure, so the
-default registry's rate is unchanged. The heuristic still computes a
+MovementContract moves in the same commit and not by preference: it measured
+a Chebyshev span, so a 3-block descend measured 12.0323/3 = 4.0108 against a
+declaration that is now the shallowest drop's whole cost, 8.1783. Splitting
+the two would leave BuiltInMovementContractTest red at a task boundary. The
+audit now measures octile units horizontally and blocks of height vertically,
+and checks each only where an offer is evidence about it.
+
+Behaviour-preserving for the search. Only walk.diagonal's declared number
+moves, from DIAGONAL to DIAGONAL/sqrt(2), and only because its unit changed
+underneath it; walk.traverse was already the minimum at the same figure, so
+the default registry's rate is unchanged. The heuristic still computes a
 Chebyshev distance until the next commit."
 ```
 
@@ -839,6 +1105,9 @@ Chebyshev distance until the next commit."
 - Modify: `core-pathfinder/src/main/java/dev/continuo/pathfinder/GoalBlock.java`
 - Modify: `core-pathfinder/src/main/java/dev/continuo/pathfinder/GoalXZ.java`
 - Modify: `core-pathfinder/src/main/java/dev/continuo/pathfinder/AStarPathfinder.java:139,154,202`
+- Modify: `core-pathfinder/src/test/java/dev/continuo/pathfinder/GoalTest.java` (every `heuristic(...)` call)
+- Modify: `core-pathfinder/src/test/java/dev/continuo/pathfinder/AStarPathfinderTest.java:469`
+- Modify: `core-pathfinder/src/test/java/dev/continuo/pathfinder/PathfinderAcceptanceTest.java:104,107`
 - Create: `core-pathfinder/src/test/java/dev/continuo/pathfinder/OctileSearchTest.java`
 
 **Interfaces:**
@@ -1061,6 +1330,26 @@ with:
 
 At lines 154 and 202, replace `cheapestAxisStep` with `rates` in the two `goal.heuristic(...)` calls. Add `import dev.continuo.movement.HeuristicRates;`.
 
+**Then update the three test files that call `Goal.heuristic` directly**, which move with the signature:
+
+- `GoalTest.java` — every call passes `MovementCosts.TRAVERSE` as the fourth argument. Replace each with a `HeuristicRates`. Where a test passes a bare rate, use `new HeuristicRates(MovementCosts.TRAVERSE, MovementCosts.TRAVERSE)` so the vertical half keeps the value the old single multiplier gave it. **Two tests need more care than a substitution:** the pair asserting `heuristic(..., 1.0) < heuristic(..., 3.5636)` is checking that the multiplier scales the estimate, so give them `new HeuristicRates(1.0, 1.0)` and `new HeuristicRates(3.5636, 3.5636)` respectively and keep the assertion's intent.
+- `AStarPathfinderTest.java:469` — one call, same substitution.
+- `PathfinderAcceptanceTest.java:104,107` — two calls, same substitution.
+
+**One `GoalTest` expected value must change, and it is the point of the whole task.** `theHeuristicCountsTheFewestPossibleMovesNotTheDistanceWalked` uses `GoalBlock(3, 64, 3)` from `(0, 64, 0)` — a pure 45° diagonal, not an axis-aligned case. Its expectation of `3 * MovementCosts.TRAVERSE` (`10.6908`) is the under-estimate this change exists to remove; the correct tight value is `15.1191`. Its own message already says "a diagonal covers X and Z at once, so three moves suffice, not six" — it was always about diagonals and merely priced them at the cardinal rate. Update it to:
+
+```java
+        assertEquals(3 * MovementCosts.TRAVERSE * Math.sqrt(2.0),
+            goal.heuristic(0, 64, 0, rates), 1.0e-9,
+            "a diagonal covers X and Z at once, so three moves suffice, not six -- and each of "
+                + "those three is a diagonal, which costs TRAVERSE * sqrt(2). Pricing them at the "
+                + "cardinal rate is exactly the under-estimate C1a removes");
+```
+
+Derived rather than observed: `rates` is built with `horizontal = TRAVERSE`, and `octileUnits(3, 3) = 3√2`, so the estimate is `TRAVERSE × 3√2`. Written out as `3 * TRAVERSE * sqrt(2)` rather than as `3 * MovementCosts.DIAGONAL` so the expectation tracks the fixture's own rate, and rather than as `octileUnits(3,3)` so it does not test a function with itself.
+
+**Every other expected value must not change.** For the axis-aligned and pure-vertical cases the remaining tests use, the octile estimate equals the old Chebyshev product. **If any other expected number has to move, stop and report it with the derivation** — a changed expectation here is either a real behaviour change worth knowing about or a test being re-blessed to match code, and the two are not distinguishable after the fact.
+
 - [ ] **Step 5: Run the test and verify it passes**
 
 Run: `./gradlew :core-pathfinder:test --tests 'dev.continuo.pathfinder.OctileSearchTest'`
@@ -1094,251 +1383,7 @@ untouched, since octile and Chebyshev agree there."
 
 ---
 
-## Task 4: The contract audits both declarations
-
-**Files:**
-- Modify: `core-movement/src/main/java/dev/continuo/movement/MovementContract.java:95-168`
-- Test: `core-movement/src/test/java/dev/continuo/movement/MovementContractTest.java`
-
-**Interfaces:**
-- Consumes: `HeuristicRates.octileUnits` (Task 1), the two declarations (Task 2).
-- Produces: nothing new.
-
-- [ ] **Step 1: Write the failing test**
-
-Add to `core-movement/src/test/java/dev/continuo/movement/MovementContractTest.java`:
-
-```java
-    @Test
-    void aDiagonalOfferUnderstatingItsCostIsCaught() {
-        // A movement offering a diagonal for less than its declared rate times sqrt(2). Under the
-        // old Chebyshev span this offer measured one axis step and passed; the whole reason the
-        // audit moved to octile units is that a diagonal offer is worth more than one unit.
-        List<String> violations = MovementContract.violations(
-            new DiagonalOfferMovement("bad.diagonal", 3.0, 3.0));
-
-        assertFalse(violations.isEmpty(),
-            "a diagonal offered at the cost of a single cardinal step understates its rate");
-        assertTrue(violations.get(0).contains("bad.diagonal"), violations.get(0));
-    }
-
-    @Test
-    void aHonestDiagonalOfferPasses() {
-        // The same movement paying the full sqrt(2) units. Without this the test above passes on
-        // an audit that rejects every diagonal, which checks nothing.
-        List<String> violations = MovementContract.violations(
-            new DiagonalOfferMovement("good.diagonal", 3.0, 3.0 * Math.sqrt(2.0)));
-
-        assertTrue(violations.isEmpty(), String.valueOf(violations));
-    }
-
-    @Test
-    void aVerticalOfferUnderstatingItsCostIsCaught() {
-        // The vertical half of the audit, which has no coverage otherwise: every other double in
-        // this suite declares an infinite vertical rate and never moves in Y.
-        List<String> violations = MovementContract.violations(
-            new DropOfferMovement("bad.drop", 5.0, 3.0));
-
-        assertFalse(violations.isEmpty(),
-            "a three-block drop offered for less than three times the declared vertical rate"
-                + " understates it");
-        assertTrue(violations.get(0).contains("bad.drop"), violations.get(0));
-    }
-```
-
-Create `core-movement/src/test/java/dev/continuo/movement/DiagonalOfferMovement.java`:
-
-```java
-package dev.continuo.movement;
-
-import java.util.EnumSet;
-import java.util.Set;
-
-/** Offers exactly one diagonal neighbour, at a cost the test chooses. */
-final class DiagonalOfferMovement implements IMovementType {
-
-    private final String id;
-    private final double horizontal;
-    private final double cost;
-
-    DiagonalOfferMovement(String id, double horizontal, double cost) {
-        this.id = id;
-        this.horizontal = horizontal;
-        this.cost = cost;
-    }
-
-    @Override
-    public String id() {
-        return id;
-    }
-
-    @Override
-    public Set<Capability> requires() {
-        return EnumSet.noneOf(Capability.class);
-    }
-
-    @Override
-    public double minCostPerHorizontalUnit() {
-        return horizontal;
-    }
-
-    @Override
-    public double minCostPerVerticalStep() {
-        return Double.POSITIVE_INFINITY;
-    }
-
-    @Override
-    public void expand(ExpansionContext ctx, MoveSink sink) {
-        sink.offer(ctx.x() + 1, ctx.y(), ctx.z() + 1, cost);
-    }
-}
-```
-
-Create `core-movement/src/test/java/dev/continuo/movement/DropOfferMovement.java`:
-
-```java
-package dev.continuo.movement;
-
-import java.util.EnumSet;
-import java.util.Set;
-
-/** Offers exactly one three-block drop, at a cost the test chooses. */
-final class DropOfferMovement implements IMovementType {
-
-    private final String id;
-    private final double vertical;
-    private final double cost;
-
-    DropOfferMovement(String id, double vertical, double cost) {
-        this.id = id;
-        this.vertical = vertical;
-        this.cost = cost;
-    }
-
-    @Override
-    public String id() {
-        return id;
-    }
-
-    @Override
-    public Set<Capability> requires() {
-        return EnumSet.noneOf(Capability.class);
-    }
-
-    @Override
-    public double minCostPerHorizontalUnit() {
-        return Double.POSITIVE_INFINITY;
-    }
-
-    @Override
-    public double minCostPerVerticalStep() {
-        return vertical;
-    }
-
-    @Override
-    public void expand(ExpansionContext ctx, MoveSink sink) {
-        sink.offer(ctx.x(), ctx.y() - 3, ctx.z(), cost);
-    }
-}
-```
-
-- [ ] **Step 2: Run the test and verify it fails**
-
-Run: `./gradlew :core-movement:test --tests 'dev.continuo.movement.MovementContractTest'`
-
-Expected: `aDiagonalOfferUnderstatingItsCostIsCaught` and `aVerticalOfferUnderstatingItsCostIsCaught` FAIL — the audit still measures a Chebyshev span and checks one declaration.
-
-- [ ] **Step 3: Change the audit**
-
-In `MovementContract.violations`, replace `final double declared = type.minCostPerAxisStep();` with:
-
-```java
-        final double declaredHorizontal = type.minCostPerHorizontalUnit();
-        final double declaredVertical = type.minCostPerVerticalStep();
-```
-
-Inside the `offer` method, replace the span computation, the self-offer guard and the comparison with:
-
-```java
-                        // The context always sits at x = 0, z = 0, so nx and nz are already
-                        // offsets from the origin; only Y needs subtracting.
-                        int ady = Math.abs(ny - originY);
-                        double units = HeuristicRates.octileUnits(nx, nz);
-                        // A movement offering the position it was asked to expand from. This
-                        // guard is NOT redundant with the comparisons below, which is why it was
-                        // deleted once and restored: dividing by zero gives Infinity (or NaN at
-                        // cost 0), and neither is less than a declared figure, so the comparison
-                        // passes a degenerate movement in silence. The no-offer branch does not
-                        // catch it either -- the counter above has already incremented, so as far
-                        // as that branch can tell the audit was exercised.
-                        if (units == 0.0 && ady == 0) {
-                            violations.add(type.id() + " offered its own position (" + nx + ", "
-                                + ny + ", " + nz + "), which is not a move: an edge spanning no"
-                                + " distance has no per-unit cost to check its declarations"
-                                + " against. A* would also expand it as a zero-length neighbour of"
-                                + " itself. Fix expand() so it never offers the position it was"
-                                + " given.");
-                            return;
-                        }
-                        // Each half is checked only where the offer is evidence about it. An
-                        // offer that does not move horizontally says nothing about the horizontal
-                        // declaration, and must be skipped rather than treated as a violation.
-                        if (units > 0.0 && cost / units < declaredHorizontal - 1.0e-9) {
-                            violations.add(type.id() + " declares minCostPerHorizontalUnit "
-                                + declaredHorizontal + " but offered (" + nx + ", " + ny + ", "
-                                + nz + ") from (0, " + originY + ", 0) for " + cost + " across "
-                                + units + " octile units, which is " + (cost / units)
-                                + " per unit; the heuristic would overestimate and A* would stop"
-                                + " returning shortest paths");
-                            return;
-                        }
-                        if (ady > 0 && cost / ady < declaredVertical - 1.0e-9) {
-                            violations.add(type.id() + " declares minCostPerVerticalStep "
-                                + declaredVertical + " but offered (" + nx + ", " + ny + ", " + nz
-                                + ") from (0, " + originY + ", 0) for " + cost + " across " + ady
-                                + " blocks of height, which is " + (cost / ady) + " per block; the"
-                                + " heuristic would overestimate and A* would stop returning"
-                                + " shortest paths");
-                        }
-```
-
-Add `import` for nothing new — `HeuristicRates` is in the same package.
-
-In the never-offered message at the end, replace `its declared minCostPerAxisStep of " + declared + "` with `its declarations were never`, keeping the rest of that long message verbatim — it explains the seeded-world palette and is the reason the guard is useful.
-
-- [ ] **Step 4: Run the test and verify it passes**
-
-Run: `./gradlew :core-movement:test --tests 'dev.continuo.movement.MovementContractTest'`
-
-Expected: PASS, including every pre-existing test in that class.
-
-- [ ] **Step 5: Run the full build**
-
-Run: `./gradlew build --rerun-tasks`
-
-Expected: BUILD SUCCESSFUL. `BuiltInMovementContractTest` audits the five real movements against their new declarations; **if any of them now reports a violation, stop and report it** — it means a declared rate in Task 2 is too high and the heuristic would overestimate.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add -A
-git commit -m "test(c1a): audit both declarations against real expansions
-
-MovementContract measured a Chebyshev span and checked one declaration, so a
-diagonal offer was audited as a single axis step -- the same conflation that
-made the heuristic loose. It now measures octile units for the horizontal
-half and blocks of height for the vertical one, and checks each only where
-the offer is evidence about it.
-
-Both existing guards are preserved: the self-offer guard, which was deleted
-once and restored because dividing by zero passes every comparison in
-silence, and the never-offered guard that separates 'the declaration held'
-from 'nothing was checked'."
-```
-
----
-
-## Task 5: Prove the new tests are not vacuous, and sweep
+## Task 4: Prove the new tests are not vacuous, and sweep
 
 **Files:**
 - Temporarily modify: `core-pathfinder/src/main/java/dev/continuo/pathfinder/DiagonalMove.java`
@@ -1417,7 +1462,7 @@ print('tests=%d failures=%d errors=%d' % (t,f,e))
 "
 ```
 
-Expected: `failures=0 errors=0`, and a total of **390 plus the tests added by this plan** (12 in Task 1, 3 in Task 2, 4 in Task 3, 3 in Task 4 = **412**). A different total is not necessarily wrong, but reconcile it before claiming done.
+Expected: `failures=0 errors=0`, and a total of **390 plus the tests added by this plan** (12 in Task 1, 7 in Task 2, 4 in Task 3 = **413**). A different total is not necessarily wrong, but reconcile it before claiming done.
 
 - [ ] **Step 6: Commit**
 
@@ -1438,7 +1483,7 @@ found by executing mutations what reading a diff did not.
 
 ## Self-Review
 
-**Spec coverage.** §4.1 `HeuristicRates`/`octileUnits` → Task 1. §4.2 the two declarations and their minima → Task 2. §4.3 the heuristic and both `Goal` implementations → Task 3. §4.4 the contract audit → Task 4. §4.5 blast radius → enumerated across Tasks 2 and 3. §7 done criteria → Task 5.
+**Spec coverage.** §4.1 `HeuristicRates`/`octileUnits` → Task 1. §4.2 the two declarations and their minima → Task 2. §4.3 the heuristic and both `Goal` implementations → Task 3. §4.4 the contract audit → Task 2 (see the ruling in its header). §4.5 blast radius → enumerated across Tasks 2 and 3. §7 done criteria → Task 4.
 
 §5's verification list initially had two gaps, both now closed **inside the tasks** rather than noted here:
 
@@ -1449,10 +1494,10 @@ found by executing mutations what reading a diff did not.
 - **Test 4, consistency.** Octile's subadditivity was argued in the spec and asserted nowhere.
   `theUnitIsSubadditiveSoAPerEdgeBoundSumsAlongAPath` is now a test in Task 1.
 
-Test 5 (rates are independent) → Task 2 step 1. Test 6 (`POSITIVE_INFINITY`) → Task 1.
+Test 3 (admissibility as a property) and test 5 (rates are independent) → Task 2 step 1. Test 6 (`POSITIVE_INFINITY`) → Task 1.
 
-Update the expected counts in Task 5 step 5 accordingly: 12 in Task 1, 3 in Task 2, 4 in Task 3, 3 in Task 4 = **412** total.
+Update the expected counts in Task 4 step 5 accordingly: 12 in Task 1, 7 in Task 2, 4 in Task 3 = **413** total (Task 2 gained one test under ruling R6, which split the descend declaration test in two).
 
-**Placeholder scan.** One deliberate placeholder remains: `<paste the recorded failure output from step 2 here>` in Task 5's commit message, which cannot be written in advance because it is the observed output. Everything else contains real code.
+**Placeholder scan.** One deliberate placeholder remains: `<paste the recorded failure output from step 2 here>` in Task 4's commit message, which cannot be written in advance because it is the observed output. Everything else contains real code.
 
 **Type consistency.** `minCostPerHorizontalUnit()` / `minCostPerVerticalStep()` / `rates()` / `horizontal()` / `vertical()` / `octileUnits(int,int)` / `estimate(int,int,int)` / `horizontalEstimate(int,int)` are used identically in Tasks 1–5. `HeuristicRates` lives in `dev.continuo.movement`, so `MovementContract` needs no import and the `:core-pathfinder` classes do.
