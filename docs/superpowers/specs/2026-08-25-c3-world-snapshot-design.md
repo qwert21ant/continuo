@@ -97,14 +97,55 @@ what makes B2 §4's pre-warm obligation on M5 hard.
 spans two section layers because it straddles `y = 64`. B2's full-height fear — ~24 section layers
 — is the opposite of what happens.
 
-### 2.2 What the evidence does not cover
+### 2.2 Confirmed on real terrain
 
-- **No in-game measurement.** The repeat factor is measured on two synthetic fixtures. §5.1 wires
-  the probe to report it on real terrain precisely because this is a fixture result.
+The owner ran four in-game probes on 2026-08-25 (Fabric 1.21.11). Dumps are on disk, gitignored,
+at `adapters/adapter-fabric-1.21.11/run/continuo-path-probe*.txt`.
+
+| run | outcome | steps | expanded | expanded/steps |
+|---|---|---|---|---|
+| straight 140 | FOUND | 141 | 141 | 1.00 |
+| diagonal 100 | FOUND | 101 | 142 | 1.41 |
+| diagonal 200 | FOUND | 201 | 201 | 1.00 |
+| short | FOUND | 33 | 57 | 1.73 |
+
+**This also closes C1a's first `NOT VERIFIED` line** — *"Nothing was run in a Minecraft client. A
+diagonal goal ~180 blocks out should now succeed where it previously returned BUDGET_EXCEEDED, but
+nobody has pressed the key."* A 200-block diagonal over real terrain now costs 201 expansions.
+
+**The repeat factor survives the move off synthetic ground.** The short run is unclamped and
+contains no `?`, so it replays as a fixture; the three long runs are clamped and have
+`goal() == null`, so they were re-run to a synthetic corner goal:
+
+| source | outcome | `at()` calls | distinct | repeat |
+|---|---|---|---|---|
+| short run — real terrain, real path | FOUND, 33 steps | 3,864 | 680 | **5.68×** |
+| straight-140 window, synthetic goal | NO_PATH, 320 expanded | 19,398 | 1,560 | 12.43× |
+| diag-200 window, synthetic goal | NO_PATH, 4,096 expanded | 277,784 | 16,900 | 16.44× |
+| diag-100 window, synthetic goal | NO_PATH, 4,096 expanded | 277,784 | 16,900 | 16.44× |
+
+**5.68× is the load-bearing figure** — real terrain, real path, at the top of §2's flat-ground
+FOUND band of 3.8–5.7×. Snapshot memory for that search: 42 KB.
+
+The two identical 16.44× rows are **not independent evidence**. `4,096 = 64 × 64` is the whole XZ
+area of one slice, so those searches exhausted the drawn window rather than meeting terrain. They
+corroborate the shape of §2's flood-fill cases; they do not add a second real-terrain sample.
+
+**The paste-back round trip is exact when it applies.** The short run replayed as a fixture
+returned `FOUND, 33 steps, 57 expanded, cost 159.79403497705567` — identical to the in-game run to
+all seventeen digits, and identical *without* `walk.parkour`, which the probe granted in game but
+which is `runtimeOnly` and absent from `:core-pathfinder`. The C3 handoff calls the round trip
+"real but conditional"; the condition is **no `?` cells and not clamped**, and when it holds the
+reproduction is exact rather than merely same-verdict.
+
+### 2.3 What the evidence still does not cover
+
+- **One real-terrain sample with a real path.** 5.68× rests on a single 33-step route in one
+  biome. §5.1 wires the probe to report the ratio on every run so the sample grows for free.
 - **No adapter cost.** `IBlockView.stateId` cannot be timed headlessly. The claim throughout is
   about *call counts*, which are exact, not about milliseconds, which are not.
-- **Cave and overhang terrain is unmeasured.** Both fixtures are surface worlds; the 4-block Y band
-  is a property of those fixtures, not a proven property of pathfinding.
+- **Cave and overhang terrain is unmeasured.** Every fixture and every probe run is a surface
+  world; the 4-block Y band is a property of those, not a proven property of pathfinding.
 
 ---
 
@@ -401,7 +442,7 @@ sub-projects.
 
 | Risk | Severity | Mitigation / status |
 |---|---|---|
-| The 4–16× repeat factor is measured on two synthetic surface fixtures | Medium | §5.1 makes the probe report it on real terrain. If the real figure is near 1×, C3's cost argument weakens and only the latent C4/M5 value remains — the design does not change, but its justification does |
+| The 4–16× repeat factor rests on one real-terrain sample | **Low**, downgraded | §2.2 replayed the owner's in-game short run and measured **5.68×** on real terrain with a real path — at the top of the synthetic FOUND band, not near 1×. What remains is that it is *one* 33-step route in one surface biome. §5.1 makes every future probe run add a sample for free |
 | C3's chosen purpose (a stable world across a search) has no consumer until C4 | Medium, accepted | Stated plainly rather than implied: a synchronous main-thread search already sees a stable world, so the property is **latent**. C3 pays for itself today on read count alone |
 | M5 pre-warms wrongly and an off-thread search paths through phantom walls | Medium | `covers()` (§4.5) makes the failure detectable instead of silent. §5.2 records the obligation. C3 cannot discharge it |
 | Boxing a `Long` per read is a hot-path allocation | Low | Not a regression — `BlockLookup` boxes per read today and also makes an SPI call. §4.8 parks the primitive-map swap with a measurement trigger |
@@ -422,7 +463,10 @@ sub-projects.
 4. `Pos`'s public API is unchanged and no call site outside `Pos.java` was touched by D7.
 5. Both ★ tests in §6 have recorded, reproducible mutations.
 6. One probe run in a live client, reporting the snapshot line.
-7. `core-pathfinder/src/test/java/dev/continuo/pathfinder/RegionMeasurementThrowaway.java` deleted.
+7. Both throwaway harnesses deleted from `core-pathfinder/src/test/java/dev/continuo/pathfinder/`:
+   `RegionMeasurementThrowaway.java` (§2) and `RealTerrainMeasurementThrowaway.java` (§2.2). The
+   second reads absolute paths under `adapters/adapter-fabric-1.21.11/run/`, which is gitignored,
+   so it would fail on any machine but this one.
 
 ---
 
@@ -437,6 +481,12 @@ Recorded so that nothing here is rediscovered:
   and goal does not work.
 - **The probe's render is budgeted by nothing** — 262,144 reads worst case, justified on file size
   alone. Untouched by C3 and explicitly out of scope.
+- **Two probe findings from §2.2 belong to the probe, not to C3**, and are recorded here because
+  nothing else carries them: the paste-back round trip is **exact** when a map has no `?` and is
+  not clamped, which sharpens the "real but conditional" framing the handoff uses; and a clamped
+  map's `goal() == null` still forces a synthetic goal on any replay, which is the one thing that
+  stopped the three long runs from being independent terrain samples. A clamp notice that named the
+  goal's coordinates would fix the second, and is a probe change, not a snapshot one.
 - **`walk.parkour` is absent from `:core-pathfinder`'s ServiceLoader**, being `runtimeOnly` from
   `:runtime`. Every figure in §2 excludes it. Correct, guarded, and repeatedly surprising.
 - **B2's residual §7 risks are now measured**, and the answers are in §2.1: memory is not a problem,
