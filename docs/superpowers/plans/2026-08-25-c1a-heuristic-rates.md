@@ -1462,7 +1462,7 @@ print('tests=%d failures=%d errors=%d' % (t,f,e))
 "
 ```
 
-Expected: `failures=0 errors=0`, and a total of **390 plus the tests added by this plan** (12 in Task 1, 6 in Task 2, 4 in Task 3 = **412**). A different total is not necessarily wrong, but reconcile it before claiming done.
+Expected: `failures=0 errors=0`, and a total of **390 plus the tests added by this plan** (12 in Task 1, 7 in Task 2, 4 in Task 3 = **413**). A different total is not necessarily wrong, but reconcile it before claiming done.
 
 - [ ] **Step 6: Commit**
 
@@ -1496,7 +1496,7 @@ found by executing mutations what reading a diff did not.
 
 Test 3 (admissibility as a property) and test 5 (rates are independent) → Task 2 step 1. Test 6 (`POSITIVE_INFINITY`) → Task 1.
 
-Update the expected counts in Task 4 step 5 accordingly: 12 in Task 1, 6 in Task 2, 4 in Task 3 = **412** total.
+Update the expected counts in Task 4 step 5 accordingly: 12 in Task 1, 7 in Task 2, 4 in Task 3 = **413** total (Task 2 gained one test under ruling R6, which split the descend declaration test in two).
 
 **Placeholder scan.** One deliberate placeholder remains: `<paste the recorded failure output from step 2 here>` in Task 4's commit message, which cannot be written in advance because it is the observed output. Everything else contains real code.
 
