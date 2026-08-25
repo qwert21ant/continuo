@@ -32,7 +32,7 @@ class DefaultRegistryTest {
     @Test
     void theMultiplierOverC1sMovementsIsWhatC1sConstantWas() {
         assertEquals(MovementCosts.TRAVERSE,
-            AStarPathfinder.defaultRegistry().activeFor(CapabilitySet.none()).cheapestAxisStep(),
+            AStarPathfinder.defaultRegistry().activeFor(CapabilitySet.none()).rates().horizontal(),
             1.0e-9,
             "traverse is the cheapest axis step, so deriving the multiplier must reproduce the "
                 + "figure C1 hard-coded — otherwise every C1 search result would change");

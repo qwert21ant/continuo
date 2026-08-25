@@ -136,7 +136,7 @@ public final class AStarPathfinder {
         }
 
         final ActiveMovements active = registry.activeFor(caps);
-        final double cheapestAxisStep = active.cheapestAxisStep();
+        final double cheapestAxisStep = active.rates().horizontal();
         final List<IMovementType> moves = active.movements();
 
         final Map<Long, PathNode> nodes = new HashMap<Long, PathNode>();

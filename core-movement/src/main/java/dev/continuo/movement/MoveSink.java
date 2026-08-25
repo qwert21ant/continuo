@@ -15,7 +15,7 @@ public interface MoveSink {
      * @param z the neighbour's Z
      * @param cost the cost of getting there from the position being expanded, in ticks; must be
      *             positive, and must respect the movement's declared
-     *             {@link IMovementType#minCostPerAxisStep()}
+     *             {@link IMovementType#minCostPerHorizontalUnit()}
      */
     void offer(int x, int y, int z, double cost);
 }

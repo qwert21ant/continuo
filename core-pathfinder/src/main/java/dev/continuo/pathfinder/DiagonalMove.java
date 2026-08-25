@@ -3,6 +3,7 @@ package dev.continuo.pathfinder;
 import dev.continuo.core.BlockSource;
 import dev.continuo.movement.Capability;
 import dev.continuo.movement.ExpansionContext;
+import dev.continuo.movement.HeuristicRates;
 import dev.continuo.movement.IMovementType;
 import dev.continuo.movement.MoveSink;
 import dev.continuo.movement.MovementCosts;
@@ -34,9 +35,24 @@ final class DiagonalMove implements IMovementType {
         return EnumSet.noneOf(Capability.class);
     }
 
+    /**
+     * One diagonal step is {@code √2} octile units, so the per-unit rate is the diagonal cost
+     * divided by that — which comes out at exactly {@code MovementCosts.TRAVERSE}, since
+     * {@code DIAGONAL} is defined as {@code TRAVERSE × √2}. Declaring the whole diagonal cost
+     * here, as this did before C1a, credited a diagonal move at one unit and left the heuristic
+     * short by {@code √2} on any diagonal.
+     */
+    private static final double MIN_COST_PER_HORIZONTAL_UNIT =
+        MovementCosts.DIAGONAL / HeuristicRates.octileUnits(1, 1);
+
     @Override
-    public double minCostPerAxisStep() {
-        return MovementCosts.DIAGONAL;
+    public double minCostPerHorizontalUnit() {
+        return MIN_COST_PER_HORIZONTAL_UNIT;
+    }
+
+    @Override
+    public double minCostPerVerticalStep() {
+        return Double.POSITIVE_INFINITY;
     }
 
     @Override

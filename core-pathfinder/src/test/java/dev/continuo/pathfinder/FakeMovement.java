@@ -54,8 +54,13 @@ final class FakeMovement implements IMovementType {
     }
 
     @Override
-    public double minCostPerAxisStep() {
+    public double minCostPerHorizontalUnit() {
         return minCostPerAxisStep;
+    }
+
+    @Override
+    public double minCostPerVerticalStep() {
+        return Double.POSITIVE_INFINITY;
     }
 
     @Override

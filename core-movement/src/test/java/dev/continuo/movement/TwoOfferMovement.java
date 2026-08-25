@@ -5,7 +5,7 @@ import java.util.Set;
 
 /**
  * A movement whose {@code expand} offers two neighbours in a single call, both of which violate
- * its declared {@link IMovementType#minCostPerAxisStep()}.
+ * its declared {@link IMovementType#minCostPerHorizontalUnit()}.
  *
  * <p>{@link FakeMovement} offers only one neighbour per call, so no test built on it can tell
  * whether {@link MovementContract#violations} keeps checking every offer a single {@code expand}
@@ -36,8 +36,13 @@ final class TwoOfferMovement implements IMovementType {
     }
 
     @Override
-    public double minCostPerAxisStep() {
+    public double minCostPerHorizontalUnit() {
         return minCostPerAxisStep;
+    }
+
+    @Override
+    public double minCostPerVerticalStep() {
+        return Double.POSITIVE_INFINITY;
     }
 
     @Override

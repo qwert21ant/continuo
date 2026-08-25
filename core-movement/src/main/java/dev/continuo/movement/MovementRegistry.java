@@ -35,11 +35,26 @@ public final class MovementRegistry implements IMovementRegistry {
                 + " registered; two movements answering to one id would make the registry's"
                 + " deduplication and its discovery order both undefined");
         }
-        double declared = type.minCostPerAxisStep();
-        if (!(declared > 0.0)) {
+        double horizontal = type.minCostPerHorizontalUnit();
+        double vertical = type.minCostPerVerticalStep();
+        // !(x > 0.0) rather than x <= 0.0 so NaN is rejected here too; every comparison against
+        // NaN is false, so "NaN <= 0" would pass and the heuristic's ordering would go arbitrary.
+        if (!(horizontal > 0.0)) {
             throw new IllegalArgumentException("movement " + id + " declares a"
-                + " minCostPerAxisStep of " + declared + "; it must be positive, or it would drag"
-                + " the heuristic's multiplier to zero and turn A* into an exhaustive search");
+                + " minCostPerHorizontalUnit of " + horizontal + "; it must be positive, or it"
+                + " would drag the heuristic's horizontal rate to zero and turn A* into an"
+                + " exhaustive search");
+        }
+        if (!(vertical > 0.0)) {
+            throw new IllegalArgumentException("movement " + id + " declares a"
+                + " minCostPerVerticalStep of " + vertical + "; it must be positive, or it would"
+                + " drag the heuristic's vertical rate to zero and turn A* into an exhaustive"
+                + " search");
+        }
+        if (Double.isInfinite(horizontal) && Double.isInfinite(vertical)) {
+            throw new IllegalArgumentException("movement " + id + " declares both rates infinite,"
+                + " which says it never displaces along either axis class and so can reach"
+                + " nothing; a movement that offers no travel has no place in a registry");
         }
         ids.add(id);
         registered.add(type);
@@ -67,7 +82,8 @@ public final class MovementRegistry implements IMovementRegistry {
      * every movement compiled against it, so it is named explicitly.
      *
      * @throws IllegalArgumentException if a discovered movement duplicates a registered id, or
-     *         declares a non-positive {@link IMovementType#minCostPerAxisStep()}
+     *         declares a non-positive {@link IMovementType#minCostPerHorizontalUnit()} or
+     *         {@link IMovementType#minCostPerVerticalStep()}, or declares both infinite
      */
     public void discover() {
         List<IMovementType> found = new ArrayList<IMovementType>();

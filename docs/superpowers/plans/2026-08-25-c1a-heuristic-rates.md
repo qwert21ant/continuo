@@ -771,9 +771,18 @@ compile without it. Change **only that line** to:
         final double cheapestAxisStep = active.rates().horizontal();
 ```
 
-Leave the local variable's name alone and **do not touch `Goal`, `GoalBlock`, `GoalXZ` or the two
+Leave the local variable's name alone and **do not touch `GoalBlock`, `GoalXZ` or the two
 `goal.heuristic(...)` call sites** — the signature change is Task 3's, and doing it here would drag
 three more test files in with it.
+
+**`Goal.java` needs one narrow exception, and only for its javadoc.** Its class javadoc (line 12)
+and its `@param` block (line 30) both contain
+`{@link dev.continuo.movement.ActiveMovements#cheapestAxisStep()}`. Removing that method makes both
+links dead, and `-Xdoclint:all,-missing -Xwerror` fails `:core-pathfinder:javadoc` on a dead link —
+so the build goes red whatever the signature does. Replace **only those two `{@link}` tags** with
+`{@code ActiveMovements.rates()}`. Leave the method signature, the parameter name, and everything
+else in the file alone; Task 3 rewrites this javadoc properly. The `{@code ... × cheapestAxisStep}`
+prose on line 10 is not a link and does not break the build — leave it for Task 3 too.
 
 This is exactly behaviour-preserving, which is why it is a one-line change rather than a merge of
 Task 3. `cheapestAxisStep()` was `min(3.5636 traverse, 6.5582 ascend, 4.0108 descend, 5.0397
@@ -1021,6 +1030,37 @@ Mechanical rename, **same expected values**, because every movement involved off
 | `movement-parkour/.../ParkourMoveTest.java` | `minCostPerAxisStep()` → `minCostPerHorizontalUnit()`; expected value stays `COST / 2` |
 | `core-pathfinder/.../BuiltInMovementContractTest.java` | `minCostPerAxisStep()` → `minCostPerHorizontalUnit()` |
 | `core-movement/.../MovementCostsTest.java` | javadoc reference only |
+
+**`BuiltInMovementContractTest.descendDeclaresItsWorstRatioNotItsCheapestCost` is NOT a bare rename.** It asserts `(TRAVERSE + fallTicks(MAX_SAFE_FALL)) / MAX_SAFE_FALL = 4.0108` — the worst ratio — and that semantics has moved to the **vertical** rate under this design, while `minCostPerHorizontalUnit()` is now the shallowest drop's whole cost, `8.1783`. A bare rename to `minCostPerHorizontalUnit()` fails with `expected: <4.010766666666666> but was: <8.1783>`. Do this instead — the original test's intent survives on the axis where it still applies, and the new number gets pinned rather than left floating:
+
+```java
+    @Test
+    void descendDeclaresItsWorstRatioAsItsVerticalRate() {
+        assertEquals(
+            (dev.continuo.movement.MovementCosts.TRAVERSE
+                + dev.continuo.movement.MovementCosts.fallTicks(
+                    dev.continuo.movement.MovementCosts.MAX_SAFE_FALL))
+                / dev.continuo.movement.MovementCosts.MAX_SAFE_FALL,
+            new DescendMove().minCostPerVerticalStep(), 1.0e-9,
+            "a fall accelerates, so its marginal cost per block of height falls away while the "
+                + "heuristic's credit per block does not; the binding ratio is the deepest fall, "
+                + "and declaring a shallower one would push the vertical rate up and cost "
+                + "admissibility");
+    }
+
+    @Test
+    void descendDeclaresItsShallowestWholeCostAsItsHorizontalRate() {
+        // Every descend offer displaces exactly one horizontal unit whatever the drop, so the
+        // horizontal rate is a whole cost rather than a ratio -- and the cheapest whole cost is
+        // the shallowest drop, since falling further only costs more. Pinned because C1a moved
+        // this number and nothing else asserts it: 3.5636 + 4.6147 = 8.1783.
+        assertEquals(
+            dev.continuo.movement.MovementCosts.TRAVERSE
+                + dev.continuo.movement.MovementCosts.fallTicks(1),
+            new DescendMove().minCostPerHorizontalUnit(), 1.0e-9,
+            "the horizontal rate must be the shallowest drop's whole cost, not a per-block ratio");
+    }
+```
 
 **`DefaultRegistryTest` is the exception to "same expected values".** It asserts the default registry's multiplier. `walk.diagonal` now declares `3.5636` instead of `5.0397`, but `walk.traverse` already declared `3.5636` and was already the minimum, so the multiplier is **unchanged at 3.5636**. If it comes out different, stop and report — do not adjust the expectation.
 

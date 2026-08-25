@@ -9,7 +9,7 @@ package dev.continuo.pathfinder;
  * use. That is what makes the guarantee structural: every movement satisfies
  * {@code cost(m) >= axisSpan(m) × cheapestAxisStep} by the definition of a minimum. C1 could only
  * assert it as a checked numeric property of a closed cost table — see
- * {@link dev.continuo.movement.ActiveMovements#cheapestAxisStep()}.
+ * {@code ActiveMovements.rates()}.
  */
 public interface Goal {
 
@@ -27,7 +27,7 @@ public interface Goal {
      * @param z candidate Z
      * @param cheapestAxisStep the cheapest cost of one axis step over the movements this search
      *                         may use, from
-     *                         {@link dev.continuo.movement.ActiveMovements#cheapestAxisStep()}
+     *                         {@code ActiveMovements.rates()}
      * @return a never-overestimating estimate of the remaining cost, in ticks
      */
     double heuristic(int x, int y, int z, double cheapestAxisStep);

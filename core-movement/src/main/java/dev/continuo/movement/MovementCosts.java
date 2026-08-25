@@ -49,7 +49,7 @@ package dev.continuo.movement;
  *
  * <p>The heuristic's multiplier is no longer a constant here. It is derived per search, as a
  * minimum over the active movement set — see
- * {@link dev.continuo.movement.ActiveMovements#cheapestAxisStep()}. A static lower bound over a
+ * {@link dev.continuo.movement.ActiveMovements#rates()}. A static lower bound over a
  * set that is no longer static was C1's most dangerous single line, and keeping it as a second
  * source of truth would be worse than removing it.
  *

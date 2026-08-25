@@ -55,7 +55,7 @@ class MovementCostsTest {
      * measured to leave the entire suite green. Only a literal can catch a literal.
      *
      * <p>Since C2 the stakes are higher than one cost among four: {@code TRAVERSE} is the value
-     * {@link ActiveMovements#cheapestAxisStep()} derives for every default search, so it now
+     * {@link ActiveMovements#rates()} derives for every default search, so it now
      * scales the heuristic as well as pricing a step.
      */
     @Test
