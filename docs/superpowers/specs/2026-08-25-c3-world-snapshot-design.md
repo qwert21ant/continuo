@@ -138,10 +138,44 @@ which is `runtimeOnly` and absent from `:core-pathfinder`. The C3 handoff calls 
 "real but conditional"; the condition is **no `?` cells and not clamped**, and when it holds the
 reproduction is exact rather than merely same-verdict.
 
-### 2.3 What the evidence still does not cover
+### 2.3 Varied terrain, including vertical
 
-- **One real-terrain sample with a real path.** 5.68× rests on a single 33-step route in one
-  biome. §5.1 wires the probe to report the ratio on every run so the sample grows for free.
+Two further runs on the evening of 2026-08-25, chosen for terrain rather than distance, and
+measured after `1334cfa` made a clamped map's goal recoverable:
+
+| dump | terrain | in game | `at()` calls | distinct | repeat | memory |
+|---|---|---|---|---|---|---|
+| close-vary-terrain | **36-block climb**, 41 Y slices, 506 `?` | FOUND, 73 steps, 4,030 expanded | 68,847 | 7,173 | **9.60×** | 448 KB |
+| long-very-terrain | 140 steps, water, clamped, 238 `?` | FOUND, 140 steps, 7,915 expanded | 84,300 | 8,475 | **9.95×** | 529 KB |
+
+Both sit in the middle of the 4–16× band, *above* §2.2's 5.68× surface figure. The vertical case is
+the one §2.2 could not reach: a route climbing 36 blocks across 41 Y slices reads 7,173 distinct
+positions and still repeats each one 9.6 times.
+
+**The second dump is measurable only because of `1334cfa`.** It is clamped, so `goal() == null`;
+the goal came from the clamp notice, which now names it.
+
+**Fidelity survived 506 `?` cells.** The close run replayed to `FOUND, 73 steps, cost
+390.6757658034911` — identical to the in-game run, with 506 cells re-parsed as impassable
+`UNKNOWN` and without `walk.parkour`. So `?` cells are a **risk rather than a certainty**: they
+bite only when they sit near the optimal route. Expansions differ (4,030 in game, 1,249 replayed)
+because `FixtureWorld` answers `UNKNOWN` outside its extent and the live world is unbounded.
+
+**A tighter climb-aware heuristic was tested and rejected.** `h` reaches only 45% of true cost on
+the climbing route, because the horizontal leg prices all 49 octile units at the cheapest flat rate
+(3.5636) when 36 of them must be `walk.ascend` at 6.5582. Substituting the provable bound
+`climb × ASCEND + max(0, units − climb) × horizontal` — admissible, since only `AscendMove` raises
+Y and it offers `(x±1, y+1, z)` — lifts `h` to 72% of true cost and moves expansions **1,249 →
+1,169, a 6% saving**. Identical path, identical cost. This is deliberately *not* a second C1a: the
+fan-out on varied terrain is terrain forcing detours, which no admissible heuristic can foresee.
+Recorded in §9 rather than acted on. **The caveat that keeps it open at all:** the replay fixture
+is bounded, so it cannot reproduce the in-game 4,030 and may understate the benefit.
+
+### 2.4 What the evidence still does not cover
+
+- **Three real-terrain samples, all overworld surface-or-mountain.** 5.68×, 9.60× and 9.95×. No
+  cave, no ravine, no Nether. §5.1 wires the probe to report the ratio on every run so the sample
+  grows for free.
 - **No adapter cost.** `IBlockView.stateId` cannot be timed headlessly. The claim throughout is
   about *call counts*, which are exact, not about milliseconds, which are not.
 - **Cave and overhang terrain is unmeasured.** Every fixture and every probe run is a surface
@@ -442,7 +476,7 @@ sub-projects.
 
 | Risk | Severity | Mitigation / status |
 |---|---|---|
-| The 4–16× repeat factor rests on one real-terrain sample | **Low**, downgraded | §2.2 replayed the owner's in-game short run and measured **5.68×** on real terrain with a real path — at the top of the synthetic FOUND band, not near 1×. What remains is that it is *one* 33-step route in one surface biome. §5.1 makes every future probe run add a sample for free |
+| The 4–16× repeat factor rests on few real-terrain samples | **Low**, downgraded twice | Three in-game routes replayed: **5.68×** (33 steps, surface), **9.60×** (73 steps, 36-block climb, 41 Y slices) and **9.95×** (140 steps, water). All inside the band, none near 1×, and the two varied-terrain figures are the higher ones. What remains is that all three are overworld and none is a cave or ravine. §5.1 makes every future probe run add a sample for free |
 | C3's chosen purpose (a stable world across a search) has no consumer until C4 | Medium, accepted | Stated plainly rather than implied: a synchronous main-thread search already sees a stable world, so the property is **latent**. C3 pays for itself today on read count alone |
 | M5 pre-warms wrongly and an off-thread search paths through phantom walls | Medium | `covers()` (§4.5) makes the failure detectable instead of silent. §5.2 records the obligation. C3 cannot discharge it |
 | Boxing a `Long` per read is a hot-path allocation | Low | Not a regression — `BlockLookup` boxes per read today and also makes an SPI call. §4.8 parks the primitive-map swap with a measurement trigger |
@@ -481,6 +515,14 @@ Recorded so that nothing here is rediscovered:
   and goal does not work.
 - **The probe's render is budgeted by nothing** — 262,144 reads worst case, justified on file size
   alone. Untouched by C3 and explicitly out of scope.
+- **A tighter climb-aware heuristic is available and was measured at 6%.** §2.3. `h` reaches 45%
+  of true cost on a climbing route because the horizontal leg prices every octile unit at the
+  cheapest *flat* rate even where `|dy|` of them must be ascends — structurally the same shape C1a
+  fixed one axis over. The provable bound lifts it to 72% and saves 1,249 → 1,169 expansions.
+  **Not worth a sub-project on this evidence**, and recorded so nobody re-derives it. Reopen if C4
+  finds the node budget binding on vertical routes: the close run used 40% of it and the long run
+  79%, both on routes that succeeded. The measurement was taken on a *bounded* replay fixture and
+  may understate the saving in a live world.
 - **Two probe findings from §2.2 belong to the probe, not to C3**, and are recorded here because
   nothing else carries them: the paste-back round trip is **exact** when a map has no `?` and is
   not clamped, which sharpens the "real but conditional" framing the handoff uses; and a clamped
