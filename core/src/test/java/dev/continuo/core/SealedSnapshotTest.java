@@ -29,9 +29,15 @@ class SealedSnapshotTest {
 
     @Test
     void aHeldPositionComesBack() {
-        assertSame(STONE, fixture().at(1, 70, 2));
-        assertEquals(-64, fixture().minY());
-        assertEquals(320, fixture().maxY());
+        SealedSnapshot sealed = fixture();
+
+        assertSame(STONE, sealed.at(1, 70, 2));
+        assertTrue(sealed.covers(1, 70, 2),
+            "a position read while filling that holds a real block is covered - the first row"
+                + " of covers()'s four-case contract, and the one an at()-only assertion leaves"
+                + " completely unguarded");
+        assertEquals(-64, sealed.minY());
+        assertEquals(320, sealed.maxY());
     }
 
     @Test
