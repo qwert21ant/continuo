@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The principle that follows, which is worth stating because it is nowhere in the spec:
  *
- * <blockquote>A too-high {@code minCostPerAxisStep()} declaration can only break admissibility if
+ * <blockquote>A too-high {@code minCostPerHorizontalUnit()} declaration can only break admissibility if
  * that movement would otherwise have been the minimum.</blockquote>
  *
  * <p>So the fixture below is a registry in which the mis-declarable movement <em>is</em> the

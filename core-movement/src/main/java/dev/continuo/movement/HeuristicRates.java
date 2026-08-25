@@ -121,9 +121,13 @@ public final class HeuristicRates {
      *
      * <p><b>The zero case is not defensive, it is arithmetic.</b> An axis class no movement
      * travels has an infinite rate, and {@code Infinity × 0} is {@code NaN} rather than zero. A
-     * {@code NaN} estimate makes every priority-queue comparison false, so the open set orders
-     * arbitrarily and A* silently stops being A*. Centralised here so the two {@code Goal}
-     * implementations cannot each get it wrong separately.
+     * {@code NaN} estimate does not corrupt the open set's ordering — under
+     * {@link Double#compare(double, double)}, which {@code QueuedNodeOrder} uses, {@code NaN}
+     * compares greater than everything and equal to itself, so a node carrying it sorts last,
+     * deterministically, and the heap invariant holds. It is ruinous anyway: a node that always
+     * sorts last is never expanded before the search gives up, which is the same outcome as an
+     * infinite estimate. Centralised here so the two {@code Goal} implementations cannot each get
+     * it wrong separately.
      */
     private static double scaled(double rate, double distance) {
         return distance == 0.0 ? 0.0 : rate * distance;

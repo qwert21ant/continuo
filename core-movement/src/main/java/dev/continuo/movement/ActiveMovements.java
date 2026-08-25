@@ -28,7 +28,7 @@ public final class ActiveMovements {
         if (movements.isEmpty()) {
             throw new IllegalStateException(
                 "no movement is active for these capabilities; a search with no movements has no "
-                    + "cheapest axis step and could not be admissible");
+                    + "rates to derive and could not be admissible");
         }
         this.movements = Collections.unmodifiableList(new ArrayList<IMovementType>(movements));
 

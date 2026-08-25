@@ -1,5 +1,6 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.CapabilitySet;
 import dev.continuo.movement.HeuristicRates;
 import dev.continuo.movement.MovementCosts;
 import dev.continuo.movement.Standability;
@@ -93,12 +94,11 @@ class PathfinderAcceptanceTest {
 
         assertEquals(PathOutcome.FOUND, whole.outcome(), render(world, whole));
 
-        // TRAVERSE stands in for the multiplier the search actually derived from its active
-        // movement set. The two coincide only because
-        // DefaultRegistryTest.theMultiplierOverC1sMovementsIsWhatC1sConstantWas pins them equal
-        // over the default registry with no capabilities granted; that pin is this loop's
-        // load-bearing dependency, not an incidental one.
-        HeuristicRates rates = new HeuristicRates(MovementCosts.TRAVERSE, MovementCosts.TRAVERSE);
+        // The rates the search itself derived from its active movement set, not a hand-built
+        // stand-in. Asserting against these means this loop is checking the exact heuristic under
+        // test and cannot drift from it: there is no separate pin to keep in sync.
+        HeuristicRates rates =
+            AStarPathfinder.defaultRegistry().activeFor(CapabilitySet.none()).rates();
         for (Pos pos : whole.path()) {
             PathResult fromHere = pathfinder.findPath(world, pos.x(), pos.y(), pos.z(), goal);
             assertEquals(PathOutcome.FOUND, fromHere.outcome(), render(world, fromHere));

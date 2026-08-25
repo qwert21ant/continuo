@@ -190,6 +190,30 @@ class MovementRegistryTest {
     }
 
     @Test
+    void aNanHorizontalDeclarationIsRejected() {
+        final MovementRegistry registry = new MovementRegistry();
+        assertThrows(IllegalArgumentException.class,
+            new org.junit.jupiter.api.function.Executable() {
+                @Override
+                public void execute() {
+                    registry.register(new TwoRateMovement("a.nan", Double.NaN, 1.0));
+                }
+            });
+    }
+
+    @Test
+    void aNanVerticalDeclarationIsRejected() {
+        final MovementRegistry registry = new MovementRegistry();
+        assertThrows(IllegalArgumentException.class,
+            new org.junit.jupiter.api.function.Executable() {
+                @Override
+                public void execute() {
+                    registry.register(new TwoRateMovement("a.nan", 1.0, Double.NaN));
+                }
+            });
+    }
+
+    @Test
     void aNonPositiveDeclarationIsRejectedOnEitherAxis() {
         final MovementRegistry registry = new MovementRegistry();
         assertThrows(IllegalArgumentException.class,
