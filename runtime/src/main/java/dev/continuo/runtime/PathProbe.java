@@ -143,10 +143,16 @@ public final class PathProbe {
             .append(", budget ").append(nodeBudget);
 
         if (bounds.clamped) {
-            String notice = "the map is clamped to " + ProbeBounds.MAX_EXTENT
+            // The coordinates are in the map header's own "x,y,z" format rather than Pos's
+            // "(x, y, z)", so a reader retyping them into a fixture has nothing to reformat.
+            String at = goal.x() + "," + goal.y() + "," + goal.z();
+            String where = bounds.contains(goal)
+                ? "the goal at " + at + " does lie inside it and is drawn"
+                : "the goal at " + at + " lies outside it, so no G is drawn and pasting this map"
+                    + " back yields goal() == null until the goal is retyped from this line";
+            append(summary, map, "the map is clamped to " + ProbeBounds.MAX_EXTENT
                 + " blocks per axis and the window is anchored on the start, so terrain outside"
-                + " it is not drawn and the goal may lie outside it entirely";
-            append(summary, map, notice);
+                + " it is not drawn; " + where);
         }
 
         int unnamed = countUnnamed(map);

@@ -276,6 +276,35 @@ class PathProbeTest {
     }
 
     @Test
+    void aClampedMapNamesTheGoalItCouldNotDraw() {
+        // A clamped window is anchored on the start, so the goal usually falls outside it and no
+        // G is drawn. FixtureWorld.parse then yields goal() == null and the map cannot be
+        // replayed as a search fixture without inventing a goal - which is exactly what happened
+        // to three of the four dumps captured in game on 2026-08-25, costing two of the three
+        // real-terrain samples C3's spec wanted. Nothing else in the file records the goal, so
+        // the notice has to.
+        ProbeWorld world = new ProbeWorld();
+        PathProbe probe = new PathProbe(50);
+        probe.markGoal(400, ProbeWorld.WALK_Y, 0);
+
+        ProbeReport report = probe.run(world, 0, ProbeWorld.WALK_Y, 0);
+
+        String coordinates = "400," + ProbeWorld.WALK_Y + ",0";
+        assertTrue(report.map().contains(coordinates),
+            "the notice must carry the goal in the map's own origin format, so a reader can"
+                + " retype it\n" + report.map());
+        // Not contains("outside"): the notice's first clause already says "terrain outside it is
+        // not drawn", so that assertion passes on a notice claiming the goal IS drawn. Forcing
+        // ProbeBounds.contains to return true proved it - the assertion was there and vacuous.
+        assertTrue(report.map().contains("lies outside it"),
+            "and must say the goal fell outside the window rather than leave it to be guessed\n"
+                + report.map());
+        assertFalse(report.map().contains("does lie inside it"),
+            "and must not claim the opposite\n" + report.map());
+        assertTrue(report.summary().contains(coordinates), report.summary());
+    }
+
+    @Test
     void theClampNoticeDoesNotBreakTheMapsHeader() {
         // The notice is appended as a "// " line rather than prepended, because the fixture
         // parser requires "origin:" on the first line and skips "//" lines. Prepending it would

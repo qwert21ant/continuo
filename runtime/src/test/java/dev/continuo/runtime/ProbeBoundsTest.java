@@ -37,6 +37,35 @@ class ProbeBoundsTest {
     }
 
     @Test
+    void containsSaysWhetherAPositionIsInsideTheDrawnWindow() {
+        ProbeBounds bounds = ProbeBounds.around(world(-64, 320),
+            new Pos(0, 64, 0), new Pos(5, 64, 0), Collections.<Pos>emptyList());
+
+        assertTrue(bounds.contains(new Pos(0, 64, 0)), "the start is always drawn");
+        assertTrue(bounds.contains(new Pos(5, 64, 0)), "and so is a nearby goal");
+        assertFalse(bounds.contains(new Pos(400, 64, 0)), "a distant position is not");
+        assertFalse(bounds.contains(new Pos(0, 200, 0)),
+            "and neither is one that leaves the window on Y alone");
+    }
+
+    @Test
+    void aClampedWindowCanStillContainTheGoal() {
+        // Clamping is driven by the whole box - start, goal AND path - so a route that wanders
+        // 200 blocks sideways to reach a goal five blocks away clamps the X axis while leaving
+        // the goal inside the window. Without this case the clamp notice could say "the goal is
+        // outside" unconditionally and still pass every other test in this file.
+        List<Pos> detour = new ArrayList<Pos>();
+        detour.add(new Pos(200, 64, 0));
+
+        ProbeBounds bounds = ProbeBounds.around(world(-64, 320),
+            new Pos(0, 64, 0), new Pos(5, 64, 0), detour);
+
+        assertTrue(bounds.clamped, "a 200-block detour must clamp the X axis");
+        assertTrue(bounds.contains(new Pos(5, 64, 0)),
+            "but the goal is five blocks from the start and stays inside the window");
+    }
+
+    @Test
     void theBoxCoversStartAndGoalWithPadding() {
         ProbeBounds bounds = ProbeBounds.around(world(0, 256),
             new Pos(10, 64, 10), new Pos(14, 64, 12), Collections.<Pos>emptyList());

@@ -21,7 +21,7 @@ import java.util.List;
  *
  * <p><b>A clamped axis is anchored on the start, not centred.</b> The goal may therefore fall
  * outside the window; the start never does. See {@code clampAxis} for why centring produced a
- * blank map.
+ * blank map, and {@link #contains} for asking which of the two happened on a given run.
  */
 final class ProbeBounds {
 
@@ -50,6 +50,25 @@ final class ProbeBounds {
         this.maxY = maxY;
         this.maxZ = maxZ;
         this.clamped = clamped;
+    }
+
+    /**
+     * Whether a position falls inside the drawn window, and so carries a marker on the map.
+     *
+     * <p>Asked of the goal, this is the difference between a reader who can paste the map back as
+     * a fixture and one who cannot: a goal outside the window is drawn nowhere, so
+     * {@code FixtureWorld.parse} yields {@code goal() == null} and the map is unusable as a search
+     * fixture until the goal is supplied by hand. {@link #clamped} does not settle it — the box
+     * covers the path as well as the two endpoints, so a route that wanders far enough sideways
+     * clamps an axis while leaving a nearby goal inside.
+     *
+     * @param pos the position to test; never {@code null}
+     * @return whether it lies within this box, bounds inclusive
+     */
+    boolean contains(Pos pos) {
+        return pos.x() >= minX && pos.x() <= maxX
+            && pos.y() >= minY && pos.y() <= maxY
+            && pos.z() >= minZ && pos.z() <= maxZ;
     }
 
     /**
