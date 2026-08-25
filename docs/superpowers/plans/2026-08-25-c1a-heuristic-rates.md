@@ -763,6 +763,24 @@ Replace `cheapestAxisStep()` with:
     }
 ```
 
+**Then fix the one main-source caller, in the same step.** `AStarPathfinder.java:139` reads
+`final double cheapestAxisStep = active.cheapestAxisStep();`, and `:core-pathfinder` will not
+compile without it. Change **only that line** to:
+
+```java
+        final double cheapestAxisStep = active.rates().horizontal();
+```
+
+Leave the local variable's name alone and **do not touch `Goal`, `GoalBlock`, `GoalXZ` or the two
+`goal.heuristic(...)` call sites** — the signature change is Task 3's, and doing it here would drag
+three more test files in with it.
+
+This is exactly behaviour-preserving, which is why it is a one-line change rather than a merge of
+Task 3. `cheapestAxisStep()` was `min(3.5636 traverse, 6.5582 ascend, 4.0108 descend, 5.0397
+diagonal) = 3.5636`; `rates().horizontal()` is `min(3.5636, 6.5582, 8.1783, 3.5636) = 3.5636`. The
+same holds for the synthetic registries in the test suite, whose doubles declare one number that
+becomes their horizontal rate unchanged.
+
 - [ ] **Step 5: Change `MovementRegistry.register`**
 
 Replace the `declared` block (currently lines 38–43) with:
@@ -1047,6 +1065,9 @@ Chebyshev distance until the next commit."
 - Modify: `core-pathfinder/src/main/java/dev/continuo/pathfinder/GoalBlock.java`
 - Modify: `core-pathfinder/src/main/java/dev/continuo/pathfinder/GoalXZ.java`
 - Modify: `core-pathfinder/src/main/java/dev/continuo/pathfinder/AStarPathfinder.java:139,154,202`
+- Modify: `core-pathfinder/src/test/java/dev/continuo/pathfinder/GoalTest.java` (every `heuristic(...)` call)
+- Modify: `core-pathfinder/src/test/java/dev/continuo/pathfinder/AStarPathfinderTest.java:469`
+- Modify: `core-pathfinder/src/test/java/dev/continuo/pathfinder/PathfinderAcceptanceTest.java:104,107`
 - Create: `core-pathfinder/src/test/java/dev/continuo/pathfinder/OctileSearchTest.java`
 
 **Interfaces:**
@@ -1268,6 +1289,14 @@ with:
 ```
 
 At lines 154 and 202, replace `cheapestAxisStep` with `rates` in the two `goal.heuristic(...)` calls. Add `import dev.continuo.movement.HeuristicRates;`.
+
+**Then update the three test files that call `Goal.heuristic` directly**, which move with the signature:
+
+- `GoalTest.java` — every call passes `MovementCosts.TRAVERSE` as the fourth argument. Replace each with a `HeuristicRates`. Where a test passes a bare rate, use `new HeuristicRates(MovementCosts.TRAVERSE, MovementCosts.TRAVERSE)` so the vertical half keeps the value the old single multiplier gave it. **Two tests need more care than a substitution:** the pair asserting `heuristic(..., 1.0) < heuristic(..., 3.5636)` is checking that the multiplier scales the estimate, so give them `new HeuristicRates(1.0, 1.0)` and `new HeuristicRates(3.5636, 3.5636)` respectively and keep the assertion's intent.
+- `AStarPathfinderTest.java:469` — one call, same substitution.
+- `PathfinderAcceptanceTest.java:104,107` — two calls, same substitution.
+
+**Expected values must not change.** `GoalBlock` now takes the larger of an octile horizontal estimate and a vertical one, and for the axis-aligned and pure-vertical cases these tests use, that equals the old Chebyshev product. **If any expected number has to move, stop and report it with the derivation** — a changed expectation here is either a real behaviour change worth knowing about or a test being re-blessed to match code, and the two are not distinguishable after the fact.
 
 - [ ] **Step 5: Run the test and verify it passes**
 
