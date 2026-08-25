@@ -1,5 +1,9 @@
 package dev.continuo.runtime;
 
+import dev.continuo.core.BlockData;
+import dev.continuo.core.BlockShape;
+import dev.continuo.core.BlockTag;
+import dev.continuo.core.Fluid;
 import dev.continuo.movement.Capability;
 import dev.continuo.movement.CapabilitySet;
 import dev.continuo.movement.IMovementType;
@@ -9,6 +13,7 @@ import dev.continuo.pathfinder.PathRenderer;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,6 +22,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PathProbeTest {
+
+    /**
+     * Sand, as {@code BlockClassifier} actually produces it: a full cube carrying {@code FALLING}.
+     *
+     * <p>No {@code BlockLegend} value carries a tag bar lava's {@code AVOID}, and tags participate
+     * in {@code BlockData} equality, so this matches no legend entry and renders as {@code ?} —
+     * which is why an ordinary beach comes back as a wall of them.
+     */
+    private static final BlockData SAND = new BlockData(
+        BlockShape.FULL, 1.0, Fluid.NONE, EnumSet.of(BlockTag.FALLING));
 
     /**
      * The character the map draws at a world position, or {@code '\0'} if the position falls
@@ -268,6 +283,60 @@ class PathProbeTest {
         ProbeWorld world = new ProbeWorld();
         PathProbe probe = new PathProbe(50);
         probe.markGoal(400, ProbeWorld.WALK_Y, 0);
+
+        String map = probe.run(world, 0, ProbeWorld.WALK_Y, 0).map();
+
+        assertTrue(map.startsWith("origin:"), map.substring(0, Math.min(80, map.length())));
+    }
+
+    @Test
+    void aMapDrawingBlocksTheLegendCannotNameSaysSoRatherThanLookingPasteable() {
+        // Verified against a real capture on 2026-08-25: the owner's sand map reported
+        // "FOUND, 5 steps, cost 18.8691" in game, and the same text pasted back as a FixtureWorld
+        // reported "FOUND, 7 steps, cost 25.9963" - the ridge the route walked over had become a
+        // wall, and the search went around it one Y lower. Both said FOUND. That is the whole
+        // reason this notice exists: the failure is not a parse error or a NO_PATH, it is a
+        // different search wearing the same verdict, and nothing in the map admitted it.
+        ProbeWorld world = new ProbeWorld();
+        world.put(3, ProbeWorld.FLOOR_Y, 0, SAND);
+        PathProbe probe = new PathProbe();
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+
+        ProbeReport report = probe.run(world, 0, ProbeWorld.WALK_Y, 0);
+
+        assertTrue(report.map().contains("1 of"),
+            "the notice must count the cells, because one ? beside the route and a hundred far"
+                + " from it are different problems\n" + report.map());
+        assertTrue(report.map().contains("impassable"),
+            "and must say what the character re-parses as, which is the part that changes the"
+                + " search\n" + report.map());
+        assertTrue(report.summary().contains("impassable"), report.summary());
+    }
+
+    @Test
+    void aMapOfTerrainTheLegendNamesCarriesNoSuchNotice() {
+        // The guard that stops the notice from being unconditional. Every other test in this file
+        // renders legend-named terrain, and none of them would notice a warning bolted onto every
+        // map - which would train a reader to ignore the one map that means it.
+        ProbeWorld world = new ProbeWorld();
+        PathProbe probe = new PathProbe();
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+
+        ProbeReport report = probe.run(world, 0, ProbeWorld.WALK_Y, 0);
+
+        assertFalse(report.map().contains("impassable"), report.map());
+        assertFalse(report.summary().contains("impassable"), report.summary());
+    }
+
+    @Test
+    void theUnnamedBlockNoticeDoesNotBreakTheMapsHeader() {
+        // Same hazard the clamp notice has: the fixture parser requires "origin:" on the first
+        // line and skips "//" lines, so a prepended notice would make exactly the maps worth
+        // pasting back unparseable.
+        ProbeWorld world = new ProbeWorld();
+        world.put(3, ProbeWorld.FLOOR_Y, 0, SAND);
+        PathProbe probe = new PathProbe();
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
 
         String map = probe.run(world, 0, ProbeWorld.WALK_Y, 0).map();
 

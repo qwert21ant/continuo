@@ -4,6 +4,7 @@ import dev.continuo.core.BlockSource;
 import dev.continuo.movement.Capability;
 import dev.continuo.movement.CapabilitySet;
 import dev.continuo.pathfinder.AStarPathfinder;
+import dev.continuo.pathfinder.BlockLegend;
 import dev.continuo.pathfinder.GoalBlock;
 import dev.continuo.pathfinder.PathRenderer;
 import dev.continuo.pathfinder.PathResult;
@@ -145,13 +146,60 @@ public final class PathProbe {
             String notice = "the map is clamped to " + ProbeBounds.MAX_EXTENT
                 + " blocks per axis and the window is anchored on the start, so terrain outside"
                 + " it is not drawn and the goal may lie outside it entirely";
-            summary.append("; ").append(notice);
-            // Appended as a comment line rather than prepended, because the fixture parser
-            // requires "origin:" on the first line and skips "//" lines. Prepending it would
-            // make exactly the maps worth pasting back unparseable.
-            map.append("// ").append(notice).append('\n');
+            append(summary, map, notice);
+        }
+
+        int unnamed = countUnnamed(map);
+        if (unnamed > 0) {
+            // Deliberately ASCII, like the clamp notice above it: this string reaches the game's
+            // log as well as the file, and a console is not guaranteed to render anything else.
+            append(summary, map, unnamed + " of " + drawnCells(bounds) + " drawn cells are '"
+                + BlockLegend.UNMAPPED + "', a block this legend cannot name - most often sand,"
+                + " gravel, a ladder or a vine, since tags take part in BlockData equality and no"
+                + " legend value carries one. Each re-parses as UNKNOWN, which is impassable, so"
+                + " pasting this map back as a fixture can reproduce a different search than the"
+                + " one captured here, and report the same outcome while doing it. The search"
+                + " itself was unaffected; this is a limit of the drawing");
         }
 
         return ProbeReport.of(result.outcome(), summary.toString(), map.toString());
+    }
+
+    /**
+     * Adds a notice to both halves of the report.
+     *
+     * <p>Appended to the map as a comment line rather than prepended, because the fixture parser
+     * requires {@code origin:} on the first line and skips {@code //} lines. Prepending would make
+     * exactly the maps worth pasting back unparseable.
+     */
+    private static void append(StringBuilder summary, StringBuilder map, String notice) {
+        summary.append("; ").append(notice);
+        map.append("// ").append(notice).append('\n');
+    }
+
+    /**
+     * Counts the cells drawn as {@link BlockLegend#UNMAPPED} in the terrain slices.
+     *
+     * <p>Only the terrain is counted, and deliberately: the notices already appended sit below the
+     * first {@code "// "} and one of them contains the character it is reporting on, so counting
+     * the whole buffer would have this grow by one every time it ran.
+     */
+    private static int countUnnamed(StringBuilder map) {
+        int summaryAt = map.indexOf("// ");
+        int end = summaryAt < 0 ? map.length() : summaryAt;
+        int count = 0;
+        for (int i = 0; i < end; i++) {
+            if (map.charAt(i) == BlockLegend.UNMAPPED) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** The number of terrain cells the window covers, which is what the count above is out of. */
+    private static long drawnCells(ProbeBounds bounds) {
+        return (long) (bounds.maxX - bounds.minX + 1)
+            * (bounds.maxY - bounds.minY + 1)
+            * (bounds.maxZ - bounds.minZ + 1);
     }
 }
