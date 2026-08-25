@@ -1336,7 +1336,19 @@ At lines 154 and 202, replace `cheapestAxisStep` with `rates` in the two `goal.h
 - `AStarPathfinderTest.java:469` — one call, same substitution.
 - `PathfinderAcceptanceTest.java:104,107` — two calls, same substitution.
 
-**Expected values must not change.** `GoalBlock` now takes the larger of an octile horizontal estimate and a vertical one, and for the axis-aligned and pure-vertical cases these tests use, that equals the old Chebyshev product. **If any expected number has to move, stop and report it with the derivation** — a changed expectation here is either a real behaviour change worth knowing about or a test being re-blessed to match code, and the two are not distinguishable after the fact.
+**One `GoalTest` expected value must change, and it is the point of the whole task.** `theHeuristicCountsTheFewestPossibleMovesNotTheDistanceWalked` uses `GoalBlock(3, 64, 3)` from `(0, 64, 0)` — a pure 45° diagonal, not an axis-aligned case. Its expectation of `3 * MovementCosts.TRAVERSE` (`10.6908`) is the under-estimate this change exists to remove; the correct tight value is `15.1191`. Its own message already says "a diagonal covers X and Z at once, so three moves suffice, not six" — it was always about diagonals and merely priced them at the cardinal rate. Update it to:
+
+```java
+        assertEquals(3 * MovementCosts.TRAVERSE * Math.sqrt(2.0),
+            goal.heuristic(0, 64, 0, rates), 1.0e-9,
+            "a diagonal covers X and Z at once, so three moves suffice, not six -- and each of "
+                + "those three is a diagonal, which costs TRAVERSE * sqrt(2). Pricing them at the "
+                + "cardinal rate is exactly the under-estimate C1a removes");
+```
+
+Derived rather than observed: `rates` is built with `horizontal = TRAVERSE`, and `octileUnits(3, 3) = 3√2`, so the estimate is `TRAVERSE × 3√2`. Written out as `3 * TRAVERSE * sqrt(2)` rather than as `3 * MovementCosts.DIAGONAL` so the expectation tracks the fixture's own rate, and rather than as `octileUnits(3,3)` so it does not test a function with itself.
+
+**Every other expected value must not change.** For the axis-aligned and pure-vertical cases the remaining tests use, the octile estimate equals the old Chebyshev product. **If any other expected number has to move, stop and report it with the derivation** — a changed expectation here is either a real behaviour change worth knowing about or a test being re-blessed to match code, and the two are not distinguishable after the fact.
 
 - [ ] **Step 5: Run the test and verify it passes**
 

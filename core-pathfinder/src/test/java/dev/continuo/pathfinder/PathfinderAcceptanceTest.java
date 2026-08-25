@@ -1,5 +1,6 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.HeuristicRates;
 import dev.continuo.movement.MovementCosts;
 import dev.continuo.movement.Standability;
 import org.junit.jupiter.api.Test;
@@ -97,14 +98,15 @@ class PathfinderAcceptanceTest {
         // DefaultRegistryTest.theMultiplierOverC1sMovementsIsWhatC1sConstantWas pins them equal
         // over the default registry with no capabilities granted; that pin is this loop's
         // load-bearing dependency, not an incidental one.
+        HeuristicRates rates = new HeuristicRates(MovementCosts.TRAVERSE, MovementCosts.TRAVERSE);
         for (Pos pos : whole.path()) {
             PathResult fromHere = pathfinder.findPath(world, pos.x(), pos.y(), pos.z(), goal);
             assertEquals(PathOutcome.FOUND, fromHere.outcome(), render(world, fromHere));
             assertTrue(
-                goal.heuristic(pos.x(), pos.y(), pos.z(), MovementCosts.TRAVERSE)
+                goal.heuristic(pos.x(), pos.y(), pos.z(), rates)
                     <= fromHere.cost() + 1.0e-9,
                 "the heuristic overestimates from " + pos + ": "
-                    + goal.heuristic(pos.x(), pos.y(), pos.z(), MovementCosts.TRAVERSE) + " > "
+                    + goal.heuristic(pos.x(), pos.y(), pos.z(), rates) + " > "
                     + fromHere.cost() + render(world, fromHere));
         }
     }

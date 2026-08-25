@@ -4,6 +4,7 @@ import dev.continuo.core.BlockSource;
 import dev.continuo.movement.ActiveMovements;
 import dev.continuo.movement.CapabilitySet;
 import dev.continuo.movement.IMovementRegistry;
+import dev.continuo.movement.HeuristicRates;
 import dev.continuo.movement.IMovementType;
 import dev.continuo.movement.MoveSink;
 import dev.continuo.movement.MovementRegistry;
@@ -136,7 +137,7 @@ public final class AStarPathfinder {
         }
 
         final ActiveMovements active = registry.activeFor(caps);
-        final double cheapestAxisStep = active.rates().horizontal();
+        final HeuristicRates rates = active.rates();
         final List<IMovementType> moves = active.movements();
 
         final Map<Long, PathNode> nodes = new HashMap<Long, PathNode>();
@@ -151,7 +152,7 @@ public final class AStarPathfinder {
         start.g = 0.0;
         nodes.put(Long.valueOf(startPacked), start);
         open.add(new QueuedNode(
-            startPacked, goal.heuristic(startX, startY, startZ, cheapestAxisStep), 0.0,
+            startPacked, goal.heuristic(startX, startY, startZ, rates), 0.0,
             discovered[0]++));
 
         final MutableExpansionContext ctx = new MutableExpansionContext(world);
@@ -199,7 +200,7 @@ public final class AStarPathfinder {
                     // QueuedNode. The old entry stays in the heap and is discarded on poll,
                     // because by then this node is closed.
                     open.add(new QueuedNode(neighbour.packed,
-                        tentative + goal.heuristic(nx, ny, nz, cheapestAxisStep), tentative,
+                        tentative + goal.heuristic(nx, ny, nz, rates), tentative,
                         discovered[0]++));
                 }
             };

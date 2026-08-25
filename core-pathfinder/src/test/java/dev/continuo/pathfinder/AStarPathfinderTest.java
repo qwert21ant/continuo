@@ -1,6 +1,7 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.movement.HeuristicRates;
 import dev.continuo.movement.IMovementType;
 import dev.continuo.movement.MovementCosts;
 import org.junit.jupiter.api.Test;
@@ -466,7 +467,8 @@ class AStarPathfinderTest {
         // DefaultRegistryTest.theMultiplierOverC1sMovementsIsWhatC1sConstantWas pins the two
         // equal over the default registry with no capabilities granted. If that pin ever goes,
         // this line silently starts checking a different heuristic than the one under test.
-        assertTrue(goal.heuristic(0, 65, 0, MovementCosts.TRAVERSE) <= result.cost(),
+        assertTrue(goal.heuristic(0, 65, 0,
+            new HeuristicRates(MovementCosts.TRAVERSE, MovementCosts.TRAVERSE)) <= result.cost(),
             "an overestimating heuristic silently gives up the shortest-path guarantee");
     }
 

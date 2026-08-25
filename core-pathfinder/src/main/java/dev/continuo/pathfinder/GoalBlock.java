@@ -1,15 +1,13 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.movement.HeuristicRates;
+
 /**
- * One exact block position.
+ * A single block position.
  *
- * <p>The heuristic is {@code cheapestAxisStep × max(|dx|, |dy|, |dz|)}, where the multiplier is a
- * minimum over the movements the search may use. One movement can close at most its own axis span
- * of that Chebyshev gap, and by the definition of the minimum it pays at least that many cheapest
- * axis steps for it — so the estimate cannot exceed the true remaining cost.
- *
- * <p>Taking the maximum rather than the sum is what makes a diagonal — which closes X and Z
- * together — free of double-counting.
+ * <p>The heuristic is the larger of an octile horizontal estimate and a vertical one — never their
+ * sum, because {@code walk.ascend} closes a horizontal axis and a vertical one in one move and
+ * summing would charge twice for it.
  */
 public final class GoalBlock implements Goal {
 
@@ -34,9 +32,8 @@ public final class GoalBlock implements Goal {
     }
 
     @Override
-    public double heuristic(int px, int py, int pz, double cheapestAxisStep) {
-        int moves = Math.max(Math.abs(x - px), Math.max(Math.abs(y - py), Math.abs(z - pz)));
-        return moves * cheapestAxisStep;
+    public double heuristic(int px, int py, int pz, HeuristicRates rates) {
+        return rates.estimate(x - px, y - py, z - pz);
     }
 
     @Override
