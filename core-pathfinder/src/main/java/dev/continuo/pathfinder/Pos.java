@@ -1,20 +1,18 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.core.PositionKey;
+
 /**
  * An immutable block position, and the {@code long} packing the search keys nodes on.
  *
- * <p><b>The packing.</b> X and Z take 26 signed bits each and Y takes 12, which covers
- * &plusmn;33,554,432 horizontally — beyond Minecraft's world border on both versions — and
- * &minus;2048..2047 vertically, comfortably outside 1.7.10's {@code 0..256} and 1.21.11's
- * {@code -64..320}. A single {@code long} gives each node one identity that the search's maps key
- * on directly, with no hand-written {@code hashCode} or {@code equals} over a composite key to get
- * wrong. The maps are {@code HashMap<Long, PathNode>}, so the keys are still boxed; a primitive
- * map would be a C4 concern, not a claim this packing already makes good on.
+ * <p><b>The packing is {@link PositionKey}'s</b>, which lives in {@code :core} because
+ * {@code WorldSnapshot} keys its cache the same way and cannot reach this module. The methods
+ * here delegate and exist so the search reads naturally; the bit layout and its ranges are
+ * documented on {@code PositionKey}. The maps are {@code HashMap<Long, PathNode>}, so the keys
+ * are still boxed; a primitive map would be a C4 concern, not a claim this packing already makes
+ * good on.
  */
 public final class Pos {
-
-    private static final long XZ_MASK = 0x3FFFFFFL;
-    private static final long Y_MASK = 0xFFFL;
 
     private final int x;
     private final int y;
@@ -58,9 +56,7 @@ public final class Pos {
      * @return the three coordinates packed into one {@code long}
      */
     public static long pack(int x, int y, int z) {
-        return ((long) x & XZ_MASK) << 38
-            | ((long) z & XZ_MASK) << 12
-            | ((long) y & Y_MASK);
+        return PositionKey.pack(x, y, z);
     }
 
     /**
@@ -68,7 +64,7 @@ public final class Pos {
      * @return the X coordinate, sign restored
      */
     public static int unpackX(long packed) {
-        return (int) (packed >> 38);
+        return PositionKey.unpackX(packed);
     }
 
     /**
@@ -76,7 +72,7 @@ public final class Pos {
      * @return the Y coordinate, sign restored
      */
     public static int unpackY(long packed) {
-        return (int) (packed << 52 >> 52);
+        return PositionKey.unpackY(packed);
     }
 
     /**
@@ -84,7 +80,7 @@ public final class Pos {
      * @return the Z coordinate, sign restored
      */
     public static int unpackZ(long packed) {
-        return (int) (packed << 26 >> 38);
+        return PositionKey.unpackZ(packed);
     }
 
     /**
