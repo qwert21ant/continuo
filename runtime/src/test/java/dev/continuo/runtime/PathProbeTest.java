@@ -239,6 +239,28 @@ class PathProbeTest {
     }
 
     @Test
+    void theSummaryReportsWhatTheSnapshotSavedOverReadingLive() {
+        // C3's central claim, put where every future probe run measures it on real terrain
+        // instead of on a fixture. The search reads each position it touches several times and
+        // the snapshot turns all of them into one, so reads must exceed positions.
+        ProbeWorld world = new ProbeWorld();
+        PathProbe probe = new PathProbe();
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+
+        ProbeReport report = probe.run(world, 0, ProbeWorld.WALK_Y, 0);
+
+        assertTrue(report.summary().contains("snapshot "),
+            "the summary must carry the snapshot's figures\n" + report.summary());
+        assertTrue(report.summary().contains(" positions"), report.summary());
+        assertTrue(report.summary().contains(" reads"), report.summary());
+        assertFalse(report.summary().contains("snapshot 0 positions"),
+            "a search that read nothing means the probe is not reading through the snapshot\n"
+                + report.summary());
+        assertTrue(report.summary().contains("x)"),
+            "and the ratio, which is the number worth looking at\n" + report.summary());
+    }
+
+    @Test
     void aGoalBeyondTheRenderLimitProducesAMapThatSaysItWasClamped() {
         ProbeWorld world = new ProbeWorld();
         PathProbe probe = new PathProbe(50);
