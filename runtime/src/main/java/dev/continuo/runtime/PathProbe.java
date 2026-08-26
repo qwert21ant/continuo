@@ -1,6 +1,8 @@
 package dev.continuo.runtime;
 
 import dev.continuo.core.BlockSource;
+import dev.continuo.core.SealedSnapshot;
+import dev.continuo.core.WorldSnapshot;
 import dev.continuo.movement.Capability;
 import dev.continuo.movement.CapabilitySet;
 import dev.continuo.pathfinder.AStarPathfinder;
@@ -17,9 +19,13 @@ import dev.continuo.pathfinder.Pos;
  * <p>Dev-only, like {@code BlockDumpWalker} beside it. Nothing calls it during normal operation.
  *
  * <p><b>Main thread only.</b> A live {@code BlockSource} inherits {@code IBlockView}'s delivery
- * window, and this reads through it synchronously. That is also why C3's {@code WorldSnapshot} is
- * not a prerequisite: a snapshot is what makes reads safe <em>off</em> the main thread, and
- * nothing here leaves it.
+ * window, and this reads through it synchronously.
+ *
+ * <p><b>The search reads through a {@link WorldSnapshot}; the render does not.</b> Off-thread
+ * safety is not why — nothing here leaves the main thread. It is that a search reads each
+ * position it touches several times over and the snapshot turns all of them into one SPI call,
+ * which the summary reports so that every run measures the saving on real terrain. The render is
+ * left reading live because its window touches each cell once and can be 64 blocks per axis.
  *
  * <p>The mark-then-run shape is deliberate: it lets an owner walk to somewhere awkward, mark it,
  * walk back, and search across terrain they chose, without any new SPI surface for naming a
@@ -123,10 +129,16 @@ public final class PathProbe {
         }
 
         Pos start = new Pos(startX, startY, startZ);
+
+        // The search reads through a snapshot; the render below does not. A render window can be
+        // 64 blocks per axis and touches each cell once, so pushing it through the snapshot would
+        // add a quarter of a million entries to save nothing. The repeat reads are in the search.
+        WorldSnapshot snapshot = new WorldSnapshot(world);
         PathResult result = new AStarPathfinder(nodeBudget).findPath(
-            world, startX, startY, startZ,
+            snapshot, startX, startY, startZ,
             new GoalBlock(goal.x(), goal.y(), goal.z()),
             CapabilitySet.of(Capability.PARKOUR));
+        SealedSnapshot sealed = snapshot.seal();
 
         ProbeBounds bounds = ProbeBounds.around(world, start, goal, result.path());
         StringBuilder map = new StringBuilder(PathRenderer.render(world,
@@ -140,7 +152,15 @@ public final class PathProbe {
             .append(", ").append(result.nodesExpanded()).append(" expanded")
             .append(", cost ").append(result.cost())
             .append(", ").append(start).append(" -> ").append(goal)
-            .append(", budget ").append(nodeBudget);
+            .append(", budget ").append(nodeBudget)
+            .append(", snapshot ").append(sealed.size()).append(" positions / ")
+            .append(sealed.reads()).append(" reads");
+        if (sealed.size() > 0) {
+            // Locale.ROOT because this reaches a log file that gets read on other machines, and a
+            // default locale writes "3,8x" where the reader expects "3.8x".
+            summary.append(" (").append(String.format(java.util.Locale.ROOT, "%.1f",
+                (double) sealed.reads() / sealed.size())).append("x)");
+        }
 
         if (bounds.clamped) {
             // The coordinates are in the map header's own "x,y,z" format rather than Pos's

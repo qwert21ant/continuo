@@ -79,6 +79,22 @@ class PathProbeTest {
         return '\0';
     }
 
+    /**
+     * The integer that precedes a word in the probe's summary line.
+     *
+     * <p>Parsing rather than substring-matching is the point: {@code "snapshot 42 positions /
+     * 137 reads"} and the same line with the two numbers transposed both contain every substring
+     * the other does, so only reading them as numbers can tell the two apart.
+     */
+    private static int figureBefore(String summary, String word) {
+        int end = summary.indexOf(" " + word);
+        if (end < 0) {
+            throw new AssertionError("no '" + word + "' in summary: " + summary);
+        }
+        int start = summary.lastIndexOf(' ', end - 1) + 1;
+        return Integer.parseInt(summary.substring(start, end));
+    }
+
     @Test
     void markingAGoalThenRunningFindsTheRoute() {
         ProbeWorld world = new ProbeWorld();
@@ -236,6 +252,36 @@ class PathProbeTest {
 
         assertEquals(PathOutcome.BUDGET_EXCEEDED, report.outcome());
         assertTrue(report.summary().contains("BUDGET_EXCEEDED"), report.summary());
+    }
+
+    @Test
+    void theSummaryReportsWhatTheSnapshotSavedOverReadingLive() {
+        // C3's central claim, put where every future probe run measures it on real terrain
+        // instead of on a fixture. The search reads each position it touches several times and
+        // the snapshot turns all of them into one, so reads must exceed positions.
+        ProbeWorld world = new ProbeWorld();
+        PathProbe probe = new PathProbe();
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+
+        ProbeReport report = probe.run(world, 0, ProbeWorld.WALK_Y, 0);
+
+        assertTrue(report.summary().contains("snapshot "),
+            "the summary must carry the snapshot's figures\n" + report.summary());
+        assertTrue(report.summary().contains(" positions"), report.summary());
+        assertTrue(report.summary().contains(" reads"), report.summary());
+        assertFalse(report.summary().contains("snapshot 0 positions"),
+            "a search that read nothing means the probe is not reading through the snapshot\n"
+                + report.summary());
+        assertTrue(report.summary().contains("x)"),
+            "and the ratio, which is the number worth looking at\n" + report.summary());
+
+        int positions = figureBefore(report.summary(), "positions");
+        int reads = figureBefore(report.summary(), "reads");
+        assertTrue(reads > positions,
+            "a search re-reads the positions it touches, so reads must exceed positions."
+                + " If these two are ever transposed at the call site, every future in-game"
+                + " measurement inverts and nothing else in this file would notice\n"
+                + report.summary());
     }
 
     @Test
