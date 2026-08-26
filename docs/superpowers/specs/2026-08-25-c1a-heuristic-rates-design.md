@@ -50,6 +50,15 @@ harness, not kept.
 | 90 diagonal | FOUND, 91 steps | **4,506** | 19,614 | 49 sections |
 | 180 diagonal | **BUDGET_EXCEEDED** | 10,000 | 42,379 | 121 sections |
 
+> **Correction, 2026-08-26.** The section counts in the last column are wrong — they count the
+> **X-axis span only** and ignore that a corridor straddles section boundaries in Y and Z as well.
+> C3 re-measured the first row: `X -1..256, Y 63..66, Z -1..1` is 18×2×2 = **72 sections**, not 17.
+> The other two rows have the same method error but were not re-measured, because the pre-C1a
+> behaviour they describe no longer reproduces. **Nothing downstream depended on these figures** —
+> C3 re-took the measurement from scratch rather than inheriting it, which is what surfaced the
+> error. The expanded counts and distinct-block counts in this table are unaffected and were
+> reproduced exactly by C3. See `2026-08-25-c3-world-snapshot-design.md` §2.1.
+
 A textbook octile heuristic, substituted through a custom `Goal` and measured the same way:
 
 | goal | Chebyshev | octile |

@@ -171,11 +171,37 @@ fan-out on varied terrain is terrain forcing detours, which no admissible heuris
 Recorded in §9 rather than acted on. **The caveat that keeps it open at all:** the replay fixture
 is bounded, so it cannot reproduce the in-game 4,030 and may understate the benefit.
 
-### 2.4 What the evidence still does not cover
+### 2.4 Measured in a cave, by the shipped code
 
-- **Three real-terrain samples, all overworld surface-or-mountain.** 5.68×, 9.60× and 9.95×. No
-  cave, no ravine, no Nether. §5.1 wires the probe to report the ratio on every run so the sample
-  grows for free.
+Run 2026-08-26 21:14, after §5.1's probe reporting shipped. **This is the first repeat-factor
+measurement taken from production code rather than a throwaway harness**, and the first from
+terrain that is neither surface nor mountain.
+
+```
+Continuo path probe: FOUND, 59 steps, 171 expanded, cost 241.42702305785505,
+(177, 58, -7) -> (231, 55, 0), budget 10000, snapshot 1089 positions / 10217 reads (9.4x)
+```
+
+**9.4×**, from 1,089 distinct positions serving 10,217 reads — the snapshot saved 9,128
+`IBlockView` calls on one search. Memory ≈ 68 KB. Squarely inside the 4–16× band, and the closest
+thing to a decisive number this design has: every earlier figure was produced by a harness written
+to produce it, and this one was produced by the code that ships.
+
+The dump is unclamped, carries both markers and contains **no `?` cells at all**, so it replays
+exactly: 59 steps, cost 241.42702305785505 to sixteen digits. Expansions differ (171 in game, 162
+replayed) for the established reason — `FixtureWorld` answers `UNKNOWN` outside its extent while
+the live world is unbounded. Replayed through the shipped `WorldSnapshot` the bounded fixture
+reports 7.09×; the in-game 9.4× is the authoritative figure, because the live world is the one
+with terrain beyond the window to read.
+
+**This discharges §8 criterion 6.** The merge commit `cd58ffe` records it as unmet, which was true
+when it was written.
+
+### 2.5 What the evidence still does not cover
+
+- **Four real-terrain samples: 5.68× surface, 9.60× a 36-block climb, 9.95× through water, 9.4× in
+  a cave.** No ravine, no Nether, no modded terrain. §5.1's per-run reporting means the sample now
+  grows for free on every probe press, which is the point of having wired it.
 - **No adapter cost.** `IBlockView.stateId` cannot be timed headlessly. The claim throughout is
   about *call counts*, which are exact, not about milliseconds, which are not.
 - **Cave and overhang terrain is unmeasured.** Every fixture and every probe run is a surface
@@ -476,7 +502,7 @@ sub-projects.
 
 | Risk | Severity | Mitigation / status |
 |---|---|---|
-| The 4–16× repeat factor rests on few real-terrain samples | **Low**, downgraded twice | Three in-game routes replayed: **5.68×** (33 steps, surface), **9.60×** (73 steps, 36-block climb, 41 Y slices) and **9.95×** (140 steps, water). All inside the band, none near 1×, and the two varied-terrain figures are the higher ones. What remains is that all three are overworld and none is a cave or ravine. §5.1 makes every future probe run add a sample for free |
+| The 4–16× repeat factor rests on few real-terrain samples | **Closed** | Four in-game routes: **5.68×** (33 steps, surface), **9.60×** (73 steps, 36-block climb), **9.95×** (140 steps, water) and **9.4×** (59 steps, cave — §2.4, measured by the shipped probe rather than a harness). All inside the band, none near 1×. The cave figure is the one that closes this: it is both the terrain type §2.5 named as missing and the first measurement production code took of itself |
 | C3's chosen purpose (a stable world across a search) has no consumer until C4 | Medium, accepted | Stated plainly rather than implied: a synchronous main-thread search already sees a stable world, so the property is **latent**. C3 pays for itself today on read count alone |
 | M5 pre-warms wrongly and an off-thread search paths through phantom walls | Medium | `covers()` (§4.5) makes the failure detectable instead of silent. §5.2 records the obligation. C3 cannot discharge it |
 | Boxing a `Long` per read is a hot-path allocation | Low | Not a regression — `BlockLookup` boxes per read today and also makes an SPI call. §4.8 parks the primitive-map swap with a measurement trigger |
@@ -496,7 +522,8 @@ sub-projects.
    a stated success condition, verifiable from the diff.
 4. `Pos`'s public API is unchanged and no call site outside `Pos.java` was touched by D7.
 5. Both ★ tests in §6 have recorded, reproducible mutations.
-6. One probe run in a live client, reporting the snapshot line.
+6. One probe run in a live client, reporting the snapshot line. ✅ **Done 2026-08-26** — a cave
+   route, `9.4x` over 1,089 positions and 10,217 reads. See §2.4.
 7. Both throwaway harnesses deleted from `core-pathfinder/src/test/java/dev/continuo/pathfinder/`:
    `RegionMeasurementThrowaway.java` (§2) and `RealTerrainMeasurementThrowaway.java` (§2.2). The
    second reads absolute paths under `adapters/adapter-fabric-1.21.11/run/`, which is gitignored,
