@@ -66,6 +66,11 @@ class SnapshotSearchTest {
             snapshot, start.x(), start.y(), start.z(), target, CapabilitySet.none());
 
         assertEquals(PathOutcome.FOUND, live.outcome(), "the fixture must have a route at all");
+        assertEquals(14, live.path().size(),
+            "the fixture must still be the two-wall maze; a route this short over open ground"
+                + " would make the comparison below a tautology");
+        assertEquals(30, live.nodesExpanded());
+        assertEquals(46.326800000000006, live.cost(), 0.0);
         assertEquals(live.outcome(), through.outcome());
         assertEquals(live.cost(), through.cost(), 0.0, "cost must be bit-identical, not close");
         assertEquals(live.nodesExpanded(), through.nodesExpanded());

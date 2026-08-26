@@ -75,6 +75,21 @@ class SealedSnapshotTest {
     }
 
     @Test
+    void aPositionThatAliasesIntoTheMapOnYIsStillOutOfWorld() {
+        // PositionKey masks Y to 12 bits, so Y aliases every 4096 and (1, 70, 2) shares a key
+        // with (1, 4166, 2). The Y guard in at() is the only thing standing between that and a
+        // sealed snapshot - the object handed to another thread - answering with a block from
+        // 4096 blocks away. Deleting the guard fails no other test in this suite.
+        SealedSnapshot sealed = fixture();
+
+        assertEquals(PositionKey.pack(1, 70, 2), PositionKey.pack(1, 70 + 4096, 2),
+            "the premise: the packed key aliases on Y every 4096");
+        assertSame(BlockData.UNKNOWN, sealed.at(1, 70 + 4096, 2),
+            "so a position above the world must be refused by the Y guard before the map is"
+                + " consulted, or the snapshot answers with the stone stored at (1, 70, 2)");
+    }
+
+    @Test
     void theCountersAreTheFrozenOnesAndReadingDoesNotMoveThem() {
         SealedSnapshot sealed = fixture();
 

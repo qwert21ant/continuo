@@ -104,6 +104,12 @@ class WorldSnapshotTest {
         // real answer at the moment it was read, so storing it preserves stability - and it is
         // also what stops the repeat factor from re-hitting the SPI on exactly the positions a
         // search probes hardest, the edges of what it can see.
+        //
+        // This is the test that targets the store-UNKNOWN guarantee directly. A mutation that
+        // stops storing UNKNOWN breaks three other tests in this file too, but only incidentally:
+        // their fixtures happen to rely on an unread position reading back as UNKNOWN. It is one
+        // guarantee cascading, not four independent ones - if this test starts failing, look here
+        // first.
         RecordingSource live = new RecordingSource();
         WorldSnapshot snapshot = new WorldSnapshot(live);
 

@@ -20,10 +20,6 @@ import java.util.Map;
  * itself. There is deliberately no public constructor: an instance built over a map somebody else
  * still holds would be neither immutable nor safely publishable, and both of those are the whole
  * point.
- *
- * <p>The references to {@code WorldSnapshot} above are deliberately {@code @code} rather than
- * {@code @link}: this class is written first, and a dead {@code @link} fails the build exactly as
- * hard as a missing symbol.
  */
 public final class SealedSnapshot implements BlockSource {
 
