@@ -210,7 +210,7 @@ real search-effort policy."* Segmentation changes what the number means: today i
 threshold, after C4 it is a latency knob — a smaller budget gives up sooner and segments instead,
 which may produce a cheaper total route in less time.
 
-**It cannot be calibrated on replayed terrain.** §7.1.1 measures replay under-expanding by 3.6–7.6×
+**It cannot be calibrated on replayed terrain.** §7.1.2 measures replay under-expanding by 3.6–7.6×
 against the same route in game, for a structural reason no capture technique removes. A budget
 fitted to replayed expansion counts would be fitted to a fiction. The number that decides it is
 milliseconds per expansion in a live client, which is precisely what §8's instrumentation produces
@@ -243,6 +243,7 @@ overlays parse back as air, which is correct — they mark feet positions, which
 | `b-cave-climb` | cave then a 39-block climb | (350,69,-770) → (344,108,-779) | 6, **39**, 9 | 3,474 | Yes |
 | `c-short-hop` | short hop, 0 `?` cells | (282,70,-772) → (281,72,-773) | 1, 2, 1 | 94 | Yes |
 | `d-cliff` | large cliff | (710,119,-1078) → (702,121,-1068) | 8, 2, 10 | 2,082 | Yes |
+| `e-long-range` | same terrain, 111 blocks out | (1626,62,-863) → (1737,72,-786) | **111**, 10, 77 | **10,000 — `BUDGET_EXCEEDED`** | No — clamped, see §7.1.1 |
 
 "Replays exactly" means outcome, step count and cost to sixteen digits, verified by running each
 through `AStarPathfinder` at the same 10,000-node budget. `b`, `c` and `d` reproduce their captured
@@ -252,7 +253,39 @@ the documented failure mode. It is kept, because as a *world* it is perfectly va
 terrain and §6's sweep compares segmented against unbounded cost **within a fixture**; it simply
 may never be cited as reproducing an in-game measurement.
 
-### 7.1.1 Expansion counts do not survive a replay
+### 7.1.1 `e-long-range` — the premise, measured
+
+**C4's premise is no longer an extrapolation.** On 2026-08-26 at 23:25, a goal 111 blocks out over
+the same kind of terrain exhausted all 10,000 expansions and returned `BUDGET_EXCEEDED` with no
+path — 57,220 snapshot positions, 739,968 reads. It is the **first real budget exhaustion in the
+project's history**, across every route C3 and C4 have measured, and it confirms the shape the
+other four fixtures suggested: search effort is driven by terrain difficulty and distance together,
+not by either alone. `a-big-obstacle` spent 4,445 expansions to travel 17 blocks; six times the
+distance over comparable terrain is past the ceiling.
+
+**It cannot replay, and no re-run at current settings would help.** `ProbeBounds.MAX_EXTENT` is 64
+and a clamped axis is anchored on the start, so the window is x[1624..1687] and the goal's x of
+1737 lies 50 blocks beyond it. `FixtureWorld.parse` yields `goal() == null`; with the goal retyped
+by hand from the clamp notice, as that notice instructs, it sits outside the world and the replay
+returns **`NO_PATH` after 2,085 expansions**, not `BUDGET_EXCEEDED` after 10,000. Raising the
+replay budget to 200,000 changes nothing: 2,085 nodes is the whole reachable region inside the
+window.
+
+So it serves §6's calibration not at all — no reachable goal means no denominator. §6 does not need
+it: exhaustion there is induced with a deliberately small budget, which C4 controls.
+
+**It earns its place as the D5 fixture instead.** It is real terrain in which the open set genuinely
+empties while eligible, progress-making nodes exist — `h(start)` is 509.2 and the search advances a
+long way into the window before running out. That is a far better test of D5's "no backoff on
+open-set exhaustion" than §7.2's synthetic boxed start, which exhausts trivially.
+
+A true long-range *calibration* fixture would need `MAX_EXTENT` raised to roughly 128 so both ends
+of a budget-exhausting route fit. At the current density of about one byte per drawn cell, a
+128×32×128 window is near 500 KB — large for a test resource but not prohibitive, and `ProbeBounds`
+lives in `:runtime`, which has tests. **Not taken now**, on YAGNI: it is a lever to pull only if
+§6's sweep over `b` and `d` produces a `C` that looks unrepresentative of long routes.
+
+### 7.1.2 Expansion counts do not survive a replay
 
 Measured, not suspected. C3 recorded the worry that a bounded replay fixture "may understate"; it
 understates badly:
@@ -320,9 +353,12 @@ Four layers.
 3. **The driver's convergence properties.** `h` falls monotonically across segments; the segment
    count stays within `⌈hStart / minProgress⌉`; the concatenated route is contiguous.
 4. **Regression, and D5's contract.** Every existing test file changes by addition only (§4). Plus
-   one new test that pins D5 directly: a world whose goal is walled off inside a small reachable
-   region returns `NO_PATH` with an empty path, **not** `PARTIAL`, even though eligible nodes were
-   expanded. Without it, §9.1's last mutation has nothing to fail against.
+   one new test that pins D5 directly, on `e-long-range`: a real-terrain world whose goal lies
+   outside the reachable region returns `NO_PATH` with an empty path, **not** `PARTIAL`, even
+   though the search advanced far into the window and eligible nodes were expanded in quantity
+   (`h(start)` is 509.2, and 2,085 nodes are reached before the open set empties). Without it,
+   §9.1's last mutation has nothing to fail against. This fixture's goal must be supplied by hand —
+   it is clamped out of the map, so `goal()` is `null`; §7.1.1 explains why.
 
 Determinism gets its own test at this level, as C1 §5.1 requires of anything that decides which path
 comes back: the same search run twice returns a byte-identical segment and cost.
@@ -348,14 +384,17 @@ not. Each must map to a named failing test; any that fails to fail is a gap.
    build.
 2. `C` and `minProgress` each have a committed sweep table, produced by §6's metric over the §7.1
    fixtures. The default node budget is **not** among them and is set from criterion 6's in-game
-   run instead, for the reason §7.1.1 measures.
-3. ✅ **Done at spec time.** Four real-terrain probe dumps are committed under
-   `core-pathfinder/src/test/resources/terrain/`, with per-fixture replay fidelity verified and
-   recorded in §7.1.
+   run instead, for the reason §7.1.2 measures.
+3. ✅ **Done at spec time.** Five real-terrain probe dumps are committed under
+   `core-pathfinder/src/test/resources/terrain/`, with per-fixture replay fidelity verified by
+   execution and recorded in §7.1.
 4. Existing test files changed by addition only; `FOUND` and `NO_PATH` behaviour identical.
 5. Every mutation in §9.1 executed, with its result recorded in the merge commit.
 6. **One in-game run** in which the probe reaches, in *n* segments, a goal that a single search
-   cannot reach at all — with milliseconds reported.
+   cannot reach at all — with milliseconds reported. **The route is already chosen and already
+   proven to defeat a single search:** `e-long-range`'s (1626, 62, −863) → (1737, 72, −786), which
+   returned `BUDGET_EXCEEDED` at 10,000 expansions on 2026-08-26. The criterion is met when that
+   same goal is reached by segmentation, so it needs no budget lowered and no case induced.
 
 ## 11. Carried forward, not solved here
 
@@ -367,7 +406,7 @@ not. Each must map to a named failing test; any that fails to fail is a gap.
   true cost on a climbing route because the horizontal leg prices every octile unit at the cheapest
   flat rate. It now has a sharper trigger than "reopen if the budget binds": **if the sweep shows
   vertical routes needing disproportionately many segments.** The caveat that keeps it live is
-  unchanged, and §7.1.1 now **measures** the understatement it warned of: a replayed fixture expands
+  unchanged, and §7.1.2 now **measures** the understatement it warned of: a replayed fixture expands
   3.6–7.6× fewer nodes than the same route in game, so a 6% improvement measured on one is a lower
   bound on the real figure, not an estimate of it. `b-cave-climb` is the fixture that will settle
   it — a 39-block climb costing 3,474 in-game expansions to travel 9 blocks horizontally is the
@@ -385,7 +424,8 @@ not. Each must map to a named failing test; any that fails to fail is a gap.
 |---|---|
 | `C` calibrated on too little terrain | Real, and the reason D7 takes both kinds of fixture. Mitigated further by §3.4: a bad `C` costs path quality, never termination |
 | Admissibility violated, breaking §3.4's proof | C1 §5.3 establishes admissibility as a checked numeric property, not a structural one. It holds today; the margin shrinks as `k` grows and the `k = 4` row is already negative, so raising `MAX_SAFE_FALL` from 3 to 4 would break it — and that is a change a reader would take for a routine re-derivation. §5's cap turns the resulting hang into a reported failure |
-| The in-game run never exhausts the budget | **Now the most likely risk, and sharper than when this section was written.** Four deliberately awkward runs on 2026-08-26 — large obstacle, cave-and-climb, cliff, short hop — all returned `FOUND`, peaking at 4,445 expansions, 44% of the budget. Eleven real routes across C3 and C4 have now produced zero real `BUDGET_EXCEEDED`. Criterion 6 is therefore discharged by **lowering the budget for the run**, which is legitimate — segmentation's behaviour does not depend on why the budget was reached — provided the merge record says plainly that the exhaustion was induced |
-| Segmentation solves a problem that does not occur | Worth stating rather than hiding. The four runs show expansion count is driven by terrain difficulty and vertical distance, **not range**: `a-big-obstacle` spent 4,445 expansions to travel 17 blocks. That is the argument that a long-range goal over the same terrain would exceed 10,000 by a wide margin — but it is an extrapolation, and no measured route yet demonstrates it. The cheapest way to settle it is one probe run at a goal several hundred blocks out |
+| ~~The in-game run never exhausts the budget~~ | **Closed 2026-08-26.** Four awkward-terrain runs all returned `FOUND` at up to 44% of the budget, and this looked like C4's largest risk. A fifth run at 111 blocks over the same terrain then returned `BUDGET_EXCEEDED` at 10,000 expansions — §7.1.1. Criterion 6 needs no induced exhaustion; the route is known |
+| ~~Segmentation solves a problem that does not occur~~ | **Closed by the same run.** The premise was an extrapolation from `a-big-obstacle` spending 4,445 expansions to travel 17 blocks. It is now a measurement, and the shape it predicted held: six times the distance over comparable terrain is past the ceiling |
+| `C` unrepresentative of long routes | The live version of the risk the two rows above used to carry. Calibration runs on `b` and `d` with an induced small budget, because §7.1.1's long-range fixture has no reachable goal to serve as a denominator — so `C` is fitted on short routes and applied to long ones. §7.1.1 names the lever if it shows: raise `ProbeBounds.MAX_EXTENT` to about 128 and capture a route that fits whole |
 | Timing measured on the client thread is noisy | Accepted. The figure is needed to distinguish 3 ms from 80 ms, not to resolve 3 ms from 4 ms |
 | Segmented routes materially worse than optimal | §6's ratio is exactly this quantity, measured rather than hoped. If it comes out badly, that is a finding about the rule and reopens D2 |
