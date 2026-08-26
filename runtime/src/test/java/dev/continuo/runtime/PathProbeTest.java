@@ -86,6 +86,19 @@ class PathProbeTest {
      * 137 reads"} and the same line with the two numbers transposed both contain every substring
      * the other does, so only reading them as numbers can tell the two apart.
      */
+    /**
+     * The path cost the probe reported.
+     *
+     * <p>{@code StringBuilder.append(double)} goes through {@code Double.toString}, which always
+     * writes a {@code '.'} whatever the default locale is, so this needs none of the care the
+     * ratio's {@code Locale.ROOT} formatting does.
+     */
+    private static double costFrom(String summary) {
+        int start = summary.indexOf("cost ") + "cost ".length();
+        int end = summary.indexOf(',', start);
+        return Double.parseDouble(summary.substring(start, end));
+    }
+
     private static int figureBefore(String summary, String word) {
         int end = summary.indexOf(" " + word);
         if (end < 0) {
@@ -106,6 +119,15 @@ class PathProbeTest {
         assertTrue(report.ran());
         assertEquals(PathOutcome.FOUND, report.outcome());
         assertTrue(report.summary().contains("FOUND"), report.summary());
+        // FOUND alone is a weak guard, and the probe wave learned why the hard way: a map pasted
+        // back as a fixture reported FOUND by a completely different route, at a different cost,
+        // and an assertion on the verdict could not tell the two apart. ProbeWorld is a fixture
+        // and A* is deterministic, so the route is exactly pinnable - and a change to movement
+        // costs or tie-breaking that silently rerouted this search would otherwise pass here.
+        assertEquals(7, figureBefore(report.summary(), "steps"),
+            "six blocks of flat floor, start inclusive\n" + report.summary());
+        assertEquals(6 * 3.5636, costFrom(report.summary()), 1.0e-9,
+            "six walk.traverse steps and nothing else\n" + report.summary());
         assertEquals(PathRenderer.START, charAt(report.map(), 0, ProbeWorld.WALK_Y, 0),
             "the start marker must sit on the start\n" + report.map());
         assertEquals(PathRenderer.GOAL, charAt(report.map(), 6, ProbeWorld.WALK_Y, 0),

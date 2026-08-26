@@ -5,14 +5,16 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * The movements a search may use, and the heuristic multiplier they imply.
+ * The movements a search may use, and the {@link HeuristicRates} they imply.
  *
  * <p><b>The two travel together on purpose.</b> The failure this type exists to prevent is a
- * movement set and a multiplier drifting apart — a search filtering by one set while scaling its
+ * movement set and its rates drifting apart — a search filtering by one set while scaling its
  * heuristic by another set's minimum silently stops returning shortest paths. A type that cannot
  * hand out one without the other makes that unrepresentable.
  *
- * <p>Immutable. The multiplier is computed once, at construction.
+ * <p>Immutable. The rates are computed once, at construction. C1a split what was a single
+ * multiplier into a horizontal and a vertical rate, minimised independently; the invariant this
+ * type enforces is unchanged by that, which is why it survived the split untouched.
  */
 public final class ActiveMovements {
 
@@ -21,8 +23,8 @@ public final class ActiveMovements {
 
     /**
      * @param movements the active movements, in the order the search must expand them; copied
-     * @throws IllegalStateException if empty — a search with no movements has no multiplier, and
-     *                               returning an arbitrary one would hide the mistake
+     * @throws IllegalStateException if empty — a search with no movements has no rates to derive,
+     *                               and returning arbitrary ones would hide the mistake
      */
     ActiveMovements(List<IMovementType> movements) {
         if (movements.isEmpty()) {

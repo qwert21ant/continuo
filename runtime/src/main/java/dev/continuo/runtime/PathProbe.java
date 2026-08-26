@@ -13,7 +13,7 @@ import dev.continuo.pathfinder.PathResult;
 import dev.continuo.pathfinder.Pos;
 
 /**
- * Runs A\u002A against a live world and renders the result, so a route can be looked at in a
+ * Runs A* against a live world and renders the result, so a route can be looked at in a
  * running game.
  *
  * <p>Dev-only, like {@code BlockDumpWalker} beside it. Nothing calls it during normal operation.

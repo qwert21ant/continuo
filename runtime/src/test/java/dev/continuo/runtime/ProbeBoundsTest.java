@@ -37,6 +37,26 @@ class ProbeBoundsTest {
     }
 
     @Test
+    void aWorldWhoseYLimitsAreInvertedStillYieldsABoxWithMaxAboveMin() {
+        // The degenerate-box guard was recorded as "untested and provably unreachable". It is
+        // testable and it is reachable: lowY comes from world.minY() and highY from
+        // world.maxY() - 1, and nothing in ProbeBounds validates that a BlockSource reports those
+        // the right way round. A platform returning them inverted - or a fixture written wrong -
+        // produces maxY < minY without the guard, and the renderer's `for (y = minY; y <= maxY)`
+        // then draws nothing while PathProbe's drawnCells() reports a negative cell count. An
+        // empty map that says it covers -3 cells is the worst of both: it looks like a search
+        // that found nothing rather than a world description that is impossible.
+        ProbeBounds bounds = ProbeBounds.around(world(100, 50),
+            new Pos(0, 64, 0), new Pos(5, 64, 0), Collections.<Pos>emptyList());
+
+        assertTrue(bounds.maxY >= bounds.minY,
+            "a box must never be inverted on Y; got minY=" + bounds.minY
+                + " maxY=" + bounds.maxY);
+        assertEquals(bounds.minY, bounds.maxY,
+            "and the guard collapses it to a single layer rather than inventing extra ones");
+    }
+
+    @Test
     void containsSaysWhetherAPositionIsInsideTheDrawnWindow() {
         ProbeBounds bounds = ProbeBounds.around(world(-64, 320),
             new Pos(0, 64, 0), new Pos(5, 64, 0), Collections.<Pos>emptyList());
