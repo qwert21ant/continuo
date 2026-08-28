@@ -11,6 +11,8 @@ import dev.continuo.pathfinder.GoalBlock;
 import dev.continuo.pathfinder.PathRenderer;
 import dev.continuo.pathfinder.PathResult;
 import dev.continuo.pathfinder.Pos;
+import dev.continuo.pathfinder.SegmentedResult;
+import dev.continuo.pathfinder.SegmentedSearch;
 
 /**
  * Runs A* against a live world and renders the result, so a route can be looked at in a
@@ -26,6 +28,12 @@ import dev.continuo.pathfinder.Pos;
  * position it touches several times over and the snapshot turns all of them into one SPI call,
  * which the summary reports so that every run measures the saving on real terrain. The render is
  * left reading live because its window touches each cell once and can be 64 blocks per axis.
+ *
+ * <p><b>The elapsed time is reported and never consulted.</b> C1 section 5.1 makes determinism a
+ * hard requirement -- tests assert which path comes back -- and a wall-clock stopping condition
+ * would make every one of those assertions flaky. The budget stays counted in nodes. This figure
+ * exists to size that budget and to settle whether a search can span a tick, which is C4's
+ * deferred question.
  *
  * <p>The mark-then-run shape is deliberate: it lets an owner walk to somewhere awkward, mark it,
  * walk back, and search across terrain they chose, without any new SPI surface for naming a
@@ -44,13 +52,16 @@ public final class PathProbe {
     /**
      * The node budget a probe uses when none is given.
      *
-     * <p>Far below {@code AStarPathfinder.DEFAULT_NODE_BUDGET}, and for a different reason. That
-     * figure was chosen as far below anything that would hang a <em>test</em>; this one runs on
-     * the client thread of a running game, where a hundred thousand expansions against live
-     * block reads is a multi-second freeze. It is a stall guard, not a search-effort policy —
-     * C4 owns the policy and this must not pretend to.
+     * <p>25,000, matching {@code AStarPathfinder.DEFAULT_NODE_BUDGET} — see its javadoc for the
+     * per-route expansion evidence (design §6) that sets the figure: every route measured so far,
+     * including the 111-block {@code e-long-range} route at 17,423 expansions, fits inside a
+     * single search at 143% of its need or better. It runs on the client thread of a running
+     * game, where the cost of an expansion against live block reads is not yet measured — the
+     * in-game timing instrumentation this branch ships has not yet been run in a Minecraft
+     * client, so whether 25,000 expansions fits comfortably inside a tick is confirmed by that
+     * run, not by this number.
      */
-    public static final int NODE_BUDGET = 10000;
+    public static final int NODE_BUDGET = 25000;
 
     private final int nodeBudget;
 
@@ -134,25 +145,32 @@ public final class PathProbe {
         // 64 blocks per axis and touches each cell once, so pushing it through the snapshot would
         // add a quarter of a million entries to save nothing. The repeat reads are in the search.
         WorldSnapshot snapshot = new WorldSnapshot(world);
-        PathResult result = new AStarPathfinder(nodeBudget).findPath(
+        long startedAt = System.nanoTime();
+        SegmentedResult result = new SegmentedSearch(new AStarPathfinder(nodeBudget)).run(
             snapshot, startX, startY, startZ,
             new GoalBlock(goal.x(), goal.y(), goal.z()),
             CapabilitySet.of(Capability.PARKOUR));
+        double elapsedMs = (System.nanoTime() - startedAt) / 1000000.0;
         SealedSnapshot sealed = snapshot.seal();
+        PathResult combined = result.asPathResult();
 
         ProbeBounds bounds = ProbeBounds.around(world, start, goal, result.path());
         StringBuilder map = new StringBuilder(PathRenderer.render(world,
             bounds.minX, bounds.minY, bounds.minZ,
             bounds.maxX, bounds.maxY, bounds.maxZ,
-            start, goal, result));
+            start, goal, combined));
 
         StringBuilder summary = new StringBuilder();
         summary.append("Continuo path probe: ").append(result.outcome())
+            .append(", ").append(result.segments())
+            .append(result.segments() == 1 ? " segment" : " segments")
             .append(", ").append(result.path().size()).append(" steps")
-            .append(", ").append(result.nodesExpanded()).append(" expanded")
+            .append(", ").append(combined.nodesExpanded()).append(" expanded")
             .append(", cost ").append(result.cost())
             .append(", ").append(start).append(" -> ").append(goal)
             .append(", budget ").append(nodeBudget)
+            .append(", ").append(String.format(java.util.Locale.ROOT, "%.1f",
+                Double.valueOf(elapsedMs))).append(" ms")
             .append(", snapshot ").append(sealed.size()).append(" positions / ")
             .append(sealed.reads()).append(" reads");
         if (sealed.size() > 0) {

@@ -2,12 +2,14 @@ package dev.continuo.runtime;
 
 import dev.continuo.core.BlockData;
 import dev.continuo.core.BlockShape;
+import dev.continuo.core.BlockSource;
 import dev.continuo.core.BlockTag;
 import dev.continuo.core.Fluid;
 import dev.continuo.movement.Capability;
 import dev.continuo.movement.CapabilitySet;
 import dev.continuo.movement.IMovementType;
 import dev.continuo.pathfinder.AStarPathfinder;
+import dev.continuo.pathfinder.BlockLegend;
 import dev.continuo.pathfinder.PathOutcome;
 import dev.continuo.pathfinder.PathRenderer;
 import org.junit.jupiter.api.Test;
@@ -15,6 +17,8 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -458,5 +462,132 @@ class PathProbeTest {
         assertTrue(ids.contains("walk.parkour"),
             "walk.parkour is not in the set the probe searches with, so the probe would request"
                 + " a capability nothing supplies and report success either way; got " + ids);
+    }
+
+    @Test
+    void theSummaryReportsHowLongTheSearchTook() {
+        PathProbe probe = new PathProbe(1000);
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        String summary = report.summary();
+        Matcher m = Pattern.compile(", ([0-9]+\\.[0-9]) ms").matcher(summary);
+        assertTrue(m.find(), "no millisecond figure in: " + summary);
+        // Parsed as a number rather than matched as a substring. C3's review found that the
+        // probe's two integers could be transposed with zero test failures because every
+        // assertion matched substrings; this is the same class of defect, pre-empted.
+        double ms = Double.parseDouble(m.group(1));
+        assertTrue(ms >= 0.0, "negative elapsed time: " + ms);
+    }
+
+    @Test
+    void theSummaryReportsHowManySegmentsTheRunTook() {
+        PathProbe probe = new PathProbe(1000);
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        Matcher m = Pattern.compile(", ([0-9]+) segments?").matcher(report.summary());
+        assertTrue(m.find(), "no segment count in: " + report.summary());
+        assertEquals(1, Integer.parseInt(m.group(1)),
+            "a goal this close is one search; segmenting it would mean the budget is being"
+                + " exhausted where it should not be");
+    }
+
+    @Test
+    void theSummaryReportsMoreThanOneSegmentWhenTheBudgetForcesIt() {
+        // I5: "1 segment" hardcoded into the summary passes every other test in this file, because
+        // none of them drives a multi-segment run. A budget of 10 against the far corner of
+        // ProbeWorld's floor does: measured by direct execution, it takes exactly two segments to
+        // reach (12, WALK_Y, 12) from the origin, so this is the case a hardcoded count cannot
+        // survive.
+        PathProbe probe = new PathProbe(10);
+        probe.markGoal(12, ProbeWorld.WALK_Y, 12);
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        assertEquals(PathOutcome.FOUND, report.outcome(), report.summary());
+        Matcher m = Pattern.compile(", ([0-9]+) segments?").matcher(report.summary());
+        assertTrue(m.find(), "no segment count in: " + report.summary());
+        assertEquals(2, Integer.parseInt(m.group(1)),
+            "budget 10 against ProbeWorld's far corner is measured to take two segments; a"
+                + " hardcoded '1 segment' would fail this rather than merely fail to be exercised\n"
+                + report.summary());
+    }
+
+    @Test
+    void theSummaryReportsExpandedNodesNotStepsOnAMultiSegmentRun() {
+        // I3: the summary's "N expanded" field is combined.nodesExpanded(), not result.path().size()
+        // -- a substitution three independent mutations proved unpinned. Parsed as numbers, not
+        // substrings, for the reason figureBefore exists: the two counts are close enough on a
+        // short route that a wrong-field regression would otherwise slip through.
+        PathProbe probe = new PathProbe(10);
+        probe.markGoal(12, ProbeWorld.WALK_Y, 12);
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        int steps = figureBefore(report.summary(), "steps");
+        int expanded = figureBefore(report.summary(), "expanded");
+        assertTrue(expanded > steps,
+            "a multi-segment run expands more nodes than the route it returns; reporting the step"
+                + " count in the expanded field would pass this only by coincidence\n"
+                + report.summary());
+    }
+
+    /** A very large, obstacle-free flat floor -- big enough that a full search over it takes
+     * measurable wall-clock time, unlike anything {@link ProbeWorld} (radius 12) can produce. */
+    private static final class HugeFlatWorld implements BlockSource {
+        static final int FLOOR_Y = 63;
+        static final int WALK_Y = 64;
+
+        @Override
+        public BlockData at(int x, int y, int z) {
+            return y == FLOOR_Y ? BlockLegend.STONE : BlockLegend.AIR;
+        }
+
+        @Override
+        public int minY() {
+            return 0;
+        }
+
+        @Override
+        public int maxY() {
+            return 128;
+        }
+    }
+
+    private static double msFrom(String summary) {
+        Matcher m = Pattern.compile(", ([0-9]+\\.[0-9]) ms").matcher(summary);
+        if (!m.find()) {
+            throw new AssertionError("no millisecond figure in: " + summary);
+        }
+        return Double.parseDouble(m.group(1));
+    }
+
+    @Test
+    void theMillisecondFigureIsMonotonicInSearchSize() {
+        // I4: elapsedMs = 0.0 (a hardcoded constant) satisfies "ms >= 0.0", the suite's only
+        // existing assertion on this figure. D6 rules out a strict ">0" on a tiny search as flaky,
+        // so this pins the figure by comparing two searches of deliberately mismatched size instead:
+        // a one-node search on a tiny world against a ~3,000-expansion search over open ground that
+        // genuinely takes tens of milliseconds. A hardcoded constant cannot be larger for the big
+        // search and cannot be positive for it either, so both of the assertions below catch it.
+        PathProbe tiny = new PathProbe(1);
+        tiny.markGoal(1, ProbeWorld.WALK_Y, 0);
+        ProbeReport tinyReport = tiny.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        PathProbe large = new PathProbe(25000);
+        large.markGoal(3000, HugeFlatWorld.WALK_Y, 3000);
+        ProbeReport largeReport = large.run(new HugeFlatWorld(), 0, HugeFlatWorld.WALK_Y, 0);
+
+        double tinyMs = msFrom(tinyReport.summary());
+        double largeMs = msFrom(largeReport.summary());
+
+        assertTrue(Double.isFinite(tinyMs) && tinyMs >= 0.0, "tiny: " + tinyReport.summary());
+        assertTrue(Double.isFinite(largeMs) && largeMs >= 0.0, "large: " + largeReport.summary());
+        assertTrue(largeMs > 0.0,
+            "a search expanding thousands of nodes against live block reads must take measurable"
+                + " wall-clock time; 0.0 here means the figure is not really being measured\n"
+                + largeReport.summary());
+        assertTrue(largeMs >= tinyMs,
+            "a much larger search must not report less elapsed time than a trivially small one\n"
+                + "tiny: " + tinyReport.summary() + "\nlarge: " + largeReport.summary());
     }
 }

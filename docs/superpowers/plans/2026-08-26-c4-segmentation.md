@@ -79,8 +79,8 @@ Add to `PathProbeTest`:
     @Test
     void theSummaryReportsHowLongTheSearchTook() {
         PathProbe probe = new PathProbe(1000);
-        probe.markGoal(3, 65, 0);
-        ProbeReport report = probe.run(new ProbeWorld(), 0, 65, 0);
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
 
         String summary = report.summary();
         Matcher m = Pattern.compile(", ([0-9]+\\.[0-9]) ms").matcher(summary);
@@ -1153,8 +1153,8 @@ every avoided adapter edit is a defect that cannot happen.
     @Test
     void theSummaryReportsHowManySegmentsTheRunTook() {
         PathProbe probe = new PathProbe(1000);
-        probe.markGoal(3, 65, 0);
-        ProbeReport report = probe.run(new ProbeWorld(), 0, 65, 0);
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
 
         Matcher m = Pattern.compile(", ([0-9]+) segments?").matcher(report.summary());
         assertTrue(m.find(), "no segment count in: " + report.summary());
