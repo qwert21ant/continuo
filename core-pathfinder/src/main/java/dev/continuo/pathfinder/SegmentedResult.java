@@ -50,6 +50,14 @@ public final class SegmentedResult {
         return segments;
     }
 
+    /**
+     * @return this run as a single {@link PathResult}, so the renderer and the bounds calculator
+     *         can draw a whole run exactly as they draw one search
+     */
+    public PathResult asPathResult() {
+        return new PathResult(outcome, path, expanded, cost);
+    }
+
     @Override
     public String toString() {
         return "SegmentedResult[" + outcome + ", " + segments + " segments, "

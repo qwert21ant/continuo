@@ -11,6 +11,8 @@ import dev.continuo.pathfinder.GoalBlock;
 import dev.continuo.pathfinder.PathRenderer;
 import dev.continuo.pathfinder.PathResult;
 import dev.continuo.pathfinder.Pos;
+import dev.continuo.pathfinder.SegmentedResult;
+import dev.continuo.pathfinder.SegmentedSearch;
 
 /**
  * Runs A* against a live world and renders the result, so a route can be looked at in a
@@ -141,23 +143,26 @@ public final class PathProbe {
         // add a quarter of a million entries to save nothing. The repeat reads are in the search.
         WorldSnapshot snapshot = new WorldSnapshot(world);
         long startedAt = System.nanoTime();
-        PathResult result = new AStarPathfinder(nodeBudget).findPath(
+        SegmentedResult result = new SegmentedSearch(new AStarPathfinder(nodeBudget)).run(
             snapshot, startX, startY, startZ,
             new GoalBlock(goal.x(), goal.y(), goal.z()),
             CapabilitySet.of(Capability.PARKOUR));
         double elapsedMs = (System.nanoTime() - startedAt) / 1000000.0;
         SealedSnapshot sealed = snapshot.seal();
+        PathResult combined = result.asPathResult();
 
         ProbeBounds bounds = ProbeBounds.around(world, start, goal, result.path());
         StringBuilder map = new StringBuilder(PathRenderer.render(world,
             bounds.minX, bounds.minY, bounds.minZ,
             bounds.maxX, bounds.maxY, bounds.maxZ,
-            start, goal, result));
+            start, goal, combined));
 
         StringBuilder summary = new StringBuilder();
         summary.append("Continuo path probe: ").append(result.outcome())
+            .append(", ").append(result.segments())
+            .append(result.segments() == 1 ? " segment" : " segments")
             .append(", ").append(result.path().size()).append(" steps")
-            .append(", ").append(result.nodesExpanded()).append(" expanded")
+            .append(", ").append(combined.nodesExpanded()).append(" expanded")
             .append(", cost ").append(result.cost())
             .append(", ").append(start).append(" -> ").append(goal)
             .append(", budget ").append(nodeBudget)

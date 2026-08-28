@@ -477,4 +477,17 @@ class PathProbeTest {
         double ms = Double.parseDouble(m.group(1));
         assertTrue(ms >= 0.0, "negative elapsed time: " + ms);
     }
+
+    @Test
+    void theSummaryReportsHowManySegmentsTheRunTook() {
+        PathProbe probe = new PathProbe(1000);
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        Matcher m = Pattern.compile(", ([0-9]+) segments?").matcher(report.summary());
+        assertTrue(m.find(), "no segment count in: " + report.summary());
+        assertEquals(1, Integer.parseInt(m.group(1)),
+            "a goal this close is one search; segmenting it would mean the budget is being"
+                + " exhausted where it should not be");
+    }
 }
