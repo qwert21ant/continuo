@@ -37,10 +37,15 @@ public final class AStarPathfinder {
     /**
      * The node budget a search uses when none is given.
      *
-     * <p>Chosen to be far above anything a fixture world can need and far below anything that
-     * would hang a test. C4 replaces this with a real search-effort policy.
+     * <p>25,000, set from the per-route expansion needs measured on real terrain (design §6):
+     * {@code c-short-hop} 94, {@code d-cliff} 2,082, {@code b-cave-climb} 3,474,
+     * {@code a-big-obstacle} 4,445, and the 111-block {@code e-long-range} route 17,423 — the
+     * hardest of them at 143% of its need, so every route measured so far fits inside a single
+     * search. It is not fitted to a millisecond figure: the in-game timing instrumentation this
+     * branch ships has not yet been run in a Minecraft client, so whether 25,000 expansions also
+     * fits a tick's time budget is confirmed by a later in-game run, not by this number.
      */
-    public static final int DEFAULT_NODE_BUDGET = 100000;
+    public static final int DEFAULT_NODE_BUDGET = 25000;
 
     /**
      * How much closer to the goal a backoff candidate must be, in blocks, when none is given.
@@ -49,11 +54,18 @@ public final class AStarPathfinder {
      * multiplied by {@code HeuristicRates.horizontal()} at search time, so it stays meaningful
      * when a changed movement set changes the cheapest rate.
      *
-     * <p>PROVISIONAL until Task 6's sweep replaces it. Any positive value is correct for
-     * termination — the design's proof holds for all of them — so this affects how often a segment
-     * is offered, never whether a run ends.
+     * <p>8.0, from {@code MinProgressSweepTest}'s table (design §6): margins of 1, 2, 4 and 8
+     * blocks reached {@code FOUND} on all three fixtures swept ({@code d-cliff},
+     * {@code b-cave-climb}, {@code a-big-obstacle}) at identical quality ratios — 1.000, 1.476 and
+     * 1.064 respectively, bit-for-bit the same across that whole range because the same backoff
+     * candidate cleared every margin up to 8. 16 blocks broke two of the three fixtures, returning
+     * an empty {@code BUDGET_EXCEEDED} where a useful segment existed — the failure mode this
+     * constant exists to avoid. With 1, 2, 4 and 8 tied exactly on both of the sweep's criteria
+     * (fixtures reaching {@code FOUND}, then quality ratio), 8 is chosen as the largest of the
+     * tied values: the strictest requirement for what counts as a worthwhile backoff candidate
+     * that the sweep still proves safe, with no quality cost measured anywhere in that range.
      */
-    public static final double DEFAULT_MIN_PROGRESS_BLOCKS = 4.0;
+    public static final double DEFAULT_MIN_PROGRESS_BLOCKS = 8.0;
 
     private final int nodeBudget;
     private final IMovementRegistry registry;

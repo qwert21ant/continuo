@@ -250,11 +250,13 @@ The metric is unchanged in form and still the right one:
 quality = cost(segmented run to goal) / cost(single unbounded search)
 ```
 
-Both terms are computable headlessly. The denominator is `findPath` at the existing 100,000-node
-budget; the numerator is §5's driver at a deliberately small one. §2.1 already reports it at three
-points — 1.000 on `d-cliff` at 84%, 1.064 on `a-big-obstacle` at 84%, 1.06 on `b-cave-climb` — so
-the sweep confirms and tabulates a figure the design has already been shown to achieve, rather than
-discovering it.
+Both terms are computable headlessly. The denominator is `findPath` at a fixed 200,000-node budget
+— run headlessly the sweep needs its own generous ceiling for "unbounded," independent of whatever
+`DEFAULT_NODE_BUDGET` is set to elsewhere, since §6.2 sets that default from evidence the sweep
+does not need; the numerator is §5's driver at a deliberately small one. §2.1 already reports the
+metric at three points — 1.000 on `d-cliff` at 84%, 1.064 on `a-big-obstacle` at 84%, 1.06 on
+`b-cave-climb` — so the sweep in §6.1 confirms and tabulates a figure the design has already been
+shown to achieve, rather than discovering it.
 
 `minProgress` sweeps against a different failure: too large and nothing qualifies, so
 its metric is the share of budget-exhausted searches that return an empty `BUDGET_EXCEEDED` where a
@@ -290,6 +292,62 @@ behind it. The evidence bounds it directly:
 A budget of 25,000 puts every route measured so far inside a single search, the 111-block one at
 143%. That is the shape of the answer; the millisecond figure decides whether the client can afford
 it, which is why §8's instrumentation is built before the budget is chosen and not after.
+
+### 6.1 The sweep, run
+
+`MinProgressSweepTest` ran the metric above over the three fixtures with headroom to segment —
+`d-cliff`, `b-cave-climb`, `a-big-obstacle` — at five candidate margins, each fixture's own search
+budget fixed at 84% of what an unbounded search needs, matching the known-good reference points a
+throwaway prototype had already found at that same 84%. The printed table:
+
+```
+d-cliff.txt: needs 273 expansions, optimal cost 274.4170743526183, sweeping at budget 229 (84% of need)
+  minProgress 1.0 blocks: FOUND, 2 segments, cost 274.41707435261833, quality 1.000
+  minProgress 2.0 blocks: FOUND, 2 segments, cost 274.41707435261833, quality 1.000
+  minProgress 4.0 blocks: FOUND, 2 segments, cost 274.41707435261833, quality 1.000
+  minProgress 8.0 blocks: FOUND, 2 segments, cost 274.41707435261833, quality 1.000
+  minProgress 16.0 blocks: BUDGET_EXCEEDED, 1 segments, cost 0.0, quality -
+b-cave-climb.txt: needs 726 expansions, optimal cost 387.87625725436385, sweeping at budget 609 (84% of need)
+  minProgress 1.0 blocks: FOUND, 2 segments, cost 572.3831401561094, quality 1.476
+  minProgress 2.0 blocks: FOUND, 2 segments, cost 572.3831401561094, quality 1.476
+  minProgress 4.0 blocks: FOUND, 2 segments, cost 572.3831401561094, quality 1.476
+  minProgress 8.0 blocks: FOUND, 2 segments, cost 572.3831401561094, quality 1.476
+  minProgress 16.0 blocks: FOUND, 2 segments, cost 572.3831401561094, quality 1.476
+a-big-obstacle.txt: needs 1247 expansions, optimal cost 514.4780665840374, sweeping at budget 1047 (84% of need)
+  minProgress 1.0 blocks: FOUND, 2 segments, cost 547.389717878801, quality 1.064
+  minProgress 2.0 blocks: FOUND, 2 segments, cost 547.389717878801, quality 1.064
+  minProgress 4.0 blocks: FOUND, 2 segments, cost 547.389717878801, quality 1.064
+  minProgress 8.0 blocks: FOUND, 2 segments, cost 547.389717878801, quality 1.064
+  minProgress 16.0 blocks: BUDGET_EXCEEDED, 1 segments, cost 0.0, quality -
+```
+
+**Reading it:** margins of 1, 2, 4 and 8 blocks reach `FOUND` on all three fixtures, at cost
+figures identical bit-for-bit within each fixture across that whole range — the same backoff
+candidate clears every one of those margins, so the choice among them is a true tie on both of the
+sweep's own criteria (fixtures reaching `FOUND`, then quality ratio). 16 blocks is where the tie
+breaks: it is too strict a requirement for `d-cliff` and `a-big-obstacle`, and both return an empty
+`BUDGET_EXCEEDED` where a useful segment existed — exactly the failure mode §6 names above.
+
+**Chosen: 8.0 blocks.** With 1, 2, 4 and 8 exactly tied, 8 is the largest of them — the strictest
+requirement for what counts as a worthwhile backoff candidate that the sweep still proves safe,
+with no quality cost measured anywhere in that range, and the value furthest below the 16-block
+threshold the sweep proved unsafe. `AStarPathfinder.DEFAULT_MIN_PROGRESS_BLOCKS` is set to it, and
+its javadoc's PROVISIONAL paragraph is replaced with this measurement.
+
+### 6.2 The budget, chosen without the millisecond figure
+
+**The millisecond figure this section originally deferred to does not exist yet.** The in-game
+timing instrumentation §8 adds has never been run in a Minecraft client on this branch. That is
+not the same as having no evidence: the owner ran a direct 200,000-node-budget probe on the
+`e-long-range` route on 2026-08-26 (§7.1.1), and it completed at 17,423 expansions — proof, not
+extrapolation, that 25,000 is affordable in node-count terms for the hardest route measured so far.
+The §6 table above already shows 25,000 covers every route measured, the hardest at 143% of its
+need. `AStarPathfinder.DEFAULT_NODE_BUDGET` and `PathProbe.NODE_BUDGET` are both set to 25,000 on
+that basis.
+
+**What this does not settle:** whether 25,000 expansions fits inside a tick's time budget on a
+live client. That is §10 criterion 6's question, and it still needs the in-game run this section
+cannot substitute for — the javadoc on both constants says so, and criterion 6 is not ticked here.
 
 ## 7. Fixtures
 
@@ -462,10 +520,12 @@ not. Each must map to a named failing test; any that fails to fail is a gap.
 1. `./gradlew build --rerun-tasks` green — **never `:test`**; javadoc is build-failing under
    `-Xdoclint:all,-missing -Xwerror` and `:test` never runs it, so a green `:test` can hide a broken
    build.
-2. `minProgress` has a committed sweep table, produced by §6's metric over the §7.1 fixtures. There
-   is no `C` to calibrate — D2's reversal removed it. The default node budget is not from the sweep
-   either: §7.1.2 shows replayed expansion counts are fiction, so it is set from the millisecond
-   figure and the §6 table of per-route expansion needs.
+2. ✅ **Done.** `minProgress` has a committed sweep table (§6.1), produced by §6's metric over three
+   of the §7.1 fixtures, choosing 8.0 blocks. There is no `C` to calibrate — D2's reversal removed
+   it. The default node budget is not from the sweep either: §7.1.2 shows replayed expansion counts
+   are fiction, so it is set (§6.2) from the §6 table of per-route expansion needs and the direct
+   200,000-budget probe of 2026-08-26, not from a millisecond figure — that instrumentation has not
+   yet been run in a client, and criterion 6 below remains unticked for exactly that reason.
 3. ✅ **Done at spec time.** Five real-terrain probe dumps are committed under
    `core-pathfinder/src/test/resources/terrain/`, with per-fixture replay fidelity verified by
    execution and recorded in §7.1.

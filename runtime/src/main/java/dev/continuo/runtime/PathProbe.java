@@ -52,13 +52,16 @@ public final class PathProbe {
     /**
      * The node budget a probe uses when none is given.
      *
-     * <p>Far below {@code AStarPathfinder.DEFAULT_NODE_BUDGET}, and for a different reason. That
-     * figure was chosen as far below anything that would hang a <em>test</em>; this one runs on
-     * the client thread of a running game, where a hundred thousand expansions against live
-     * block reads is a multi-second freeze. It is a stall guard, not a search-effort policy —
-     * C4 owns the policy and this must not pretend to.
+     * <p>25,000, matching {@code AStarPathfinder.DEFAULT_NODE_BUDGET} — see its javadoc for the
+     * per-route expansion evidence (design §6) that sets the figure: every route measured so far,
+     * including the 111-block {@code e-long-range} route at 17,423 expansions, fits inside a
+     * single search at 143% of its need or better. It runs on the client thread of a running
+     * game, where the cost of an expansion against live block reads is not yet measured — the
+     * in-game timing instrumentation this branch ships has not yet been run in a Minecraft
+     * client, so whether 25,000 expansions fits comfortably inside a tick is confirmed by that
+     * run, not by this number.
      */
-    public static final int NODE_BUDGET = 10000;
+    public static final int NODE_BUDGET = 25000;
 
     private final int nodeBudget;
 
