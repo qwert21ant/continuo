@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -458,5 +460,21 @@ class PathProbeTest {
         assertTrue(ids.contains("walk.parkour"),
             "walk.parkour is not in the set the probe searches with, so the probe would request"
                 + " a capability nothing supplies and report success either way; got " + ids);
+    }
+
+    @Test
+    void theSummaryReportsHowLongTheSearchTook() {
+        PathProbe probe = new PathProbe(1000);
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+        ProbeReport report = probe.run(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        String summary = report.summary();
+        Matcher m = Pattern.compile(", ([0-9]+\\.[0-9]) ms").matcher(summary);
+        assertTrue(m.find(), "no millisecond figure in: " + summary);
+        // Parsed as a number rather than matched as a substring. C3's review found that the
+        // probe's two integers could be transposed with zero test failures because every
+        // assertion matched substrings; this is the same class of defect, pre-empted.
+        double ms = Double.parseDouble(m.group(1));
+        assertTrue(ms >= 0.0, "negative elapsed time: " + ms);
     }
 }

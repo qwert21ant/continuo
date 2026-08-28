@@ -27,6 +27,12 @@ import dev.continuo.pathfinder.Pos;
  * which the summary reports so that every run measures the saving on real terrain. The render is
  * left reading live because its window touches each cell once and can be 64 blocks per axis.
  *
+ * <p><b>The elapsed time is reported and never consulted.</b> C1 section 5.1 makes determinism a
+ * hard requirement -- tests assert which path comes back -- and a wall-clock stopping condition
+ * would make every one of those assertions flaky. The budget stays counted in nodes. This figure
+ * exists to size that budget and to settle whether a search can span a tick, which is C4's
+ * deferred question.
+ *
  * <p>The mark-then-run shape is deliberate: it lets an owner walk to somewhere awkward, mark it,
  * walk back, and search across terrain they chose, without any new SPI surface for naming a
  * destination.
@@ -134,10 +140,12 @@ public final class PathProbe {
         // 64 blocks per axis and touches each cell once, so pushing it through the snapshot would
         // add a quarter of a million entries to save nothing. The repeat reads are in the search.
         WorldSnapshot snapshot = new WorldSnapshot(world);
+        long startedAt = System.nanoTime();
         PathResult result = new AStarPathfinder(nodeBudget).findPath(
             snapshot, startX, startY, startZ,
             new GoalBlock(goal.x(), goal.y(), goal.z()),
             CapabilitySet.of(Capability.PARKOUR));
+        double elapsedMs = (System.nanoTime() - startedAt) / 1000000.0;
         SealedSnapshot sealed = snapshot.seal();
 
         ProbeBounds bounds = ProbeBounds.around(world, start, goal, result.path());
@@ -153,6 +161,8 @@ public final class PathProbe {
             .append(", cost ").append(result.cost())
             .append(", ").append(start).append(" -> ").append(goal)
             .append(", budget ").append(nodeBudget)
+            .append(", ").append(String.format(java.util.Locale.ROOT, "%.1f",
+                Double.valueOf(elapsedMs))).append(" ms")
             .append(", snapshot ").append(sealed.size()).append(" positions / ")
             .append(sealed.reads()).append(" reads");
         if (sealed.size() > 0) {
