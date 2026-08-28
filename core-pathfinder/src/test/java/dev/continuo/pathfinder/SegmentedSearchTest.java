@@ -1,6 +1,9 @@
 package dev.continuo.pathfinder;
 
+import dev.continuo.core.BlockData;
+import dev.continuo.core.BlockSource;
 import dev.continuo.movement.CapabilitySet;
+import dev.continuo.movement.HeuristicRates;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -8,6 +11,44 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Chaining segments into a run. */
 class SegmentedSearchTest {
+
+    /** Unbounded flat ground: stone at {@link #FLOOR_Y}, air everywhere above. */
+    private static final class FlatWorld implements BlockSource {
+        static final int FLOOR_Y = 63;
+
+        @Override
+        public BlockData at(int x, int y, int z) {
+            return y == FLOOR_Y ? BlockLegend.STONE : BlockLegend.AIR;
+        }
+
+        @Override
+        public int minY() {
+            return -64;
+        }
+
+        @Override
+        public int maxY() {
+            return 320;
+        }
+    }
+
+    /**
+     * A heuristic that keeps decreasing without bound as {@code x} grows, so it is never
+     * admissible for long. Exists to prove the run stops -- at the design's own cap, as
+     * {@code BUDGET_EXCEEDED} -- when the termination proof's premise (h bounded below by
+     * zero) fails, rather than looping forever.
+     */
+    private static final class UnboundedGoal implements Goal {
+        @Override
+        public boolean isReached(int x, int y, int z) {
+            return false;
+        }
+
+        @Override
+        public double heuristic(int x, int y, int z, HeuristicRates rates) {
+            return -x;
+        }
+    }
 
     private static SegmentedResult run(String fixture, int budget) {
         FixtureWorld world = TerrainFixture.load(fixture);
@@ -27,6 +68,10 @@ class SegmentedSearchTest {
 
         assertEquals(PathOutcome.FOUND, r.outcome());
         assertTrue(r.segments() > 1, "a single search at this budget cannot reach the goal");
+        // Tolerance rather than exact equality: splitting one sum into two partial sums is
+        // expected to move the last significant digit through floating-point reassociation.
+        assertEquals(274.41707435261833, r.cost(), 1e-9,
+            "the accumulated cost across segments must equal the unsegmented optimum");
     }
 
     @Test
@@ -86,5 +131,32 @@ class SegmentedSearchTest {
         assertEquals(PathOutcome.NO_PATH, r.outcome());
         assertEquals(1, r.segments());
         assertTrue(r.path().isEmpty());
+    }
+
+    @Test
+    void aRunWhoseHeuristicIsNeverAdmissibleHitsTheCapInsteadOfLoopingForever() {
+        // The cap is provably unreachable while h is admissible and non-negative: each PARTIAL
+        // segment lowers h by at least minProgress, and h cannot fall below zero. No ordinary
+        // fixture can drive it. UnboundedGoal breaks that premise on purpose -- its h keeps
+        // falling without bound as x grows, on unbounded flat ground where isReached is always
+        // false and the open set never empties -- so nothing but the cap can end the run.
+        AStarPathfinder pathfinder = new AStarPathfinder(5000);
+        HeuristicRates rates = pathfinder.registry().activeFor(CapabilitySet.none()).rates();
+        UnboundedGoal goal = new UnboundedGoal();
+        int startX = -50;
+        int startY = FlatWorld.FLOOR_Y + 1;
+        int startZ = 0;
+
+        double hStart = goal.heuristic(startX, startY, startZ, rates);
+        double minProgress = pathfinder.minProgressBlocks() * rates.horizontal();
+        int expectedCap = (int) Math.ceil(hStart / minProgress) + 1;
+
+        SegmentedResult r = new SegmentedSearch(pathfinder)
+            .run(new FlatWorld(), startX, startY, startZ, goal, CapabilitySet.none());
+
+        assertEquals(PathOutcome.BUDGET_EXCEEDED, r.outcome());
+        assertEquals(expectedCap, r.segments(),
+            "a heuristic that stops being admissible must still terminate, at the design's own"
+                + " cap, rather than looping forever");
     }
 }
