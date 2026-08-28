@@ -328,11 +328,29 @@ sweep's own criteria (fixtures reaching `FOUND`, then quality ratio). 16 blocks 
 breaks: it is too strict a requirement for `d-cliff` and `a-big-obstacle`, and both return an empty
 `BUDGET_EXCEEDED` where a useful segment existed — exactly the failure mode §6 names above.
 
-**Chosen: 8.0 blocks.** With 1, 2, 4 and 8 exactly tied, 8 is the largest of them — the strictest
-requirement for what counts as a worthwhile backoff candidate that the sweep still proves safe,
-with no quality cost measured anywhere in that range, and the value furthest below the 16-block
-threshold the sweep proved unsafe. `AStarPathfinder.DEFAULT_MIN_PROGRESS_BLOCKS` is set to it, and
-its javadoc's PROVISIONAL paragraph is replaced with this measurement.
+**The sweep does not pick a winner among 1, 2, 4 and 8 — the plan's stated tie-break (lowest
+quality ratio) does not discriminate, because the ratios are identical, not merely close.** The
+choice has to be made on grounds outside the sweep:
+
+- **The risk either side of the tie is asymmetric.** Too large is a functional failure — at 16,
+  two of three fixtures return an empty `BUDGET_EXCEEDED`, meaning no node qualified and the run
+  produced nothing walkable. Too small has no measured cost anywhere in the tied range. When one
+  direction fails outright and the other has never cost anything measurable, the safer seat is
+  further from the cliff.
+- **Every other piece of evidence in this branch was measured at 4.0.** §2.1's whole comparison
+  table, the throwaway prototype that reversed D2, `BackoffTest`'s in-game-derived cost assertions,
+  and `SegmentedSearchTest`'s mutation-checked `274.41707435261833` all predate this sweep and were
+  all gathered at the old default. Shipping a different tied value, for no measured benefit, would
+  weaken every one of those claims' connection to the code that now ships.
+- **Vertical terrain is expected to bite the margin harder than these three fixtures show.** §11
+  records `h` reaching only about 45% of true cost on a climbing route, so on vertical terrain a
+  given `h` improvement demands much more real movement than these fixtures' quality ratios
+  suggest — a stricter margin fails there first, and none of the three swept fixtures is that case.
+
+**Chosen: 4.0 blocks** — two doublings short of the 16-block failure rather than one, and the
+value the rest of the branch's evidence already stands on. `AStarPathfinder.DEFAULT_MIN_PROGRESS_BLOCKS`
+is set to it, and its javadoc's PROVISIONAL paragraph is replaced with this measurement, stated
+honestly as a judgment call on an exact tie rather than as the sweep's unique answer.
 
 ### 6.2 The budget, chosen without the millisecond figure
 
@@ -521,11 +539,14 @@ not. Each must map to a named failing test; any that fails to fail is a gap.
    `-Xdoclint:all,-missing -Xwerror` and `:test` never runs it, so a green `:test` can hide a broken
    build.
 2. ✅ **Done.** `minProgress` has a committed sweep table (§6.1), produced by §6's metric over three
-   of the §7.1 fixtures, choosing 8.0 blocks. There is no `C` to calibrate — D2's reversal removed
-   it. The default node budget is not from the sweep either: §7.1.2 shows replayed expansion counts
-   are fiction, so it is set (§6.2) from the §6 table of per-route expansion needs and the direct
-   200,000-budget probe of 2026-08-26, not from a millisecond figure — that instrumentation has not
-   yet been run in a client, and criterion 6 below remains unticked for exactly that reason.
+   of the §7.1 fixtures. The sweep itself ties exactly across 1, 2, 4 and 8 blocks; 4.0 is chosen
+   as a judgment call outside the sweep — furthest of the tied values from the 16-block failure and
+   the value the rest of the branch's evidence was measured under (§6.1). There is no `C` to
+   calibrate — D2's reversal removed it. The default node budget is not from the sweep either:
+   §7.1.2 shows replayed expansion counts are fiction, so it is set (§6.2) from the §6 table of
+   per-route expansion needs and the direct 200,000-budget probe of 2026-08-26, not from a
+   millisecond figure — that instrumentation has not yet been run in a client, and criterion 6
+   below remains unticked for exactly that reason.
 3. ✅ **Done at spec time.** Five real-terrain probe dumps are committed under
    `core-pathfinder/src/test/resources/terrain/`, with per-fixture replay fidelity verified by
    execution and recorded in §7.1.

@@ -54,18 +54,22 @@ public final class AStarPathfinder {
      * multiplied by {@code HeuristicRates.horizontal()} at search time, so it stays meaningful
      * when a changed movement set changes the cheapest rate.
      *
-     * <p>8.0, from {@code MinProgressSweepTest}'s table (design §6): margins of 1, 2, 4 and 8
+     * <p>4.0, from {@code MinProgressSweepTest}'s table (design §6.1): margins of 1, 2, 4 and 8
      * blocks reached {@code FOUND} on all three fixtures swept ({@code d-cliff},
      * {@code b-cave-climb}, {@code a-big-obstacle}) at identical quality ratios — 1.000, 1.476 and
      * 1.064 respectively, bit-for-bit the same across that whole range because the same backoff
      * candidate cleared every margin up to 8. 16 blocks broke two of the three fixtures, returning
      * an empty {@code BUDGET_EXCEEDED} where a useful segment existed — the failure mode this
-     * constant exists to avoid. With 1, 2, 4 and 8 tied exactly on both of the sweep's criteria
-     * (fixtures reaching {@code FOUND}, then quality ratio), 8 is chosen as the largest of the
-     * tied values: the strictest requirement for what counts as a worthwhile backoff candidate
-     * that the sweep still proves safe, with no quality cost measured anywhere in that range.
+     * constant exists to avoid. The sweep does not pick a unique winner: 1, 2, 4 and 8 are an
+     * exact tie on both of its own criteria (fixtures reaching {@code FOUND}, then quality ratio),
+     * so the choice among them is a judgment call made on grounds outside the sweep. The risk
+     * either side of the tie is asymmetric — too large fails outright at 16, too small has no
+     * measured cost anywhere in the tied range — so 4.0 is kept: two doublings short of the
+     * failure at 16 rather than one, and the value every other piece of evidence in this branch
+     * was measured under, including {@code BackoffTest}'s in-game-derived cost assertions and
+     * {@code SegmentedSearchTest}'s mutation-checked {@code 274.41707435261833}.
      */
-    public static final double DEFAULT_MIN_PROGRESS_BLOCKS = 8.0;
+    public static final double DEFAULT_MIN_PROGRESS_BLOCKS = 4.0;
 
     private final int nodeBudget;
     private final IMovementRegistry registry;
