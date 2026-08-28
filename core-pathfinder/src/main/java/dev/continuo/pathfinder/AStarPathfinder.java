@@ -27,9 +27,10 @@ import java.util.PriorityQueue;
  * independent and are tested apart: {@code QueuedNodeOrderTest} pins the comparator's three legs,
  * and a golden-path fixture pins the movement iteration order.
  *
- * <p><b>The node budget is a stopping condition, not a fallback.</b> Exhausting it yields
- * {@link PathOutcome#BUDGET_EXCEEDED} and no path at all. Returning the best node reached so far
- * is incremental cost backoff, which is C4's subject and not something to half-build here.
+ * <p><b>The node budget is a stopping condition with a fallback.</b> Exhausting it yields
+ * {@link PathOutcome#PARTIAL} and the path to the reached node closest to the goal, provided one
+ * beat the start by {@code minProgressBlocks}; otherwise {@link PathOutcome#BUDGET_EXCEEDED} and
+ * no path. Chaining those segments into a run is {@code SegmentedSearch}.
  */
 public final class AStarPathfinder {
 
@@ -41,8 +42,22 @@ public final class AStarPathfinder {
      */
     public static final int DEFAULT_NODE_BUDGET = 100000;
 
+    /**
+     * How much closer to the goal a backoff candidate must be, in blocks, when none is given.
+     *
+     * <p>In blocks rather than ticks because blocks are the unit a person reasons in; it is
+     * multiplied by {@code HeuristicRates.horizontal()} at search time, so it stays meaningful
+     * when a changed movement set changes the cheapest rate.
+     *
+     * <p>PROVISIONAL until Task 6's sweep replaces it. Any positive value is correct for
+     * termination — the design's proof holds for all of them — so this affects how often a segment
+     * is offered, never whether a run ends.
+     */
+    public static final double DEFAULT_MIN_PROGRESS_BLOCKS = 4.0;
+
     private final int nodeBudget;
     private final IMovementRegistry registry;
+    private final double minProgressBlocks;
 
     /**
      * The registry a pathfinder uses when given none: {@code walk.traverse}, {@code walk.ascend},
@@ -91,14 +106,40 @@ public final class AStarPathfinder {
      * @throws IllegalArgumentException if the budget is not positive or the registry is null
      */
     public AStarPathfinder(int nodeBudget, IMovementRegistry registry) {
+        this(nodeBudget, registry, DEFAULT_MIN_PROGRESS_BLOCKS);
+    }
+
+    /**
+     * @param nodeBudget the most nodes that may be expanded before giving up; must be positive
+     * @param registry the movements this pathfinder may use; never {@code null}
+     * @param minProgressBlocks how much closer a backoff candidate must be; must be positive
+     * @throws IllegalArgumentException if the budget or the margin is not positive, or the
+     *         registry is null
+     */
+    public AStarPathfinder(int nodeBudget, IMovementRegistry registry, double minProgressBlocks) {
         if (nodeBudget <= 0) {
             throw new IllegalArgumentException("nodeBudget must be positive, got " + nodeBudget);
         }
         if (registry == null) {
             throw new IllegalArgumentException("registry must not be null");
         }
+        if (!(minProgressBlocks > 0.0)) {
+            throw new IllegalArgumentException(
+                "minProgressBlocks must be positive, got " + minProgressBlocks);
+        }
         this.nodeBudget = nodeBudget;
         this.registry = registry;
+        this.minProgressBlocks = minProgressBlocks;
+    }
+
+    /** @return the movements this pathfinder uses; for {@code SegmentedSearch} */
+    IMovementRegistry registry() {
+        return registry;
+    }
+
+    /** @return the backoff margin in blocks; for {@code SegmentedSearch} */
+    double minProgressBlocks() {
+        return minProgressBlocks;
     }
 
     /**
@@ -140,6 +181,10 @@ public final class AStarPathfinder {
         final HeuristicRates rates = active.rates();
         final List<IMovementType> moves = active.movements();
 
+        final double hStart = goal.heuristic(startX, startY, startZ, rates);
+        final SegmentSelector selector =
+            new SegmentSelector(hStart, minProgressBlocks * rates.horizontal());
+
         final Map<Long, PathNode> nodes = new HashMap<Long, PathNode>();
         final List<Pos> expanded = new ArrayList<Pos>();
         final int[] discovered = {0};
@@ -170,10 +215,20 @@ public final class AStarPathfinder {
             final int cz = Pos.unpackZ(current.packed);
             expanded.add(new Pos(cx, cy, cz));
 
+            // h is recomputed rather than taken as entry.f - entry.g. The subtraction is exact,
+            // but only by an argument about stale heap entries, and this project's reviews exist
+            // to catch invariants that subtle. The saving is arithmetic that reads no world.
+            selector.consider(current.packed, goal.heuristic(cx, cy, cz, rates));
+
             if (goal.isReached(cx, cy, cz)) {
                 return new PathResult(PathOutcome.FOUND, reconstruct(current), expanded, current.g);
             }
             if (expanded.size() >= nodeBudget) {
+                if (selector.hasCandidate()) {
+                    PathNode best = nodes.get(Long.valueOf(selector.candidate()));
+                    return new PathResult(PathOutcome.PARTIAL,
+                        reconstruct(best), expanded, best.g);
+                }
                 return new PathResult(PathOutcome.BUDGET_EXCEEDED,
                     Collections.<Pos>emptyList(), expanded, 0.0);
             }
