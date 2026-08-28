@@ -55,6 +55,12 @@ design"* — applied one sub-project later.
 
 C3 §9's inheritance therefore passes through C4 untouched, not solved and not started.
 
+**Resolved 2026-08-26 — see §13.2.** The number came in at **110–173 ms against a 50 ms tick**,
+above the 80 ms this section named as the threshold at which cross-tick becomes the most urgent
+thing in the project. The deferral is spent: cross-tick search is now justified by measurement, and
+C3 §9's inheritance goes with it to the next sub-project. C4 still does not make a search span
+ticks — it produced the evidence that says something should.
+
 ## 2. Decisions
 
 Every row was decided with the owner during the 2026-08-26 brainstorm.
@@ -556,11 +562,10 @@ not. Each must map to a named failing test; any that fails to fail is a gap.
    execution and recorded in §7.1.
 4. Existing test files changed by addition only; `FOUND` and `NO_PATH` behaviour identical.
 5. Every mutation in §9.1 executed, with its result recorded in the merge commit.
-6. **One in-game run** in which the probe reaches, in *n* segments, a goal that a single search
-   cannot reach at all — with milliseconds reported. **The route is already chosen and already
-   proven to defeat a single search:** `e-long-range`'s (1626, 62, −863) → (1737, 72, −786), which
-   returned `BUDGET_EXCEEDED` at 10,000 expansions on 2026-08-26. The criterion is met when that
-   same goal is reached by segmentation, so it needs no budget lowered and no case induced.
+6. ✅ **Done 2026-08-26, 21:03.** `(1588, 71, −967) → (1737, 72, −786)`: `FOUND` in **2 segments**,
+   245 steps, cost 1169.89, 25,053 expansions, **164.0 ms**. The first segment exhausted the full
+   25,000-node budget, so a single search at this budget provably cannot reach that goal — and
+   segmentation did. Milliseconds reported. See §13.
 
 ## 11. Carried forward, not solved here
 
@@ -594,6 +599,70 @@ not. Each must map to a named failing test; any that fails to fail is a gap.
 | ~~Segmentation solves a problem that does not occur~~ | **Closed by the same run.** The premise was an extrapolation from `a-big-obstacle` spending 4,445 expansions to travel 17 blocks. It is now a measurement, and the shape it predicted held: six times the distance over comparable terrain is past the ceiling |
 | ~~`C` unrepresentative of long routes~~ | **Dissolved by D2's reversal.** There is no coefficient to fit. `minProgress` remains, but §2.1 shows it changing failure *mode* rather than success, and the termination proof holds for any positive value |
 | Segmentation rarely exercised once the budget is raised | The honest consequence of D9. If 25,000 puts every real route inside one search, `PARTIAL` becomes a path few runs take, and untaken paths rot. Mitigated by the §7.2 traps and the driver's headless tests, which exercise it at induced small budgets regardless of what the shipped budget is |
-| The raised budget is unaffordable in ms | The one genuinely open question, and the reason §8's instrumentation is task one rather than task last. 17,423 expansions with 1.29M snapshot reads froze the client visibly during the 200,000-budget run. If 25,000 costs more than a frame, D9's answer weakens and cross-tick — §1.2's deferral — becomes the next sub-project rather than a someday |
+| ~~The raised budget is unaffordable in ms~~ | **Measured 2026-08-26 — and it lands on the wrong side.** A full-budget search costs 110–173 ms against a 50 ms tick, so a search blocks the client for **2 to 3.5 ticks**. The budget is affordable for a dev keypress and is *not* affordable inside a tick. D9 stands, cross-tick stops being a someday, and §13 has the numbers |
 | Timing measured on the client thread is noisy | Accepted. The figure is needed to distinguish 3 ms from 80 ms, not to resolve 3 ms from 4 ms |
 | Segmented routes materially worse than optimal | §6's ratio is exactly this quantity, measured rather than hoped. If it comes out badly, that is a finding about the rule and reopens D2 |
+
+## 13. In-game verification, 2026-08-26
+
+Three probe runs to the same goal `(1737, 72, −786)` from three different starts, all at the
+shipped 25,000-node budget. This is the section §1.2 promised and could not write.
+
+| # | start | outcome | segments | steps | expanded | cost | ms | snapshot |
+|---|---|---|---|---|---|---|---|---|
+| 1 | (1626, 62, −863) | `FOUND` | 1 | 151 | 17,421 | 818.98 | **109.9** | 97,544 pos / 1,291,697 reads (13.2×) |
+| 2 | (1540, 64, −972) | `BUDGET_EXCEEDED` | 3 | 390 | 75,000 | 1897.60 | **172.8** | 329,526 pos / 5,306,189 reads (16.1×) |
+| 3 | (1588, 71, −967) | `FOUND` | **2** | 245 | 25,053 | 1169.89 | **164.0** | 145,032 pos / 1,841,888 reads (12.7×) |
+
+### 13.1 Criterion 6, discharged by run 3
+
+Run 3's first segment exhausted the full 25,000-node budget, so a single search at the shipped
+budget provably cannot reach that goal. Segmentation reached it in two. The second segment took
+**53 expansions** — 25,053 total minus the 25,000 the first spent — which is the backoff rule
+behaving exactly as designed: lowest `h` lands the segment end as close to the goal as anything the
+search saw, and from there the goal was 53 expansions away.
+
+Run 1 confirms D9 from the other side. The same route that returned `BUDGET_EXCEEDED` at 10,000 is
+now a **single** search at 25,000, no segmentation involved. Raising the budget, not segmenting, is
+what solved it — which is what D9 says and §6 chose the number for.
+
+Run 2 is I1's contract in the wild: `BUDGET_EXCEEDED` carrying 390 steps and 1897.60 ticks of real
+progress. Three segments each exhausted 25,000 and the third found nothing clearing `minProgress`,
+so the run stopped rather than looping. Graceful degradation, and the fail-safe path, both observed
+in a real world for the first time.
+
+### 13.2 The millisecond figure reopens §1.2
+
+**A Minecraft tick is 50 ms. These searches cost 110–173 ms.** A full-budget search therefore
+blocks the client for **2 to 3.5 ticks**. §1.2 deferred cross-tick search on the grounds that its
+premise — "don't stutter the game" — was unmeasured, and reasoned that at 3 ms the machinery buys
+nothing while at 80 ms it is the most urgent thing in the project. The measurement came in above
+that upper bound.
+
+So the deferral is spent. Cross-tick search, and with it the whole of C3 §9's inheritance —
+snapshot lifetime, `seal()`'s retained `live` reference and the level it pins,
+discard-on-level-transition — is now justified by evidence rather than suspicion, and is the
+natural next sub-project. C4 was built to produce this number and hand the decision to it.
+
+Note what is *not* implied: the 25,000 budget is not wrong. It is right for a dev keypress and for
+any caller that can afford to block, and D9's argument for it is unaffected. What it cannot do is
+run inside a tick, which is a different question with a different answer.
+
+### 13.3 Two observations worth recording rather than acting on
+
+**Wall-clock does not scale with expansions.** Run 2 expanded 4.3× as many nodes as run 1 for 1.57×
+the time — 2.30 µs per expansion against run 1's 6.31 µs. The cause is visible in the snapshot
+column: run 2's three segments re-search ground the shared snapshot has already memoised, so its
+repeat factor rises to 16.1× and later expansions cost arithmetic rather than SPI calls. Run 3 does
+*not* show the effect, because its second segment was only 53 expansions long and never warmed
+anything. Search cost is dominated by first-touch world reads, not by the search. That makes
+segmentation's re-search overhead far cheaper than a naive expansion count suggests, and it is a
+second payoff from C3's design that C3 could not have measured.
+
+**Run 1's expansion count moved by two.** The same route measured 17,423 expansions on 2026-08-26
+at a 200,000 budget and 17,421 here, with the path cost bit-identical at 818.9833554453832 both
+times. An identical cost from a different expansion count means the same optimal route was found
+after marginally different exploration — consistent with a small world difference between the runs
+(a mob, a block update, chunk load state), not with a change in the search. Recorded rather than
+chased: the determinism guarantee is over an identical world, and these two worlds were not quite
+identical.
