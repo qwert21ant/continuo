@@ -1,7 +1,7 @@
 # C4 — Segmentation design
 
 **Date:** 2026-08-26
-**Status:** 🟡 Drafted — brainstormed with the owner on 2026-08-26, awaiting review
+**Status:** 🟢 Approved — brainstormed with the owner on 2026-08-26; D2 reversed on measurement the same day
 **Milestone:** M4 (C), fourth and last of four sub-projects
 **Depends on:** C1 (`2026-08-15-c1-pathfinder-core-design.md`) — the search, the budget seam, the
 determinism requirement; C1a (`2026-08-25-c1a-heuristic-rates-design.md`) — `HeuristicRates`
@@ -32,6 +32,12 @@ to the target — is worse in exactly the way Minecraft terrain is unkind: an in
 lands inside a mountain or over a ravine as often as not, and a search toward an unreachable
 waypoint is wasted whole.
 
+**What segmentation is *not*, per D9.** It does not make an arbitrarily distant goal reachable on a
+small budget. §2.1 measures backoff reaching the goal only when the budget is a large fraction of
+what the search needs, and failing below roughly 70% of it. The primary answer to a far goal is an
+adequate budget; segmentation is what keeps the bot moving usefully when even that is exceeded.
+This was not the framing C4 was scoped with, and the correction came from measurement.
+
 ### 1.2 Cross-tick search is deferred, and why
 
 The owner's third driver was *"don't stutter the game"*. It rests on a premise nothing in this
@@ -56,13 +62,53 @@ Every row was decided with the owner during the 2026-08-26 brainstorm.
 | # | Decision | Choice | Why |
 |---|---|---|---|
 | D1 | C4's scope | Segmentation + backoff + budget policy + wall-clock instrumentation. Cross-tick deferred | §1.2 — its premise is unmeasured and its consumer (M5) does not exist |
-| D2 | Backoff rule | Minimise `h + g/C` among eligible nodes | Lowest `h` alone walks into dead-end pockets and rewards routes that wandered; `g` is the penalty that prices the wandering |
-| D3 | Livelock guard | Eligibility on **heuristic progress**, not path length | §3.4 — progress admits a termination proof; length does not |
+| D2 | Backoff rule | **Lowest `h` among eligible nodes.** No cost term, no coefficient | **Reversed on measurement — see §2.1.** The original choice, `h + g/C`, fails to reach the goal on every fixture at every budget; only `C = ∞` arrives. Penalising `g` prefers nodes near the *start*, which is what produces timid segments, dead-end pockets and ping-pong |
+| D3 | Livelock guard | Eligibility on **heuristic progress**, not path length or cost | §3.4 — progress admits a termination proof; neither alternative does. §2.1 measures the difference: with the cost guard the same scoring livelocks |
 | D4 | Result contract | New `PathOutcome.PARTIAL` | Additive. No existing outcome changes meaning, and a caller handling only `FOUND` cannot mistake a segment for a complete path |
 | D5 | Open-set exhaustion | No backoff — `NO_PATH` unchanged | YAGNI. In a real world the open set empties only when the bot is boxed in, where walking to the nearest corner is worthless. Keeps the one definitive "give up permanently" signal |
 | D6 | Stopping condition | Stays counted in **nodes**. Milliseconds are reported, never consulted | C1 §5.1 makes determinism a hard requirement; a wall-clock stop makes every path assertion flaky |
 | D7 | Calibration terrain | Both: committed real-terrain dumps set the constants, synthetic traps prove the rule | §6 — synthetic-only is circular, real-only may never contain the failure mode |
 | D8 | Segmented driver | In scope, as a pure class in `:core-pathfinder` | §5 — without it nothing exercises segmentation and the calibration metric has no numerator |
+| D9 | What segmentation is for | **Graceful degradation, not range.** The primary answer to a far goal is an adequate budget | §2.1 — backoff reaches the goal only when the budget is a large fraction of what the search needs. The 111-block route needs 17,423 expansions; a budget above that solves it outright |
+
+D2 and D9 were settled on 2026-08-26 by measurement rather than discussion, and both reverse what
+the brainstorm concluded. §2.1 is the evidence.
+
+## 2.1 The measurement that reversed D2
+
+Before this plan was written, the backoff rule was prototyped in a throwaway harness and swept
+across the three replayable fixtures, four budgets expressed as fractions of what each fixture's
+search actually needs, seven values of `C`, and three eligibility rules. The house rule that
+fixtures are executed before being written into a plan is what produced this; the design as
+originally specced does not work.
+
+**`a-big-obstacle` is the discriminator** (optimal cost 514.48, needs 1,247 expansions):
+
+| rule | budget 39% | 56% | 69% | 84% |
+|---|---|---|---|---|
+| `h + g/C`, any finite `C`, h-progress guard | fails, cost 22–42 | fails | fails | fails |
+| `h + g/C`, any finite `C`, cost guard | livelock, cost 3,656–4,698 | livelock | livelock | livelock |
+| **lowest `h`, h-progress guard** | fails safe | fails safe | fails safe | **FOUND, 2 segments, 547.39 (ratio 1.064)** |
+
+Three findings, all of which changed the design:
+
+1. **A cost term makes the rule worse, not safer.** §2's original D2 argued that lowest `h` alone
+   would walk into dead-end pockets and reward wandering routes. The opposite happens. Penalising
+   `g` biases selection toward nodes near the *start*, producing segments too timid to commit —
+   and on `d-cliff` it is precisely the finite-`C` runs that walk into a pocket and return
+   `NO_PATH`, at every budget up to 69%, while lowest `h` does not.
+2. **The eligibility guard earns its place, and the cost-based alternative does not.** Lowest `h`
+   with the h-progress guard never livelocks; when it cannot proceed it returns
+   `BUDGET_EXCEEDED` with no path, which is a safe failure. Lowest `h` with a cost guard
+   livelocked on `d-cliff` below 84%.
+3. **Backoff is not a substitute for budget.** Every failure sits below roughly 70% of the
+   expansions the search needs, and every success at or above it. This is what D9 records.
+
+`d-cliff` at 84% is the design working as intended: `FOUND` in 2 segments at cost 274.42 against
+an unsegmented optimal of 274.42 — a ratio of **1.000**.
+
+**The prototype was deleted.** It proved a design claim, not a behaviour anyone ships, and keeping
+it would leave a second copy of the search loop to drift.
 
 ## 3. The mechanism
 
@@ -70,12 +116,14 @@ Every row was decided with the owner during the 2026-08-26 brainstorm.
 
 ```java
 final class SegmentSelector {
-    SegmentSelector(double startH, double coefficient, double minProgress);
-    void consider(long packed, double g, double h);   // O(1), no allocation
+    SegmentSelector(double startH, double minProgress);
+    void consider(long packed, double h);   // O(1), no allocation
     boolean hasCandidate();
     long candidate();
 }
 ```
+
+**`g` is not a parameter.** It was, until §2.1 measured what it does.
 
 Package-private in `dev.continuo.pathfinder`. It holds three doubles and a `long`, touches no
 world, and is therefore unit-testable as pure arithmetic with no fixture at all.
@@ -90,7 +138,7 @@ value it could return that a caller could not mistake for terrain.
 block — where `cx`/`cy`/`cz` and `current.g` are already in hand — adds one call:
 
 ```java
-selector.consider(current.packed, current.g, goal.heuristic(cx, cy, cz, rates));
+selector.consider(current.packed, goal.heuristic(cx, cy, cz, rates));
 ```
 
 Nothing else about the search changes. Same movement iteration, same open set, same
@@ -111,10 +159,14 @@ A node is **eligible** only if:
 h ≤ hStart − minProgress
 ```
 
-Among eligible nodes, the lowest `h + g/C` wins. The incumbent is replaced only on a **strictly**
-lower score, so ties fall to the earliest expansion — and since expansion order is already
-deterministic, so is the segment. C1 §5.1's hard determinism requirement survives untouched: an
-identical search over an identical world still returns an identical path, segment or not.
+Among eligible nodes, the lowest `h` wins. The incumbent is replaced only on a **strictly** lower
+`h`, so ties fall to the earliest expansion — and since expansion order is already deterministic, so
+is the segment. C1 §5.1's hard determinism requirement survives untouched: an identical search over
+an identical world still returns an identical path, segment or not.
+
+Note what the two rules together reduce to: **the node closest to the goal that the search reached,
+provided it is meaningfully closer than where this segment began.** That is the whole rule. It was
+offered during the brainstorm, argued against, and is now restored by measurement.
 
 **The start node is structurally ineligible**, because its own `h` equals `hStart` and
 `minProgress` is positive. A zero-length segment cannot be returned by construction rather than by
@@ -132,10 +184,13 @@ whose `h` is at least `minProgress` below the `h` the search started from, and t
 starts *at that node* — so `hStart` falls by at least `minProgress` every segment, and `h` is
 bounded below by zero. **A run needs at most `hStart / minProgress` segments.**
 
-This is a bound, not an expectation, and it holds for **any** value of `C`. `C` decides which good
-candidate wins; it never decides whether progress happened. Miscalibrating `C` costs path quality
-and cannot cause a livelock. A path-length guard — Baritone's rule, and this design's first draft —
-gives no comparable bound, because a long segment can circle back to where it began.
+This is a bound, not an expectation. §2.1 measures what it is worth in practice: the guard is the
+difference between failing safe and livelocking, and it is why D3 survived D2's reversal intact.
+
+Both alternatives were measured and neither bounds anything. A **path-length** guard — Baritone's
+rule, and this design's first draft — permits a long segment that circles back to where it began. A
+**cost** guard permits the same, and §2.1 shows it doing exactly that: 200 segments and cost 3,656
+against an optimal of 514.
 
 ### 3.5 A consequence, not a deferred risk
 
@@ -186,21 +241,22 @@ quiet stop, because a silent cap would hide exactly the bug it exists to survive
 
 ## 6. Calibration
 
-**`C` gets an objective function, not a judgement call.** The rule degenerates predictably at both
-ends: as `C → ∞` the `g` term vanishes and it collapses into min-`h`, the rule D2 rejected; as
-`C → 0` cost dominates and it picks the cheapest node that barely clears the guard. Between them is
-a value that makes a segmented run nearly as cheap as an unsegmented one, and that ratio is the
-metric:
+**D2's reversal deleted half of this section.** With no coefficient there is nothing to trade off,
+and `quality(C)` has no argument. One constant remains.
+
+The metric is unchanged in form and still the right one:
 
 ```
-quality(C) = cost(segmented run to goal) / cost(single unbounded search)
+quality = cost(segmented run to goal) / cost(single unbounded search)
 ```
 
 Both terms are computable headlessly. The denominator is `findPath` at the existing 100,000-node
-budget; the numerator is §5's driver at an artificially small one. Sweep `C` across every committed
-route, take the value that minimises the ratio, and commit the table.
+budget; the numerator is §5's driver at a deliberately small one. §2.1 already reports it at three
+points — 1.000 on `d-cliff` at 84%, 1.064 on `a-big-obstacle` at 84%, 1.06 on `b-cave-climb` — so
+the sweep confirms and tabulates a figure the design has already been shown to achieve, rather than
+discovering it.
 
-`minProgress` sweeps the same way against a different failure: too large and nothing qualifies, so
+`minProgress` sweeps against a different failure: too large and nothing qualifies, so
 its metric is the share of budget-exhausted searches that return an empty `BUDGET_EXCEEDED` where a
 useful segment existed.
 
@@ -218,9 +274,22 @@ and §1.2 defers the cross-tick decision to. So the budget is set from in-game e
 run that discharges §10's criterion 6, and the javadoc promise is discharged there — not from the
 headless sweep.
 
-The seven in-game runs of 2026-08-26 bound it from below in the meantime: the hardest, a large
-obstacle spanning 17 blocks, used 4,445 expansions, so 10,000 is not yet demonstrably too small for
-short-range goals. What no run has yet produced is a real `BUDGET_EXCEEDED`.
+**And D9 makes it the most consequential number in C4.** Since backoff only reaches the goal when
+the budget is a large fraction of what the search needs (§2.1), the budget is no longer a
+tie-breaker between failure modes — it is the primary mechanism, and segmentation is the safety net
+behind it. The evidence bounds it directly:
+
+| route | expansions needed | 10,000 is |
+|---|---|---|
+| `c-short-hop` | 94 | 106× over |
+| `d-cliff` | 2,082 | 4.8× over |
+| `b-cave-climb` | 3,474 | 2.9× over |
+| `a-big-obstacle` | 4,445 | 2.2× over |
+| **111-block route** | **17,423** | **57% of need — short** |
+
+A budget of 25,000 puts every route measured so far inside a single search, the 111-block one at
+143%. That is the shape of the answer; the millisecond figure decides whether the client can afford
+it, which is why §8's instrumentation is built before the budget is chosen and not after.
 
 ## 7. Fixtures
 
@@ -243,7 +312,7 @@ overlays parse back as air, which is correct — they mark feet positions, which
 | `b-cave-climb` | cave then a 39-block climb | (350,69,-770) → (344,108,-779) | 6, **39**, 9 | 3,474 | Yes |
 | `c-short-hop` | short hop, 0 `?` cells | (282,70,-772) → (281,72,-773) | 1, 2, 1 | 94 | Yes |
 | `d-cliff` | large cliff | (710,119,-1078) → (702,121,-1068) | 8, 2, 10 | 2,082 | Yes |
-| `e-long-range` | same terrain, 111 blocks out | (1626,62,-863) → (1737,72,-786) | **111**, 10, 77 | **10,000 — `BUDGET_EXCEEDED`** | No — clamped, see §7.1.1 |
+| `e-long-range` | same terrain, 111 blocks out | (1626,62,-863) → (1737,72,-786) | **111**, 10, 77 | **17,423** (`BUDGET_EXCEEDED` at 10,000) | No — clamped, see §7.1.1 |
 
 "Replays exactly" means outcome, step count and cost to sixteen digits, verified by running each
 through `AStarPathfinder` at the same 10,000-node budget. `b`, `c` and `d` reproduce their captured
@@ -262,6 +331,13 @@ project's history**, across every route C3 and C4 have measured, and it confirms
 other four fixtures suggested: search effort is driven by terrain difficulty and distance together,
 not by either alone. `a-big-obstacle` spent 4,445 expansions to travel 17 blocks; six times the
 distance over comparable terrain is past the ceiling.
+
+**Re-run at a 200,000 budget, the same route returns `FOUND` in 17,423 expansions** — 151 steps,
+cost 818.98, snapshot 97,560 positions / 1,291,886 reads at **13.2×**, the highest repeat factor
+this project has recorded. That number is why C4 has the shape it does. The budget was not an order
+of magnitude short, it was at 57% of need, which §2.1 places right at the edge of where backoff
+starts working and D9 turns into "raise the budget". A route needing 200,000 would have re-scoped
+C4 entirely.
 
 **It cannot replay, and no re-run at current settings would help.** `ProbeBounds.MAX_EXTENT` is 64
 and a clamped axis is anchored on the start, so the window is x[1624..1687] and the goal's x of
@@ -310,12 +386,15 @@ says so explicitly.
 
 ### 7.2 Synthetic traps
 
-Three text-art worlds, each isolating one thing that real terrain may or may not happen to contain:
+**D2's reversal repurposed these.** They were drafted to pin the *scoring* rule — an alcove min-`h`
+was supposed to fall into, a wandering route `g` was supposed to price. §2.1 measured both
+predictions as false, so pinning them would pin fiction. What actually needs pinning is the
+**guard**, because §2.1 shows the guard is the load-bearing half.
 
 | Fixture | What it pins |
 |---|---|
-| **Dead-end alcove** | A deep pocket beside the goal that min-`h` walks into and `h + g/C` refuses |
-| **Wandering route** | A long detour buying little `h` for much `g`, against a shorter honest approach |
+| **Local minimum** | A pocket whose `h` is low but from which the goal requires moving *away* first. The run must return `BUDGET_EXCEEDED` with no path — failing safe — rather than looping. This is the failure §2.1 found on `a-big-obstacle`, reduced to a world small enough to reason about |
+| **Two-segment corridor** | A route solvable in exactly two segments at a chosen budget, asserting the concatenation is contiguous, that `h` strictly fell between segments, and that the total cost matches the unsegmented optimum |
 | **Boxed start** | Nothing clears `minProgress`, pinning the empty-`BUDGET_EXCEEDED` branch that would otherwise never execute |
 
 Per the process note that earned its keep in C3: **each fixture is executed before it is written
@@ -371,20 +450,22 @@ not. Each must map to a named failing test; any that fails to fail is a gap.
 
 | Mutation | Expected to break |
 |---|---|
-| Delete the eligibility guard | The convergence and no-candidate tests |
-| Relax the strict `<` in the score comparison to `<=` | Determinism |
-| Transpose `h` and `g` in the score | The wandering-route trap |
-| Return the most recent qualifying candidate, not the best | The dead-end-alcove trap |
-| Return `PARTIAL` on open-set exhaustion | D5's `NO_PATH` contract test |
+| Delete the eligibility guard | The local-minimum trap — this is the mutation that matters most, because §2.1 measured the guard as the difference between failing safe and livelocking |
+| Weaken the guard from `h ≤ hStart − minProgress` to `h < hStart` | The local-minimum trap, by permitting segments too small to converge |
+| Relax the strict `<` in the `h` comparison to `<=` | Determinism |
+| Return the most recent eligible candidate, not the lowest `h` | The two-segment corridor's cost assertion |
+| Make the start node eligible (drop the positivity of `minProgress`) | The zero-length-segment guarantee in §3.3 |
+| Return `PARTIAL` on open-set exhaustion | D5's `NO_PATH` contract test on `e-long-range` |
 
 ## 10. Done criteria
 
 1. `./gradlew build --rerun-tasks` green — **never `:test`**; javadoc is build-failing under
    `-Xdoclint:all,-missing -Xwerror` and `:test` never runs it, so a green `:test` can hide a broken
    build.
-2. `C` and `minProgress` each have a committed sweep table, produced by §6's metric over the §7.1
-   fixtures. The default node budget is **not** among them and is set from criterion 6's in-game
-   run instead, for the reason §7.1.2 measures.
+2. `minProgress` has a committed sweep table, produced by §6's metric over the §7.1 fixtures. There
+   is no `C` to calibrate — D2's reversal removed it. The default node budget is not from the sweep
+   either: §7.1.2 shows replayed expansion counts are fiction, so it is set from the millisecond
+   figure and the §6 table of per-route expansion needs.
 3. ✅ **Done at spec time.** Five real-terrain probe dumps are committed under
    `core-pathfinder/src/test/resources/terrain/`, with per-fixture replay fidelity verified by
    execution and recorded in §7.1.
@@ -426,6 +507,8 @@ not. Each must map to a named failing test; any that fails to fail is a gap.
 | Admissibility violated, breaking §3.4's proof | C1 §5.3 establishes admissibility as a checked numeric property, not a structural one. It holds today; the margin shrinks as `k` grows and the `k = 4` row is already negative, so raising `MAX_SAFE_FALL` from 3 to 4 would break it — and that is a change a reader would take for a routine re-derivation. §5's cap turns the resulting hang into a reported failure |
 | ~~The in-game run never exhausts the budget~~ | **Closed 2026-08-26.** Four awkward-terrain runs all returned `FOUND` at up to 44% of the budget, and this looked like C4's largest risk. A fifth run at 111 blocks over the same terrain then returned `BUDGET_EXCEEDED` at 10,000 expansions — §7.1.1. Criterion 6 needs no induced exhaustion; the route is known |
 | ~~Segmentation solves a problem that does not occur~~ | **Closed by the same run.** The premise was an extrapolation from `a-big-obstacle` spending 4,445 expansions to travel 17 blocks. It is now a measurement, and the shape it predicted held: six times the distance over comparable terrain is past the ceiling |
-| `C` unrepresentative of long routes | The live version of the risk the two rows above used to carry. Calibration runs on `b` and `d` with an induced small budget, because §7.1.1's long-range fixture has no reachable goal to serve as a denominator — so `C` is fitted on short routes and applied to long ones. §7.1.1 names the lever if it shows: raise `ProbeBounds.MAX_EXTENT` to about 128 and capture a route that fits whole |
+| ~~`C` unrepresentative of long routes~~ | **Dissolved by D2's reversal.** There is no coefficient to fit. `minProgress` remains, but §2.1 shows it changing failure *mode* rather than success, and the termination proof holds for any positive value |
+| Segmentation rarely exercised once the budget is raised | The honest consequence of D9. If 25,000 puts every real route inside one search, `PARTIAL` becomes a path few runs take, and untaken paths rot. Mitigated by the §7.2 traps and the driver's headless tests, which exercise it at induced small budgets regardless of what the shipped budget is |
+| The raised budget is unaffordable in ms | The one genuinely open question, and the reason §8's instrumentation is task one rather than task last. 17,423 expansions with 1.29M snapshot reads froze the client visibly during the 200,000-budget run. If 25,000 costs more than a frame, D9's answer weakens and cross-tick — §1.2's deferral — becomes the next sub-project rather than a someday |
 | Timing measured on the client thread is noisy | Accepted. The figure is needed to distinguish 3 ms from 80 ms, not to resolve 3 ms from 4 ms |
 | Segmented routes materially worse than optimal | §6's ratio is exactly this quantity, measured rather than hoped. If it comes out badly, that is a finding about the rule and reopens D2 |
