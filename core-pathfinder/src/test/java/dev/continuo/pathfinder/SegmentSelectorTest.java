@@ -93,4 +93,22 @@ class SegmentSelectorTest {
             }
         });
     }
+
+    @Test
+    void infiniteStartHAndMinProgressDisableEligibilityInsteadOfAcceptingEverything() {
+        // m1: threshold is startH - minProgress, and HeuristicRates permits an infinite rate on an
+        // axis nothing travels, so both arguments here can legitimately be +Infinity -- making
+        // threshold Infinity - Infinity, which is NaN. "h > threshold" is false for every h when
+        // threshold is NaN, so that form of the guard would silently accept every offer instead of
+        // rejecting all of them. Nothing must qualify here, however extreme h is.
+        SegmentSelector s = new SegmentSelector(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+
+        s.consider(1L, 0.0);
+        s.consider(2L, Double.NEGATIVE_INFINITY);
+        s.consider(3L, 100.0);
+
+        assertFalse(s.hasCandidate(),
+            "a NaN threshold must disable the guard, not silently disable eligibility checking"
+                + " altogether");
+    }
 }

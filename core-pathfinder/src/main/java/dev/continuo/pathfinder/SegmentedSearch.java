@@ -19,6 +19,10 @@ import java.util.List;
  *
  * <p><b>Single-tick.</b> Every segment reads the same {@code BlockSource}, so nothing here holds a
  * world across ticks and none of C3's snapshot-lifetime questions apply.
+ *
+ * <p>{@code SegmentedResult.expanded()} accumulates across every segment rather than reporting only
+ * the last one, so it is bounded by roughly {@code cap × nodeBudget} entries, all allocated on the
+ * calling thread — worth naming because client cost is this sub-project's whole subject.
  */
 public final class SegmentedSearch {
 

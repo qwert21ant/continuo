@@ -212,9 +212,7 @@ public final class AStarPathfinder {
         PathNode start = new PathNode(startPacked);
         start.g = 0.0;
         nodes.put(Long.valueOf(startPacked), start);
-        open.add(new QueuedNode(
-            startPacked, goal.heuristic(startX, startY, startZ, rates), 0.0,
-            discovered[0]++));
+        open.add(new QueuedNode(startPacked, hStart, 0.0, discovered[0]++));
 
         final MutableExpansionContext ctx = new MutableExpansionContext(world);
 

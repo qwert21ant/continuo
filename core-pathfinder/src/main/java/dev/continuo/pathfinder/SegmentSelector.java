@@ -49,7 +49,15 @@ final class SegmentSelector {
      * @param h its heuristic distance to the goal
      */
     void consider(long packed, double h) {
-        if (h > threshold) {
+        // Written as !(h <= threshold) rather than h > threshold so that a NaN threshold is
+        // rejected too. threshold is startH - minProgress, and HeuristicRates permits an infinite
+        // rate on an axis nothing travels, so both startH and minProgress can themselves be
+        // +Infinity, making threshold Infinity - Infinity, which is NaN. Every comparison against
+        // NaN is false, so "h > NaN" would never reject and the guard would silently accept
+        // everything -- exactly the livelock section 2.1 measured this guard as the fix for.
+        // "!(h <= threshold)" rejects unless a candidate is provably eligible, which a NaN
+        // threshold can never make true.
+        if (!(h <= threshold)) {
             return;
         }
         if (h < bestH) {

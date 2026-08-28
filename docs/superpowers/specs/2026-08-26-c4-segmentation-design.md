@@ -232,8 +232,12 @@ It has two live consumers on the day it lands — the probe and §6's calibratio
 built on a guess about M5. It stays inside a single tick, so no part of C3 §9's lifetime
 inheritance leaks back into C4.
 
-The cap is `⌈hStart / minProgress⌉` — §3.4's own bound, evaluated once at the start of the run, with
-no margin added. A correct implementation can never reach it. It is belt-and-braces over the proof,
+The cap is `⌈hStart / minProgress⌉ + 1`, evaluated once at the start of the run. §3.4's bound is on
+the number of *progress-making* segments — `⌈hStart / minProgress⌉` of them, since each lowers `h`
+by at least `minProgress` and `h` cannot fall below zero — and a correct run may spend one further
+segment settling the outcome once no more progress is possible: the terminal search, which returns
+`FOUND` or `BUDGET_EXCEEDED` rather than another `PARTIAL`. The `+ 1` accounts for that terminal
+search; a correct implementation can never reach the cap. It is belt-and-braces over the proof,
 which is only as good as `h`'s admissibility, and C1 §5.3 already established that admissibility
 here is *a checked numeric property, not a structural one*. Reaching the cap therefore means the
 proof's premise has failed, and the driver says so — it is a distinct reported condition, not a
@@ -506,7 +510,7 @@ Four layers.
    boundary; strict-improvement tie-break; the no-candidate case; the structurally-ineligible start.
 2. **The three synthetic traps**, pinning the rule's behaviour against min-`h`.
 3. **The driver's convergence properties.** `h` falls monotonically across segments; the segment
-   count stays within `⌈hStart / minProgress⌉`; the concatenated route is contiguous.
+   count stays within `⌈hStart / minProgress⌉ + 1` (§5); the concatenated route is contiguous.
 4. **Regression, and D5's contract.** Every existing test file changes by addition only (§4). Plus
    one new test that pins D5 directly, on `e-long-range`: a real-terrain world whose goal lies
    outside the reachable region returns `NO_PATH` with an empty path, **not** `PARTIAL`, even
