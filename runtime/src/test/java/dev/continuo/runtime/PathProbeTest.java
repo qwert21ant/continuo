@@ -10,8 +10,11 @@ import dev.continuo.movement.CapabilitySet;
 import dev.continuo.movement.IMovementType;
 import dev.continuo.pathfinder.AStarPathfinder;
 import dev.continuo.pathfinder.BlockLegend;
+import dev.continuo.pathfinder.GoalBlock;
 import dev.continuo.pathfinder.PathOutcome;
 import dev.continuo.pathfinder.PathRenderer;
+import dev.continuo.pathfinder.SegmentedResult;
+import dev.continuo.pathfinder.SegmentedSearch;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -22,6 +25,8 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -559,6 +564,96 @@ class PathProbeTest {
             throw new AssertionError("no millisecond figure in: " + summary);
         }
         return Double.parseDouble(m.group(1));
+    }
+
+    /**
+     * The value of the {@code N.Nms} field introduced by a label in the split clause.
+     *
+     * <p>The label is quoted rather than interpolated raw, because {@code "fill ~"} is not a
+     * regular expression and the tilde is only harmless by accident.
+     */
+    private static double splitField(String summary, String label) {
+        Matcher m = Pattern.compile(Pattern.quote(label) + "([0-9]+\\.[0-9])ms").matcher(summary);
+        if (!m.find()) {
+            throw new AssertionError("no '" + label + "' figure in: " + summary);
+        }
+        return Double.parseDouble(m.group(1));
+    }
+
+    @Test
+    void theSummaryReportsWhatTheFillCostAgainstWhatTheSearchCost() {
+        // The number C5's whole mechanism turns on. C4 section 13.3 established that search cost is
+        // dominated by first-touch world reads rather than by expansions, but nothing separated the
+        // two: the three in-game runs cannot be fitted to a cost model, because run 3 took 164.0 ms
+        // with 44% of run 2's fills and a third of its expansions. Global rule 1 pins every SPI
+        // call to the main thread, so a fill cannot move off it whatever C5 decides -- which makes
+        // "how much of the elapsed time is fill" the question that chooses between a time-sliced
+        // main-thread search and an off-thread one.
+        PathProbe probe = new PathProbe(25000);
+        probe.markGoal(3000, HugeFlatWorld.WALK_Y, 3000);
+        ProbeReport report = probe.run(new HugeFlatWorld(), 0, HugeFlatWorld.WALK_Y, 0);
+
+        String summary = report.summary();
+        double setup = splitField(summary, "setup ");
+        double live = splitField(summary, "live ");
+        double first = splitField(summary, "sealed ");
+        double second = splitField(summary, "then ");
+        double fill = splitField(summary, "fill ~");
+
+        assertTrue(setup >= 0.0 && live >= 0.0 && first >= 0.0 && second >= 0.0, summary);
+        // The label pin, and the reason it is worth having: transposing setup and live is the one
+        // mutation that leaves every figure in range and every other assertion here passing, and it
+        // would invert the finding this measurement exists to produce. The split's "live" and the
+        // standalone millisecond figure are the same quantity formatted the same way, so they must
+        // agree to the digit.
+        assertEquals(msFrom(summary), live, 0.0,
+            "the split's live figure must be the same number the summary already reports as the"
+                + " elapsed time; if these differ the fields are mislabelled\n" + summary);
+        // Pins the arithmetic rather than the presence of a number. A hardcoded fill, or one
+        // computed from the first replay instead of the JIT-warm second, fails here.
+        assertEquals(live - second, fill, 0.05,
+            "the fill estimate must be the live search minus the second sealed replay\n" + summary);
+    }
+
+    @Test
+    void aSealedReplayOfAnOrdinarySearchDoesNotDiverge() {
+        // The guard that makes the split trustworthy. Every position the live search read is
+        // covered by the sealed snapshot, and A* is deterministic by construction (C1 section 5.1),
+        // so the replay must expand the same nodes in the same order and return the same route. If
+        // it ever does not, the two timings are of different searches and the split is meaningless
+        // -- so the probe says so rather than reporting a number that looks fine.
+        ProbeWorld world = new ProbeWorld();
+        PathProbe probe = new PathProbe();
+        probe.markGoal(6, ProbeWorld.WALK_Y, 0);
+
+        ProbeReport report = probe.run(world, 0, ProbeWorld.WALK_Y, 0);
+
+        assertEquals(PathOutcome.FOUND, report.outcome(), report.summary());
+        assertFalse(report.summary().contains("diverged"), report.summary());
+        assertFalse(report.map().contains("diverged"), report.map());
+    }
+
+    @Test
+    void aReplayThatDoesNotReproduceTheLiveSearchIsDetected() {
+        // The other half: the check above passes on a divergence() that always returns null, and
+        // nothing driven through run() can force a divergence, because the snapshot memoises every
+        // read and the replay therefore cannot see a different world. So the comparison is pinned
+        // directly, against two runs that genuinely differ.
+        SegmentedSearch search = new SegmentedSearch(new AStarPathfinder(25000));
+        CapabilitySet caps = CapabilitySet.of(Capability.PARKOUR);
+        ProbeWorld world = new ProbeWorld();
+        SegmentedResult six = search.run(world, 0, ProbeWorld.WALK_Y, 0,
+            new GoalBlock(6, ProbeWorld.WALK_Y, 0), caps);
+        SegmentedResult five = search.run(world, 0, ProbeWorld.WALK_Y, 0,
+            new GoalBlock(5, ProbeWorld.WALK_Y, 0), caps);
+
+        assertNull(PathProbe.divergence(six, six),
+            "a result compared with itself cannot have diverged");
+        String found = PathProbe.divergence(six, five);
+        assertNotNull(found, "two searches to different goals must be reported as divergent");
+        assertTrue(found.contains("cost"),
+            "the notice must name what differed, or a reader cannot tell a retimed search from a"
+                + " rerouted one; got: " + found);
     }
 
     @Test

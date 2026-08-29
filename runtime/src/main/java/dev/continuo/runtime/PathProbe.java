@@ -35,6 +35,18 @@ import dev.continuo.pathfinder.SegmentedSearch;
  * exists to size that budget and to settle whether a search can span a tick, which is C4's
  * deferred question.
  *
+ * <p><b>The search runs three times, and the extra two are the measurement.</b> C4 §13.2 measured
+ * a search at 110–173 ms against a 50 ms tick but could not say how much of that was reading the
+ * world rather than searching it, and the answer decides C5's mechanism: global rule 1 pins every
+ * SPI call to the main thread, so a fill cannot move off it however the search is scheduled. After
+ * the live run seals its snapshot, the same search is replayed twice against the seal. Every
+ * position the live run read is covered, so a replay makes no SPI call at all and expands the same
+ * nodes in the same order — its time is the search's own arithmetic, and the difference is the
+ * fill. Replaying twice rather than once separates a JIT warm-up from a real cost; the second
+ * figure is the one the split uses. The replays are checked against the live run field by field,
+ * so a divergence is reported rather than silently timed. This triples what a keypress costs,
+ * which a dev-only probe can afford and a bot could not.
+ *
  * <p>The mark-then-run shape is deliberate: it lets an owner walk to somewhere awkward, mark it,
  * walk back, and search across terrain they chose, without any new SPI surface for naming a
  * destination.
@@ -140,18 +152,37 @@ public final class PathProbe {
         }
 
         Pos start = new Pos(startX, startY, startZ);
+        GoalBlock target = new GoalBlock(goal.x(), goal.y(), goal.z());
+        CapabilitySet caps = CapabilitySet.of(Capability.PARKOUR);
+
+        // Built before the clock starts, and that is a correction rather than a tidy-up. This
+        // construction used to sit inside the timed region, where AStarPathfinder's constructor
+        // runs MovementRegistry.discover() -- a ServiceLoader scan that re-reads META-INF/services
+        // and, on a first press, loads and initialises the movement classes. Whatever that costs
+        // was being counted as search time in every figure C4 section 13 reports. It is timed
+        // separately below so the size of the error is on the record rather than merely removed.
+        long builtAt = System.nanoTime();
+        SegmentedSearch search = new SegmentedSearch(new AStarPathfinder(nodeBudget));
+        double setupMs = msSince(builtAt);
 
         // The search reads through a snapshot; the render below does not. A render window can be
         // 64 blocks per axis and touches each cell once, so pushing it through the snapshot would
         // add a quarter of a million entries to save nothing. The repeat reads are in the search.
         WorldSnapshot snapshot = new WorldSnapshot(world);
         long startedAt = System.nanoTime();
-        SegmentedResult result = new SegmentedSearch(new AStarPathfinder(nodeBudget)).run(
-            snapshot, startX, startY, startZ,
-            new GoalBlock(goal.x(), goal.y(), goal.z()),
-            CapabilitySet.of(Capability.PARKOUR));
-        double elapsedMs = (System.nanoTime() - startedAt) / 1000000.0;
+        SegmentedResult result = search.run(snapshot, startX, startY, startZ, target, caps);
+        double elapsedMs = msSince(startedAt);
         SealedSnapshot sealed = snapshot.seal();
+
+        // The fill/search split, measured rather than instrumented. Every position the live search
+        // read is covered by the sealed snapshot and A* is deterministic over an identical world,
+        // so replaying the same search against the seal expands the same nodes in the same order
+        // with no SPI call at all: its time is the search's own arithmetic, and the difference is
+        // what reading the world cost. Twice, because the first replay may still be JIT-warming
+        // and a warm-up counted as search time would bias the split toward "the fill dominates".
+        Replay firstReplay = replay(search, sealed, start, target, caps, result);
+        Replay secondReplay = replay(search, sealed, start, target, caps, result);
+
         PathResult combined = result.asPathResult();
 
         ProbeBounds bounds = ProbeBounds.around(world, start, goal, result.path());
@@ -169,15 +200,33 @@ public final class PathProbe {
             .append(", cost ").append(result.cost())
             .append(", ").append(start).append(" -> ").append(goal)
             .append(", budget ").append(nodeBudget)
-            .append(", ").append(String.format(java.util.Locale.ROOT, "%.1f",
-                Double.valueOf(elapsedMs))).append(" ms")
-            .append(", snapshot ").append(sealed.size()).append(" positions / ")
+            .append(", ").append(fmt(elapsedMs)).append(" ms")
+            .append(", split setup ").append(fmt(setupMs)).append("ms")
+            .append(", live ").append(fmt(elapsedMs)).append("ms")
+            .append(", sealed ").append(fmt(firstReplay.ms)).append("ms")
+            .append(" then ").append(fmt(secondReplay.ms)).append("ms")
+            .append(", fill ~").append(fmt(elapsedMs - secondReplay.ms)).append("ms");
+        if (elapsedMs > 0.0) {
+            summary.append(" (").append(Math.round(
+                100.0 * (elapsedMs - secondReplay.ms) / elapsedMs)).append("% of live)");
+        }
+        summary.append(", snapshot ").append(sealed.size()).append(" positions / ")
             .append(sealed.reads()).append(" reads");
         if (sealed.size() > 0) {
             // Locale.ROOT because this reaches a log file that gets read on other machines, and a
             // default locale writes "3,8x" where the reader expects "3.8x".
             summary.append(" (").append(String.format(java.util.Locale.ROOT, "%.1f",
                 (double) sealed.reads() / sealed.size())).append("x)");
+        }
+
+        String diverged = firstReplay.divergence != null
+            ? firstReplay.divergence : secondReplay.divergence;
+        if (diverged != null) {
+            append(summary, map, "the sealed replay diverged from the live search (" + diverged
+                + "), so the split figures above time two different searches and mean nothing."
+                + " Every position the live search read is covered by the seal and A* is"
+                + " deterministic over an identical world, so this should be impossible; treat it"
+                + " as a defect in the snapshot or in the search, not as a measurement artefact");
         }
 
         if (bounds.clamped) {
@@ -207,6 +256,83 @@ public final class PathProbe {
         }
 
         return ProbeReport.of(result.outcome(), summary.toString(), map.toString());
+    }
+
+    /** One replay of the live search against the seal: what it cost, and whether it agreed. */
+    private static final class Replay {
+
+        final double ms;
+
+        /** What differed from the live run, or {@code null} if nothing did. */
+        final String divergence;
+
+        Replay(double ms, String divergence) {
+            this.ms = ms;
+            this.divergence = divergence;
+        }
+    }
+
+    /**
+     * Runs the live search again against the sealed snapshot, timing it and checking it agreed.
+     *
+     * <p>No SPI call happens here: a {@code SealedSnapshot} holds no live source and has no method
+     * that would use one. That is the whole point — this is what the same search costs when every
+     * world read is already paid for, which is also what an off-thread search would cost.
+     */
+    private static Replay replay(SegmentedSearch search, SealedSnapshot sealed, Pos start,
+                                 GoalBlock target, CapabilitySet caps, SegmentedResult live) {
+        long at = System.nanoTime();
+        SegmentedResult again = search.run(sealed, start.x(), start.y(), start.z(), target, caps);
+        return new Replay(msSince(at), divergence(live, again));
+    }
+
+    /**
+     * What differs between a search and its replay, or {@code null} if nothing does.
+     *
+     * <p>Costs are compared bit-for-bit rather than within a tolerance, deliberately. The two runs
+     * execute identical arithmetic over identical inputs in an identical order, so any difference
+     * at all means the replay was not the same search — and a tolerance would hide exactly the
+     * small reroute that invalidates the timing while looking like rounding.
+     *
+     * <p>Package-private because nothing driven through {@link #run} can force a divergence — the
+     * snapshot memoises every read, so the replay cannot see a different world — and a check that
+     * can never fire in a test is a check that can quietly stop working.
+     */
+    static String divergence(SegmentedResult live, SegmentedResult replayed) {
+        if (live.outcome() != replayed.outcome()) {
+            return "outcome " + live.outcome() + " became " + replayed.outcome();
+        }
+        if (Double.compare(live.cost(), replayed.cost()) != 0) {
+            return "cost " + live.cost() + " became " + replayed.cost();
+        }
+        if (live.path().size() != replayed.path().size()) {
+            return "cost matched but the route is " + live.path().size() + " steps against "
+                + replayed.path().size();
+        }
+        if (live.expanded().size() != replayed.expanded().size()) {
+            return "same route and cost, but " + live.expanded().size()
+                + " nodes expanded against " + replayed.expanded().size();
+        }
+        if (live.segments() != replayed.segments()) {
+            return "same route and cost, but " + live.segments() + " segments against "
+                + replayed.segments();
+        }
+        return null;
+    }
+
+    /** Milliseconds since a {@link System#nanoTime} reading. */
+    private static double msSince(long nanos) {
+        return (System.nanoTime() - nanos) / 1000000.0;
+    }
+
+    /**
+     * One decimal place, in {@code Locale.ROOT}.
+     *
+     * <p>Not the default locale: this reaches a log file that gets read on other machines, and a
+     * default locale writes {@code "3,8"} where the reader expects {@code "3.8"}.
+     */
+    private static String fmt(double ms) {
+        return String.format(java.util.Locale.ROOT, "%.1f", Double.valueOf(ms));
     }
 
     /**
