@@ -696,31 +696,37 @@ class SliceEquivalenceTest {
 
     private static final int[] SLICE_SIZES = {1, 2, 3, 7, 64, 1000, Integer.MAX_VALUE};
 
-    private static final String WORLD = ""
-        + "origin: 0,64,0\n"
-        + "--- y=64\n"
-        + "##########\n"
-        + "##########\n"
-        + "##########\n"
-        + "##########\n"
-        + "--- y=65\n"
-        + "S........G\n"
-        + "..##..##..\n"
-        + "..##..##..\n"
-        + "..........\n";
+    /**
+     * Committed real terrain rather than a hand-written fixture, and that is a correction rather
+     * than a preference.
+     *
+     * <p>A hand-written world whose topmost slice is the one the player walks on gives every square
+     * zero head clearance: a position outside a {@code FixtureWorld}'s declared extent reads as
+     * {@code UNKNOWN}, never air, and {@code Standability.standable} requires the block above the
+     * feet to be passable. The search then returns {@code NO_PATH} over what looks like open
+     * ground — and a slice-equivalence test built on it passes vacuously, every slice size agreeing
+     * on {@code NO_PATH} after one expansion. {@code SnapshotSearchTest}'s own fixture carries the
+     * same warning. {@code d-cliff} needs 273 expansions and is pinned by {@code BackoffTest} and
+     * {@code SegmentedSearchTest} already, so it cannot quietly become unwalkable.
+     */
+    private static FixtureWorld cliff() {
+        return TerrainFixture.load("d-cliff.txt");
+    }
+
+    private static Goal goalOf(FixtureWorld world) {
+        return new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z());
+    }
 
     private static PathResult unsliced(FixtureWorld world) {
         return new AStarPathfinder(25000).findPath(world,
             world.start().x(), world.start().y(), world.start().z(),
-            new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z()),
-            CapabilitySet.none());
+            goalOf(world), CapabilitySet.none());
     }
 
     private static PathResult sliced(FixtureWorld world, int sliceSize) {
         Search search = new AStarPathfinder(25000).begin(world,
             world.start().x(), world.start().y(), world.start().z(),
-            new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z()),
-            CapabilitySet.none());
+            goalOf(world), CapabilitySet.none());
         int guard = 0;
         while (!search.advance(sliceSize)) {
             guard++;
@@ -733,8 +739,17 @@ class SliceEquivalenceTest {
 
     @Test
     void everySliceSizeProducesTheIdenticalSearch() {
-        FixtureWorld world = FixtureWorld.parse(WORLD);
+        FixtureWorld world = cliff();
         PathResult expected = unsliced(world);
+
+        // The guard that stops this test passing vacuously, and it is not hypothetical: the first
+        // fixture written for it was unwalkable, so both sides returned NO_PATH after one
+        // expansion and every assertion below held while proving nothing about slicing.
+        assertEquals(PathOutcome.FOUND, expected.outcome(),
+            "the fixture must be pathable, or this compares two NO_PATHs and passes for free");
+        assertTrue(expected.nodesExpanded() > 100,
+            "the fixture must need enough search that a slice boundary falls inside it; got "
+                + expected.nodesExpanded() + " expansions");
 
         for (int i = 0; i < SLICE_SIZES.length; i++) {
             int slice = SLICE_SIZES[i];
@@ -754,11 +769,10 @@ class SliceEquivalenceTest {
 
     @Test
     void aSearchThatHasNotFinishedRefusesToGiveAResult() {
-        FixtureWorld world = FixtureWorld.parse(WORLD);
+        FixtureWorld world = cliff();
         final Search search = new AStarPathfinder(25000).begin(world,
             world.start().x(), world.start().y(), world.start().z(),
-            new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z()),
-            CapabilitySet.none());
+            goalOf(world), CapabilitySet.none());
 
         assertFalse(search.finished(), "a search that has not advanced cannot be finished");
         assertThrows(IllegalStateException.class, new org.junit.jupiter.api.function.Executable() {
@@ -774,11 +788,10 @@ class SliceEquivalenceTest {
         // D6, the design's sharpest failure mode. If a slice boundary produced PARTIAL, every
         // search longer than one slice would trigger C4's backoff and return a worse route for a
         // reason with nothing to do with the budget C4 calibrated.
-        FixtureWorld world = FixtureWorld.parse(WORLD);
+        FixtureWorld world = cliff();
         Search search = new AStarPathfinder(25000).begin(world,
             world.start().x(), world.start().y(), world.start().z(),
-            new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z()),
-            CapabilitySet.none());
+            goalOf(world), CapabilitySet.none());
 
         assertFalse(search.advance(1), "one expansion cannot finish this search");
         assertFalse(search.finished());
@@ -787,11 +800,10 @@ class SliceEquivalenceTest {
 
     @Test
     void advancingAFinishedSearchIsANoOp() {
-        FixtureWorld world = FixtureWorld.parse(WORLD);
+        FixtureWorld world = cliff();
         Search search = new AStarPathfinder(25000).begin(world,
             world.start().x(), world.start().y(), world.start().z(),
-            new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z()),
-            CapabilitySet.none());
+            goalOf(world), CapabilitySet.none());
         while (!search.advance(1000)) {
             // drive to completion
         }
@@ -808,11 +820,10 @@ class SliceEquivalenceTest {
 
     @Test
     void aNonPositiveSliceIsRejectedRatherThanLoopingForever() {
-        FixtureWorld world = FixtureWorld.parse(WORLD);
+        FixtureWorld world = cliff();
         final Search search = new AStarPathfinder(25000).begin(world,
             world.start().x(), world.start().y(), world.start().z(),
-            new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z()),
-            CapabilitySet.none());
+            goalOf(world), CapabilitySet.none());
 
         assertThrows(IllegalArgumentException.class, new org.junit.jupiter.api.function.Executable() {
             @Override
@@ -1124,34 +1135,33 @@ git commit -m "feat(c5): lift the A* loop into a search that advances in bounded
 Append to `SliceEquivalenceTest.java` (inside the class):
 
 ```java
-    /** Two walls with staggered gaps, far enough apart that a small budget must segment. */
-    private static final String LONG_WORLD = ""
-        + "origin: 0,64,0\n"
-        + "--- y=64\n"
-        + "####################\n"
-        + "####################\n"
-        + "####################\n"
-        + "####################\n"
-        + "####################\n"
-        + "--- y=65\n"
-        + "S..................G\n"
-        + "..#####..#####..#...\n"
-        + "..#####..#####..#...\n"
-        + "..#####..#####..#...\n"
-        + "....................\n";
+    /**
+     * A cave climb, for the multi-segment equivalence: 726 expansions of real terrain, where the
+     * A* equivalence above uses {@code d-cliff}'s 273. Both are committed fixtures already pinned
+     * by C4's own tests, so neither can quietly become unwalkable.
+     */
+    private static FixtureWorld cave() {
+        return TerrainFixture.load("b-cave-climb.txt");
+    }
+
+    /**
+     * The budget C4 already proved segments {@code d-cliff}: 232 is 84% of its 273 expansions, and
+     * {@code SegmentedSearchTest} pins the two-segment result it produces at cost
+     * 274.41707435261833. Reusing that number rather than inventing one means this test inherits a
+     * configuration known to segment instead of hoping one does.
+     */
+    private static final int SEGMENTING_BUDGET = 232;
 
     private static SegmentedResult unslicedRun(FixtureWorld world, int budget) {
         return new SegmentedSearch(new AStarPathfinder(budget)).run(world,
             world.start().x(), world.start().y(), world.start().z(),
-            new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z()),
-            CapabilitySet.none());
+            goalOf(world), CapabilitySet.none());
     }
 
     private static SegmentedResult slicedRun(FixtureWorld world, int budget, int sliceSize) {
         Run run = new SegmentedSearch(new AStarPathfinder(budget)).begin(world,
             world.start().x(), world.start().y(), world.start().z(),
-            new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z()),
-            CapabilitySet.none());
+            goalOf(world), CapabilitySet.none());
         int guard = 0;
         while (!run.advance(sliceSize)) {
             guard++;
@@ -1164,8 +1174,16 @@ Append to `SliceEquivalenceTest.java` (inside the class):
 
     @Test
     void everySliceSizeProducesTheIdenticalSegmentedRun() {
-        FixtureWorld world = FixtureWorld.parse(LONG_WORLD);
+        FixtureWorld world = cave();
         SegmentedResult expected = unslicedRun(world, 25000);
+
+        // The same vacuity guard the A* equivalence test carries, for the same reason: an
+        // unwalkable fixture makes every slice size agree on NO_PATH and passes for free.
+        assertEquals(PathOutcome.FOUND, expected.outcome(),
+            "the fixture must be pathable, or this compares two NO_PATHs");
+        assertTrue(expected.expanded().size() > 100,
+            "the fixture must need enough search that a slice boundary falls inside it; got "
+                + expected.expanded().size() + " expansions");
 
         for (int i = 0; i < SLICE_SIZES.length; i++) {
             int slice = SLICE_SIZES[i];
@@ -1185,14 +1203,19 @@ Append to `SliceEquivalenceTest.java` (inside the class):
         // run's PARTIAL must be the segment's own, never an artefact of tick scheduling. The
         // budget is chosen so the first segment ends mid-run, then swept across slice sizes that
         // bracket that expansion count from both sides.
-        FixtureWorld world = FixtureWorld.parse(LONG_WORLD);
-        SegmentedResult expected = unslicedRun(world, 40);
+        FixtureWorld world = cliff();
+        SegmentedResult expected = unslicedRun(world, SEGMENTING_BUDGET);
         assertTrue(expected.segments() > 1,
-            "this fixture must segment at budget 40 or the test proves nothing; got "
-                + expected.segments() + " segments");
+            "d-cliff at budget " + SEGMENTING_BUDGET + " must segment or this test proves nothing;"
+                + " got " + expected.segments() + " segments");
 
-        for (int slice = 1; slice <= 45; slice++) {
-            SegmentedResult actual = slicedRun(world, 40, slice);
+        // 1..40 walk a boundary through the first segment's interior; 231, 232 and 233 bracket the
+        // exact expansion where the first segment ends, which is the coincidence this test exists
+        // for; 464 swallows two whole segments in one slice.
+        int[] boundarySlices = {1, 2, 3, 7, 40, 115, 231, 232, 233, 464};
+        for (int b = 0; b < boundarySlices.length; b++) {
+            int slice = boundarySlices[b];
+            SegmentedResult actual = slicedRun(world, SEGMENTING_BUDGET, slice);
             assertEquals(expected.segments(), actual.segments(), "segments at slice " + slice);
             assertEquals(expected.cost(), actual.cost(), 0.0, "cost at slice " + slice);
             assertEquals(expected.outcome(), actual.outcome(), "outcome at slice " + slice);
@@ -1204,11 +1227,10 @@ Append to `SliceEquivalenceTest.java` (inside the class):
         // The level-pinning hazard, asserted by reference rather than by behaviour. A run holds
         // the world it reads; under slicing that run lives for hundreds of milliseconds, so a
         // level change during one must not leave the old level reachable.
-        FixtureWorld world = FixtureWorld.parse(LONG_WORLD);
+        FixtureWorld world = cave();
         final Run run = new SegmentedSearch(new AStarPathfinder(25000)).begin(world,
             world.start().x(), world.start().y(), world.start().z(),
-            new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z()),
-            CapabilitySet.none());
+            goalOf(world), CapabilitySet.none());
         run.advance(5);
 
         run.cancel();
@@ -1233,11 +1255,10 @@ Append to `SliceEquivalenceTest.java` (inside the class):
     void cancellingTwiceIsHarmless() {
         // The adapter calls onLevel every tick and compares by identity; a defensive second cancel
         // is the normal path on the tick after a transition, exactly as ContinuoCore.stop() is.
-        FixtureWorld world = FixtureWorld.parse(LONG_WORLD);
+        FixtureWorld world = cave();
         Run run = new SegmentedSearch(new AStarPathfinder(25000)).begin(world,
             world.start().x(), world.start().y(), world.start().z(),
-            new GoalBlock(world.goal().x(), world.goal().y(), world.goal().z()),
-            CapabilitySet.none());
+            goalOf(world), CapabilitySet.none());
 
         run.cancel();
         run.cancel();
