@@ -1,21 +1,9 @@
 package dev.continuo.pathfinder;
 
 import dev.continuo.core.BlockSource;
-import dev.continuo.movement.ActiveMovements;
 import dev.continuo.movement.CapabilitySet;
 import dev.continuo.movement.IMovementRegistry;
-import dev.continuo.movement.HeuristicRates;
-import dev.continuo.movement.IMovementType;
-import dev.continuo.movement.MoveSink;
 import dev.continuo.movement.MovementRegistry;
-import dev.continuo.movement.MutableExpansionContext;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.PriorityQueue;
 
 /**
  * A* over an implicit graph of block positions.
@@ -183,6 +171,29 @@ public final class AStarPathfinder {
      */
     public PathResult findPath(BlockSource world, int startX, int startY, int startZ, Goal goal,
                                CapabilitySet caps) {
+        Search search = begin(world, startX, startY, startZ, goal, caps);
+        search.advance(Integer.MAX_VALUE);
+        return search.result();
+    }
+
+    /**
+     * Starts a search without expanding anything, so a caller can spend it a slice at a time.
+     *
+     * <p>{@link #findPath} is this method plus one unbounded slice. There is no second
+     * implementation and no second loop — which is what makes a sliced search returning the same
+     * answer as an unsliced one a property of the construction rather than of the tests.
+     *
+     * @param world the world to read; never {@code null}
+     * @param startX the starting X
+     * @param startY the starting Y
+     * @param startZ the starting Z
+     * @param goal what to reach; never {@code null}
+     * @param caps what the caller grants; never {@code null}
+     * @return a search that has expanded nothing yet; never {@code null}
+     * @throws IllegalArgumentException if any argument is {@code null}
+     */
+    public Search begin(BlockSource world, int startX, int startY, int startZ, Goal goal,
+                        CapabilitySet caps) {
         if (world == null) {
             throw new IllegalArgumentException("world must not be null");
         }
@@ -192,103 +203,7 @@ public final class AStarPathfinder {
         if (caps == null) {
             throw new IllegalArgumentException("caps must not be null; use CapabilitySet.none()");
         }
-
-        final ActiveMovements active = registry.activeFor(caps);
-        final HeuristicRates rates = active.rates();
-        final List<IMovementType> moves = active.movements();
-
-        final double hStart = goal.heuristic(startX, startY, startZ, rates);
-        final SegmentSelector selector =
-            new SegmentSelector(hStart, minProgressBlocks * rates.horizontal());
-
-        final Map<Long, PathNode> nodes = new HashMap<Long, PathNode>();
-        final List<Pos> expanded = new ArrayList<Pos>();
-        final int[] discovered = {0};
-
-        final PriorityQueue<QueuedNode> open =
-            new PriorityQueue<QueuedNode>(64, QueuedNodeOrder.INSTANCE);
-
-        long startPacked = Pos.pack(startX, startY, startZ);
-        PathNode start = new PathNode(startPacked);
-        start.g = 0.0;
-        nodes.put(Long.valueOf(startPacked), start);
-        open.add(new QueuedNode(startPacked, hStart, 0.0, discovered[0]++));
-
-        final MutableExpansionContext ctx = new MutableExpansionContext(world);
-
-        while (!open.isEmpty()) {
-            QueuedNode entry = open.poll();
-            final PathNode current = nodes.get(Long.valueOf(entry.packed));
-            if (current.closed) {
-                continue;
-            }
-            current.closed = true;
-
-            final int cx = Pos.unpackX(current.packed);
-            final int cy = Pos.unpackY(current.packed);
-            final int cz = Pos.unpackZ(current.packed);
-            expanded.add(new Pos(cx, cy, cz));
-
-            // h is recomputed rather than taken as entry.f - entry.g. The subtraction is exact,
-            // but only by an argument about stale heap entries, and this project's reviews exist
-            // to catch invariants that subtle. The saving is arithmetic that reads no world.
-            selector.consider(current.packed, goal.heuristic(cx, cy, cz, rates));
-
-            if (goal.isReached(cx, cy, cz)) {
-                return new PathResult(PathOutcome.FOUND, reconstruct(current), expanded, current.g);
-            }
-            if (expanded.size() >= nodeBudget) {
-                if (selector.hasCandidate()) {
-                    PathNode best = nodes.get(Long.valueOf(selector.candidate()));
-                    return new PathResult(PathOutcome.PARTIAL,
-                        reconstruct(best), expanded, best.g);
-                }
-                return new PathResult(PathOutcome.BUDGET_EXCEEDED,
-                    Collections.<Pos>emptyList(), expanded, 0.0);
-            }
-
-            MoveSink sink = new MoveSink() {
-                @Override
-                public void offer(int nx, int ny, int nz, double cost) {
-                    Long key = Long.valueOf(Pos.pack(nx, ny, nz));
-                    PathNode neighbour = nodes.get(key);
-                    if (neighbour == null) {
-                        neighbour = new PathNode(key.longValue());
-                        nodes.put(key, neighbour);
-                    }
-                    if (neighbour.closed) {
-                        return;
-                    }
-                    double tentative = current.g + cost;
-                    if (tentative >= neighbour.g) {
-                        return;
-                    }
-                    neighbour.g = tentative;
-                    neighbour.parent = current;
-                    // A fresh immutable entry, never a mutation of one already queued — see
-                    // QueuedNode. The old entry stays in the heap and is discarded on poll,
-                    // because by then this node is closed.
-                    open.add(new QueuedNode(neighbour.packed,
-                        tentative + goal.heuristic(nx, ny, nz, rates), tentative,
-                        discovered[0]++));
-                }
-            };
-
-            ctx.moveTo(cx, cy, cz);
-            for (int i = 0; i < moves.size(); i++) {
-                moves.get(i).expand(ctx, sink);
-            }
-        }
-
-        return new PathResult(PathOutcome.NO_PATH, Collections.<Pos>emptyList(), expanded, 0.0);
-    }
-
-    private static List<Pos> reconstruct(PathNode goalNode) {
-        List<Pos> path = new ArrayList<Pos>();
-        for (PathNode n = goalNode; n != null; n = n.parent) {
-            path.add(Pos.unpack(n.packed));
-        }
-        Collections.reverse(path);
-        return path;
+        return new Search(world, startX, startY, startZ, goal, caps, nodeBudget,
+            minProgressBlocks, registry.activeFor(caps));
     }
 }
