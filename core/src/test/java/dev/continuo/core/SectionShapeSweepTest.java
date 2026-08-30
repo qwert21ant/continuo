@@ -105,6 +105,18 @@ class SectionShapeSweepTest {
             "the 16-cube must allocate several times what the 4-cube does, or the trade this"
                 + " constant was chosen on has changed; 4x4x4 " + four.slots()
                 + " vs 16x16x16 " + sixteen.slots());
+
+        // Absolute counts, computed independently of the code under test, because the three
+        // comparisons above all survive a slots() that ignores section count: occupancy would
+        // collapse to size/sectionSize with size identical across the three stores, and the
+        // third assertion would reduce to 4096 > 192, true at compile time.
+        // Corridor is x,z in [-60,60] and y in [62,66]. At 4x4x4: x>>2 spans -15..15 = 31
+        // sections, z likewise, y>>2 spans {15,16} = 2, so 31*31*2 = 1922 sections of 64 slots.
+        assertEquals(1922L * 64L, four.slots(), "4x4x4 must allocate 1922 sections of 64 slots");
+        // At 16x16x16: x>>4 spans -4..3 = 8, z likewise, y>>4 spans {3,4} = 2, so 8*8*2 = 128
+        // sections of 4096 slots.
+        assertEquals(128L * 4096L, sixteen.slots(),
+            "16x16x16 must allocate 128 sections of 4096 slots");
     }
 
     @Test
