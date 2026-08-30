@@ -1,8 +1,8 @@
 # C5 — Time-sliced search design
 
 **Date:** 2026-08-30
-**Status:** 🟡 Draft — brainstormed with the owner on 2026-08-29/30; two mechanisms and one fault
-policy were rejected on measurement during the brainstorm itself
+**Status:** 🟢 Approved — brainstormed with the owner on 2026-08-29/30 and approved 2026-08-30; two
+mechanisms and one fault policy were rejected on measurement during the brainstorm itself
 **Milestone:** M4 (C), fifth sub-project — added after C4, before M5
 **Depends on:** C1 (`2026-08-15-c1-pathfinder-core-design.md`) — the search and the determinism
 requirement; C3 (`2026-08-25-c3-world-snapshot-design.md`) — the snapshot, §4.7, §5.2, §9;
