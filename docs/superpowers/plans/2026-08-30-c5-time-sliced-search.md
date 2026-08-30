@@ -464,10 +464,25 @@ Its class javadoc currently opens with *"Readable from any thread"* and argues f
 
 **This is a deliberate weakening of a public contract.** Call it out in the commit message; do not let it pass as an incidental edit.
 
-- [ ] **Step 8: Run the whole `:core` suite unchanged**
+- [ ] **Step 8: Run the whole `:core` suite, with exactly one permitted test edit**
+
+`SealedSnapshotTest.fixture()` (lines 22–28) constructs a `SealedSnapshot` directly, passing the `Map` whose type this task changes. It is the **only** test that does, and it must be updated or `:core` will not compile. Replace its three construction lines:
+
+```java
+    private static SealedSnapshot fixture() {
+        SectionStore blocks = new SectionStore();
+        blocks.put(1, 70, 2, STONE);
+        blocks.put(1, 71, 2, BlockData.UNKNOWN);
+        return new SealedSnapshot(blocks, -64, 320, 4242);
+    }
+```
+
+and drop its now-unused `java.util.HashMap` and `java.util.Map` imports.
+
+**That is the entire permitted edit to any existing test in this task.** Every assertion and every test body in `SealedSnapshotTest` and `WorldSnapshotTest` stays byte-for-byte as it is. If anything else needs changing to pass, **stop and report it** — it means the storage swap changed behaviour, which it must not. Preserving those assertions untouched is the cheapest proof the contract survived.
 
 Run: `./gradlew :core:test`
-Expected: PASS. **Every existing `WorldSnapshotTest` and `SealedSnapshotTest` test must pass with no edit to either file.** That is the cheapest proof the contract survived. If any of them needs changing to pass, stop and report it — it means the storage swap changed behaviour, which it must not.
+Expected: PASS.
 
 - [ ] **Step 9: Full build**
 
@@ -1707,7 +1722,7 @@ Add the three methods. `start` captures the world in a snapshot the run then own
         active = null;
         activeSnapshot = null;
         activeStart = null;
-        return report(snapshot, start, result, sliceCount, worst, total);
+        return report(snapshot, start, result, setupMs, total, sliceCount, worst);
     }
 
     /** Ends any run in flight and releases the world it held. Idempotent. */
@@ -1723,20 +1738,33 @@ Add the three methods. `start` captures the world in a snapshot the run then own
 
 In `onLevel`, add `cancel();` immediately after `goal = null;`.
 
-**Then extract the reporting.** Move everything in the existing `run` from `SealedSnapshot sealed = snapshot.seal();` to the final `return ProbeReport.of(...)` into a private method with this signature, and have it append the slice clause when `sliceCount > 0`:
+**Then extract the reporting.** Move everything in the existing `run` from `SealedSnapshot sealed = snapshot.seal();` to the final `return ProbeReport.of(...)` into a private method with **exactly** this signature:
 
 ```java
     private ProbeReport report(WorldSnapshot snapshot, Pos start, SegmentedResult result,
-                               int sliceCount, double worstMs, double totalMs)
+                               double setupMs, double liveMs, int sliceCount, double worstMs)
 ```
 
-The slice clause, appended after the existing split clause:
+`liveMs` is the search's total wall-clock time and replaces the local `elapsedMs` the moved code used — for a sliced run it is the sum of every slice, which is the same quantity. There is deliberately no separate `totalMs` parameter: carrying both would let the summary's two clauses disagree.
+
+Keep the two sealed replays and the divergence check from `46ed86f` exactly where they are, inside `report`. `setupMs` is measured in `start` — add a `private double setupMs;` field, set it there around the `new SegmentedSearch(new AStarPathfinder(nodeBudget))` construction, and pass it through.
+
+Two additions to the summary. First, extend the existing snapshot clause with occupancy — `slots()` is added by Task 1 for this caller, and a public method with no caller is what B2 §9 warns against:
+
+```java
+        summary.append(", ").append(sealed.slots()).append(" slots");
+        if (sealed.slots() > 0) {
+            summary.append(" (").append(Math.round(
+                100.0 * sealed.size() / sealed.slots())).append("% full)");
+        }
+```
+
+Second, the slice clause, appended after the existing split clause and only for a sliced run:
 
 ```java
         if (sliceCount > 0) {
             summary.append(", sliced ").append(sliceCount).append(" slices")
-                .append(", worst ").append(fmt(worstMs)).append("ms")
-                .append(", total ").append(fmt(totalMs)).append("ms");
+                .append(", worst ").append(fmt(worstMs)).append("ms");
         }
 ```
 
@@ -1757,11 +1785,11 @@ Finally, reimplement `run` so **its signature and behaviour are unchanged**:
         active = null;
         activeSnapshot = null;
         activeStart = null;
-        return report(snapshot, start, result, 0, 0.0, elapsedMs, elapsedMs);
+        return report(snapshot, start, result, setupMs, elapsedMs, 0, 0.0);
     }
 ```
 
-**Discrepancy to resolve rather than paper over:** the existing `run` measures `elapsedMs` and runs the two sealed replays from commit `46ed86f`. Keep both — `report` needs `elapsedMs` and the replay figures, so give it the parameters it needs and pass `0` slices from `run`. If the signature above does not match what `report` actually needs once you have moved the code, change it and say so; do not force the shape.
+`advance()`'s finishing branch calls the same method with `report(snapshot, start, result, setupMs, totalSliceMs, sliceCount, worst)`.
 
 - [ ] **Step 4: Run the tests**
 
