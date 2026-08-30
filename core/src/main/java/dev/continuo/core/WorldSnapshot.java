@@ -1,8 +1,5 @@
 package dev.continuo.core;
 
-import java.util.HashMap;
-import java.util.Map;
-
 /**
  * A world copy being built: every position it reads, it remembers.
  *
@@ -31,7 +28,7 @@ public final class WorldSnapshot implements BlockSource {
     private BlockSource live;
 
     /** Handed to the sealed snapshot rather than copied; {@code null} once that has happened. */
-    private Map<Long, BlockData> blocks = new HashMap<Long, BlockData>();
+    private SectionStore blocks = new SectionStore();
 
     private final int minY;
     private final int maxY;
@@ -76,13 +73,12 @@ public final class WorldSnapshot implements BlockSource {
         if (y < minY || y >= maxY) {
             return BlockData.UNKNOWN;
         }
-        Long key = Long.valueOf(PositionKey.pack(x, y, z));
-        BlockData cached = blocks.get(key);
-        if (cached != null) {
+        BlockData cached = blocks.get(x, y, z);
+        if (blocks.has(x, y, z)) {
             return cached;
         }
         BlockData fresh = live.at(x, y, z);
-        blocks.put(key, fresh);
+        blocks.put(x, y, z, fresh);
         return fresh;
     }
 
@@ -108,6 +104,17 @@ public final class WorldSnapshot implements BlockSource {
     public int size() {
         requireFilling();
         return blocks.size();
+    }
+
+    /**
+     * @return how many array slots the store has allocated, which is {@link #size} plus whatever
+     *         the sections hold that was never read. Reported by the probe so the storage shape's
+     *         occupancy is measured on real terrain rather than assumed
+     * @throws IllegalStateException if this snapshot has been sealed
+     */
+    public long slots() {
+        requireFilling();
+        return blocks.slots();
     }
 
     /**
