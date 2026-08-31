@@ -771,4 +771,34 @@ class PathProbeTest {
         assertNotNull(done, "the replacing run must still finish");
         assertEquals(PathOutcome.FOUND, done.outcome(), done.summary());
     }
+
+    @Test
+    void remarkingTheGoalMidRunDoesNotRetargetTheRunInFlight() {
+        // markGoal is public and unguarded, and a sliced run spans many ticks, so an owner can
+        // mark a new goal while one is in flight. The Run captured its goal at start(); if the
+        // report rebuilds the target from the current field instead, the two replays search for a
+        // different goal than the live run did and the probe cries "diverged" about a determinism
+        // bug that does not exist.
+        //
+        // ProbeWorld tops out at RADIUS 12, and even its far corner finishes inside a single
+        // 4,000-node slice - too fast for a second advance() to land mid-run. HugeFlatWorld and a
+        // goal far enough away forces several slices, which this test needs to prove anything.
+        PathProbe probe = new PathProbe();
+        probe.markGoal(16000, HugeFlatWorld.WALK_Y, 0);
+        assertNull(probe.start(new HugeFlatWorld(), 0, HugeFlatWorld.WALK_Y, 0));
+        assertNull(probe.advance(), "one slice must not already finish a 16,000-block route");
+        probe.markGoal(3, ProbeWorld.WALK_Y, 3);
+
+        ProbeReport done = null;
+        for (int tick = 0; tick < 10000 && done == null; tick++) {
+            done = probe.advance();
+        }
+
+        assertNotNull(done, "the run must still finish");
+        assertFalse(done.summary().contains("diverged"),
+            "the replays must target the goal the run was started with\n" + done.summary());
+        assertTrue(done.summary().contains("(16000, " + HugeFlatWorld.WALK_Y + ", 0)"),
+            "the summary must name the goal the run actually used, not the one marked since\n"
+                + done.summary());
+    }
 }

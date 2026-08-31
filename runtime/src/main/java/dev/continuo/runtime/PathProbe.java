@@ -117,9 +117,39 @@ public final class PathProbe {
      * answers for positions the search actually touched, and the render window can be larger
      * than that; reading it there turns every untouched cell into a spurious {@code UNMAPPED}, a
      * regression two pre-existing tests caught immediately. This field carries the same lifetime
-     * as {@link #activeSnapshot} and is cleared everywhere that one is.
+     * as {@link #activeSnapshot} and is cleared everywhere that one is, with no exceptions — a
+     * live {@code BlockSource} held across ticks is the same level-pinning hazard {@code
+     * Run.cancel()} closes for the source a {@code Run} holds.
      */
     private BlockSource activeWorld;
+
+    /**
+     * The goal {@link #active} was started with, captured once so {@link #report} never re-reads
+     * the mutable {@link #goal} field.
+     *
+     * <p>{@code markGoal} is public and unguarded, and a sliced run spans many ticks, so an owner
+     * can mark a new goal while one is in flight. The {@code Run} itself always searches toward
+     * the goal it was given at {@link #start}; if {@code report} rebuilt the target from the
+     * current {@link #goal} instead, its two replays would search for a different goal than the
+     * live run did, and the mismatch would surface as a false "the sealed replay diverged" notice
+     * — alarming about a determinism bug that does not exist. Cleared everywhere {@link
+     * #activeSnapshot} is.
+     */
+    private Pos activeGoal;
+
+    /**
+     * The {@link SegmentedSearch} {@link #active} was begun from, held so {@link #report} can
+     * reuse it for its two replays instead of building a second one.
+     *
+     * <p>{@code SegmentedSearch}'s constructor runs {@code AStarPathfinder}'s, which runs {@code
+     * MovementRegistry.discover()} — an uncached {@code ServiceLoader} classpath scan. Commit
+     * {@code 46ed86f} hoisted that construction out of the timed region for exactly this reason;
+     * building a second instance in {@code report} would re-run the scan on every finishing tick,
+     * invisibly, in none of the figures the probe reports. Reuse is safe: a {@code
+     * SegmentedSearch} holds only the pathfinder and builds a fresh {@code Run} per call. Cleared
+     * everywhere {@link #activeSnapshot} is.
+     */
+    private SegmentedSearch activeSearch;
 
     /** Uses {@link #NODE_BUDGET}. */
     public PathProbe() {
@@ -193,12 +223,16 @@ public final class PathProbe {
         SegmentedResult result = active.result();
         WorldSnapshot snapshot = activeSnapshot;
         Pos start = activeStart;
-        active = null;
-        activeSnapshot = null;
-        activeStart = null;
-        ProbeReport built = report(snapshot, start, result, setupMs, elapsedMs, 0, 0.0);
-        activeWorld = null;
-        return built;
+        try {
+            return report(snapshot, start, result, setupMs, elapsedMs, 0, 0.0);
+        } finally {
+            active = null;
+            activeSnapshot = null;
+            activeStart = null;
+            activeGoal = null;
+            activeSearch = null;
+            activeWorld = null;
+        }
     }
 
     /**
@@ -228,7 +262,7 @@ public final class PathProbe {
         // was being counted as search time in every figure C4 section 13 reports. It is timed
         // separately below so the size of the error is on the record rather than merely removed.
         long builtAt = System.nanoTime();
-        SegmentedSearch search = new SegmentedSearch(new AStarPathfinder(nodeBudget));
+        activeSearch = new SegmentedSearch(new AStarPathfinder(nodeBudget));
         setupMs = msSince(builtAt);
 
         // The search reads through a snapshot; the render below does not. A render window can be
@@ -236,9 +270,11 @@ public final class PathProbe {
         // add a quarter of a million entries to save nothing. The repeat reads are in the search.
         activeSnapshot = new WorldSnapshot(world);
         activeStart = new Pos(startX, startY, startZ);
+        activeGoal = goal;
         activeWorld = world;
-        active = search.begin(activeSnapshot, startX, startY, startZ,
-            new GoalBlock(goal.x(), goal.y(), goal.z()), CapabilitySet.of(Capability.PARKOUR));
+        active = activeSearch.begin(activeSnapshot, startX, startY, startZ,
+            new GoalBlock(activeGoal.x(), activeGoal.y(), activeGoal.z()),
+            CapabilitySet.of(Capability.PARKOUR));
         slices = 0;
         worstSliceMs = 0.0;
         totalSliceMs = 0.0;
@@ -273,12 +309,16 @@ public final class PathProbe {
         int sliceCount = slices;
         double worst = worstSliceMs;
         double total = totalSliceMs;
-        active = null;
-        activeSnapshot = null;
-        activeStart = null;
-        ProbeReport built = report(snapshot, start, result, setupMs, total, sliceCount, worst);
-        activeWorld = null;
-        return built;
+        try {
+            return report(snapshot, start, result, setupMs, total, sliceCount, worst);
+        } finally {
+            active = null;
+            activeSnapshot = null;
+            activeStart = null;
+            activeGoal = null;
+            activeSearch = null;
+            activeWorld = null;
+        }
     }
 
     /** Ends any run in flight and releases the world it held. Idempotent. */
@@ -289,14 +329,16 @@ public final class PathProbe {
         active = null;
         activeSnapshot = null;
         activeStart = null;
+        activeGoal = null;
+        activeSearch = null;
         activeWorld = null;
     }
 
     private ProbeReport report(WorldSnapshot snapshot, Pos start, SegmentedResult result,
                                double setupMs, double liveMs, int sliceCount, double worstMs) {
-        GoalBlock target = new GoalBlock(goal.x(), goal.y(), goal.z());
+        GoalBlock target = new GoalBlock(activeGoal.x(), activeGoal.y(), activeGoal.z());
         CapabilitySet caps = CapabilitySet.of(Capability.PARKOUR);
-        SegmentedSearch search = new SegmentedSearch(new AStarPathfinder(nodeBudget));
+        SegmentedSearch search = activeSearch;
 
         SealedSnapshot sealed = snapshot.seal();
 
@@ -311,11 +353,11 @@ public final class PathProbe {
 
         PathResult combined = result.asPathResult();
 
-        ProbeBounds bounds = ProbeBounds.around(activeWorld, start, goal, result.path());
+        ProbeBounds bounds = ProbeBounds.around(activeWorld, start, activeGoal, result.path());
         StringBuilder map = new StringBuilder(PathRenderer.render(activeWorld,
             bounds.minX, bounds.minY, bounds.minZ,
             bounds.maxX, bounds.maxY, bounds.maxZ,
-            start, goal, combined));
+            start, activeGoal, combined));
 
         StringBuilder summary = new StringBuilder();
         summary.append("Continuo path probe: ").append(result.outcome())
@@ -324,7 +366,7 @@ public final class PathProbe {
             .append(", ").append(result.path().size()).append(" steps")
             .append(", ").append(combined.nodesExpanded()).append(" expanded")
             .append(", cost ").append(result.cost())
-            .append(", ").append(start).append(" -> ").append(goal)
+            .append(", ").append(start).append(" -> ").append(activeGoal)
             .append(", budget ").append(nodeBudget)
             .append(", ").append(fmt(liveMs)).append(" ms")
             .append(", split setup ").append(fmt(setupMs)).append("ms")
@@ -367,8 +409,8 @@ public final class PathProbe {
         if (bounds.clamped) {
             // The coordinates are in the map header's own "x,y,z" format rather than Pos's
             // "(x, y, z)", so a reader retyping them into a fixture has nothing to reformat.
-            String at = goal.x() + "," + goal.y() + "," + goal.z();
-            String where = bounds.contains(goal)
+            String at = activeGoal.x() + "," + activeGoal.y() + "," + activeGoal.z();
+            String where = bounds.contains(activeGoal)
                 ? "the goal at " + at + " does lie inside it and is drawn"
                 : "the goal at " + at + " lies outside it, so no G is drawn and pasting this map"
                     + " back yields goal() == null until the goal is retyped from this line";
