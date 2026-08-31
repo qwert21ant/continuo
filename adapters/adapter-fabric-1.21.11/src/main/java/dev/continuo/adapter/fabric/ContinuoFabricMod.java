@@ -160,8 +160,16 @@ public final class ContinuoFabricMod implements ClientModInitializer {
                         at.getX(), at.getY(), at.getZ());
                 }
                 if (path) {
-                    ProbeReport report = probe.run(
+                    ProbeReport refused = probe.start(
                         core.blocks(), at.getX(), at.getY(), at.getZ());
+                    if (refused != null) {
+                        LOGGER.info(refused.summary());
+                    }
+                }
+                // Once per tick, whether or not the key was pressed: a sliced run advances on the
+                // tick, not on the keypress. Cheap and a no-op when nothing is in flight.
+                ProbeReport report = probe.advance();
+                if (report != null) {
                     LOGGER.info(report.summary());
                     if (report.ran()) {
                         Path out = client.gameDirectory.toPath()

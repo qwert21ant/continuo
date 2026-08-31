@@ -225,7 +225,15 @@ public final class ContinuoForgeMod {
                 LOGGER.info("Continuo: path goal marked at " + px + " " + py + " " + pz);
             }
             if (path) {
-                ProbeReport report = probe.run(core.blocks(), px, py, pz);
+                ProbeReport refused = probe.start(core.blocks(), px, py, pz);
+                if (refused != null) {
+                    LOGGER.info(refused.summary());
+                }
+            }
+            // Once per tick, whether or not the key was pressed: a sliced run advances on the
+            // tick, not on the keypress. Cheap and a no-op when nothing is in flight.
+            ProbeReport report = probe.advance();
+            if (report != null) {
                 LOGGER.info(report.summary());
                 if (report.ran()) {
                     File out = new File(client.mcDataDir, "continuo-path-probe.txt");
