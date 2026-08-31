@@ -289,6 +289,48 @@ class SliceEquivalenceTest {
     }
 
     @Test
+    void aSliceNeverExpandsMoreNodesThanItWasGiven() {
+        // The per-slice node bound, which is the guarantee the whole sub-project exists to
+        // provide -- spec §5.4 sizes SLICE_NODES so that a slice costs about 7 ms, and that
+        // reasoning is void if a slice can overrun. Slice equivalence does not cover this: a Run
+        // that overspends still visits the same segments in the same order and returns the
+        // identical result, so every other test here passes while the bound is broken.
+        //
+        // The budget is SEGMENTING_BUDGET so that segments genuinely COMPLETE inside a slice,
+        // which is the only case that can overrun -- a slice that merely suspends mid-segment is
+        // bounded by Search.advance itself.
+        FixtureWorld world = cliff();
+        Run run = new SegmentedSearch(new AStarPathfinder(SEGMENTING_BUDGET)).begin(world,
+            world.start().x(), world.start().y(), world.start().z(),
+            goalOf(world), CapabilitySet.none());
+
+        // 58, not 50: d-cliff's first segment at this budget ends 32 nodes into whichever slice
+        // it falls in (232 mod slice), and slice 50 happens to leave an 18-node correct remainder
+        // that the terminal segment (7 real nodes) never overruns either way -- verified by
+        // instrumented sweep of every slice from 2 to 232, not asserted from reasoning about the
+        // search's behaviour. 58 leaves a remainder the terminal segment's real length exceeds, so
+        // the two accountings diverge and only the buggy one lets the slice run long.
+        int slice = 58;
+        int before = 0;
+        int guard = 0;
+        boolean done = false;
+        while (!done) {
+            done = run.advance(slice);
+            int now = run.expandedCount();
+            assertTrue(now - before <= slice,
+                "a slice of " + slice + " expanded " + (now - before) + " nodes");
+            before = now;
+            guard++;
+            if (guard > 100000) {
+                throw new AssertionError("run never finished");
+            }
+        }
+        assertTrue(run.expandedCount() > slice,
+            "the run must take several slices or this test proves nothing; got "
+                + run.expandedCount() + " expansions in total");
+    }
+
+    @Test
     void cancellingTwiceIsHarmless() {
         // The adapter calls onLevel every tick and compares by identity; a defensive second cancel
         // is the normal path on the tick after a transition, exactly as ContinuoCore.stop() is.
