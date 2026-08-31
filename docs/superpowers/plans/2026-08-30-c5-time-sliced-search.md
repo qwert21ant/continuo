@@ -1812,6 +1812,27 @@ Finally, reimplement `run` so **its signature and behaviour are unchanged**:
 
 `advance()`'s finishing branch calls the same method with `report(snapshot, start, result, setupMs, totalSliceMs, sliceCount, worst)`.
 
+- [ ] **Step 3b: Fix a pre-existing flaky tolerance in `PathProbeTest`**
+
+Not part of the sliced-run work, but this file is yours this task and the test fails at random until it is fixed. In `theSummaryReportsWhatTheFillCostAgainstWhatTheSearchCost`, this assertion is too tight:
+
+```java
+        assertEquals(live - second, fill, 0.05,
+```
+
+`live` and `second` are each parsed back out of a string formatted to one decimal place, so each carries up to ±0.05 of rounding error, while `fill` was formatted from the **unrounded** difference and carries ±0.05 of its own. The three can legitimately disagree by up to 0.15, so a 0.05 tolerance fails at random — observed once during Task 4 as `12.199999999999996` against `12.1`. Widen it and say why:
+
+```java
+        // 0.16, not 0.05. live and second are each parsed back from a string formatted to one
+        // decimal, so each carries up to +/-0.05 of rounding, and fill was formatted from the
+        // unrounded difference and carries +/-0.05 of its own. The legitimate disagreement is
+        // therefore up to 0.15, and a tighter tolerance makes this test fail at random rather
+        // than when the arithmetic is actually wrong. Observed as 12.199999999999996 vs 12.1.
+        assertEquals(live - second, fill, 0.16,
+```
+
+The assertion still does its job: it catches a hardcoded fill, or one computed from the first replay instead of the second, both of which differ by far more than 0.16.
+
 - [ ] **Step 4: Run the tests**
 
 Run: `./gradlew :runtime:test`
