@@ -611,7 +611,12 @@ class PathProbeTest {
                 + " elapsed time; if these differ the fields are mislabelled\n" + summary);
         // Pins the arithmetic rather than the presence of a number. A hardcoded fill, or one
         // computed from the first replay instead of the JIT-warm second, fails here.
-        assertEquals(live - second, fill, 0.05,
+        // 0.16, not 0.05. live and second are each parsed back from a string formatted to one
+        // decimal, so each carries up to +/-0.05 of rounding, and fill was formatted from the
+        // unrounded difference and carries +/-0.05 of its own. The legitimate disagreement is
+        // therefore up to 0.15, and a tighter tolerance makes this test fail at random rather
+        // than when the arithmetic is actually wrong. Observed as 12.199999999999996 vs 12.1.
+        assertEquals(live - second, fill, 0.16,
             "the fill estimate must be the live search minus the second sealed replay\n" + summary);
     }
 
@@ -684,5 +689,86 @@ class PathProbeTest {
         assertTrue(largeMs >= tinyMs,
             "a much larger search must not report less elapsed time than a trivially small one\n"
                 + "tiny: " + tinyReport.summary() + "\nlarge: " + largeReport.summary());
+    }
+
+    @Test
+    void aSlicedRunReachesTheSameRouteAsAnUnslicedOne() {
+        // D7 through the probe, which is the path the adapters take. run() drives the same Run
+        // with an unbounded slice, so this compares the two ways of spending one search.
+        ProbeWorld world = new ProbeWorld();
+        PathProbe unsliced = new PathProbe();
+        unsliced.markGoal(6, ProbeWorld.WALK_Y, 0);
+        ProbeReport whole = unsliced.run(world, 0, ProbeWorld.WALK_Y, 0);
+
+        PathProbe sliced = new PathProbe();
+        sliced.markGoal(6, ProbeWorld.WALK_Y, 0);
+        assertNull(sliced.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0),
+            "a run that starts returns no report yet");
+        ProbeReport done = null;
+        for (int tick = 0; tick < 10000 && done == null; tick++) {
+            done = sliced.advance();
+        }
+
+        assertNotNull(done, "the sliced run never finished");
+        assertEquals(whole.outcome(), done.outcome());
+        assertEquals(costFrom(whole.summary()), costFrom(done.summary()), 0.0,
+            "a sliced run must reach the identical route\n" + whole.summary() + "\n"
+                + done.summary());
+    }
+
+    @Test
+    void aSlicedRunReportsHowManySlicesItTook() {
+        PathProbe probe = new PathProbe();
+        probe.markGoal(12, ProbeWorld.WALK_Y, 12);
+        probe.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+        ProbeReport done = null;
+        for (int tick = 0; tick < 10000 && done == null; tick++) {
+            done = probe.advance();
+        }
+
+        assertNotNull(done);
+        assertTrue(done.summary().contains("slices"), done.summary());
+        assertTrue(figureBefore(done.summary(), "slices") >= 1, done.summary());
+    }
+
+    @Test
+    void advancingWithNothingStartedDoesNothing() {
+        // The adapter calls advance() every tick whether or not the key was pressed.
+        assertNull(new PathProbe().advance());
+    }
+
+    @Test
+    void aLevelChangeCancelsAnInFlightRun() {
+        // The hazard C3 §9 left behind: a run holds the source it reads, and under slicing that
+        // run lives across ticks. A dimension change must end it rather than leave it searching a
+        // level that no longer exists.
+        PathProbe probe = new PathProbe();
+        Object overworld = new Object();
+        probe.onLevel(overworld);
+        probe.markGoal(12, ProbeWorld.WALK_Y, 12);
+        probe.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        probe.onLevel(new Object());
+
+        assertNull(probe.advance(),
+            "a run cancelled by a level change must not go on producing a report");
+    }
+
+    @Test
+    void startingASecondRunWhileOneIsInFlightReplacesIt() {
+        // Pressing the key twice is the likeliest thing an owner does. Two live runs sharing one
+        // probe would interleave slices and report a route neither of them took.
+        PathProbe probe = new PathProbe();
+        probe.markGoal(12, ProbeWorld.WALK_Y, 12);
+        probe.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+        probe.advance();
+        probe.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+
+        ProbeReport done = null;
+        for (int tick = 0; tick < 10000 && done == null; tick++) {
+            done = probe.advance();
+        }
+        assertNotNull(done, "the replacing run must still finish");
+        assertEquals(PathOutcome.FOUND, done.outcome(), done.summary());
     }
 }

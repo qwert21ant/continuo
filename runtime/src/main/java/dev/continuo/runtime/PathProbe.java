@@ -11,6 +11,7 @@ import dev.continuo.pathfinder.GoalBlock;
 import dev.continuo.pathfinder.PathRenderer;
 import dev.continuo.pathfinder.PathResult;
 import dev.continuo.pathfinder.Pos;
+import dev.continuo.pathfinder.Run;
 import dev.continuo.pathfinder.SegmentedResult;
 import dev.continuo.pathfinder.SegmentedSearch;
 
@@ -75,12 +76,50 @@ public final class PathProbe {
      */
     public static final int NODE_BUDGET = 25000;
 
+    /**
+     * How many nodes one slice expands.
+     *
+     * <p>4,000, from the design §5.4's arithmetic rather than from taste: a 25,053-expansion route
+     * finishes in 7 slices, and a slice costs roughly 4,000 expansions of search plus the fill for
+     * about 23,000 newly-touched positions at the measured 88 ns each — near 7 ms, comfortably
+     * inside a 50 ms tick.
+     *
+     * <p><b>Provisional until an in-game run sets it.</b> The per-slice cost is not uniform: early
+     * slices touch all-new terrain and pay the fill, later ones hit the snapshot's memo, and C4
+     * §13.3 measured that non-linearity directly. A node budget buys determinism — C1 §5.1, and a
+     * wall-clock slice boundary would make every path assertion in the suite flaky — at the price
+     * of a variable millisecond cost.
+     */
+    public static final int SLICE_NODES = 4000;
+
     private final int nodeBudget;
 
     private Pos goal;
 
     /** The client level instance last seen by {@link #onLevel}, compared by identity. */
     private Object lastLevel;
+
+    private Run active;
+    private WorldSnapshot activeSnapshot;
+    private Pos activeStart;
+    private int slices;
+    private double worstSliceMs;
+    private double totalSliceMs;
+    private double setupMs;
+
+    /**
+     * The live world {@link #activeSnapshot} wraps, held only so {@link #report} can render from
+     * it once the search is done.
+     *
+     * <p><b>Not carried in {@code report}'s parameter list.</b> The render deliberately bypasses
+     * the snapshot — see the class javadoc's "read live" note — so it needs the original
+     * {@link BlockSource} rather than the (by then sealed) snapshot. A sealed snapshot only
+     * answers for positions the search actually touched, and the render window can be larger
+     * than that; reading it there turns every untouched cell into a spurious {@code UNMAPPED}, a
+     * regression two pre-existing tests caught immediately. This field carries the same lifetime
+     * as {@link #activeSnapshot} and is cleared everywhere that one is.
+     */
+    private BlockSource activeWorld;
 
     /** Uses {@link #NODE_BUDGET}. */
     public PathProbe() {
@@ -130,6 +169,7 @@ public final class PathProbe {
         }
         lastLevel = level;
         goal = null;
+        cancel();
     }
 
     /**
@@ -143,17 +183,43 @@ public final class PathProbe {
      *         marked
      */
     public ProbeReport run(BlockSource world, int startX, int startY, int startZ) {
+        ProbeReport early = start(world, startX, startY, startZ);
+        if (early != null) {
+            return early;
+        }
+        long startedAt = System.nanoTime();
+        active.advance(Integer.MAX_VALUE);
+        double elapsedMs = msSince(startedAt);
+        SegmentedResult result = active.result();
+        WorldSnapshot snapshot = activeSnapshot;
+        Pos start = activeStart;
+        active = null;
+        activeSnapshot = null;
+        activeStart = null;
+        ProbeReport built = report(snapshot, start, result, setupMs, elapsedMs, 0, 0.0);
+        activeWorld = null;
+        return built;
+    }
+
+    /**
+     * Begins a sliced run to the marked goal, replacing any run already in flight.
+     *
+     * @param world the world to read; never {@code null}
+     * @param startX where the run begins
+     * @param startY where the run begins
+     * @param startZ where the run begins
+     * @return a report if the run could not be started, or {@code null} if it was — in which case
+     *         {@link #advance} produces the report when it finishes
+     */
+    public ProbeReport start(BlockSource world, int startX, int startY, int startZ) {
         if (world == null) {
             throw new IllegalArgumentException("world must not be null");
         }
+        cancel();
         if (goal == null) {
             return ProbeReport.notRun("Continuo path probe: no goal marked."
                 + " Stand on the destination, press the mark key, then try again.");
         }
-
-        Pos start = new Pos(startX, startY, startZ);
-        GoalBlock target = new GoalBlock(goal.x(), goal.y(), goal.z());
-        CapabilitySet caps = CapabilitySet.of(Capability.PARKOUR);
 
         // Built before the clock starts, and that is a correction rather than a tidy-up. This
         // construction used to sit inside the timed region, where AStarPathfinder's constructor
@@ -163,15 +229,75 @@ public final class PathProbe {
         // separately below so the size of the error is on the record rather than merely removed.
         long builtAt = System.nanoTime();
         SegmentedSearch search = new SegmentedSearch(new AStarPathfinder(nodeBudget));
-        double setupMs = msSince(builtAt);
+        setupMs = msSince(builtAt);
 
         // The search reads through a snapshot; the render below does not. A render window can be
         // 64 blocks per axis and touches each cell once, so pushing it through the snapshot would
         // add a quarter of a million entries to save nothing. The repeat reads are in the search.
-        WorldSnapshot snapshot = new WorldSnapshot(world);
-        long startedAt = System.nanoTime();
-        SegmentedResult result = search.run(snapshot, startX, startY, startZ, target, caps);
-        double elapsedMs = msSince(startedAt);
+        activeSnapshot = new WorldSnapshot(world);
+        activeStart = new Pos(startX, startY, startZ);
+        activeWorld = world;
+        active = search.begin(activeSnapshot, startX, startY, startZ,
+            new GoalBlock(goal.x(), goal.y(), goal.z()), CapabilitySet.of(Capability.PARKOUR));
+        slices = 0;
+        worstSliceMs = 0.0;
+        totalSliceMs = 0.0;
+        return null;
+    }
+
+    /**
+     * Spends one slice on the run in flight, if there is one.
+     *
+     * <p>Call once per tick. Cheap and safe when nothing is running, which is the normal case.
+     *
+     * @return the report when the run finishes on this call, otherwise {@code null}
+     */
+    public ProbeReport advance() {
+        if (active == null) {
+            return null;
+        }
+        long at = System.nanoTime();
+        boolean done = active.advance(SLICE_NODES);
+        double ms = msSince(at);
+        slices++;
+        totalSliceMs += ms;
+        if (ms > worstSliceMs) {
+            worstSliceMs = ms;
+        }
+        if (!done) {
+            return null;
+        }
+        SegmentedResult result = active.result();
+        WorldSnapshot snapshot = activeSnapshot;
+        Pos start = activeStart;
+        int sliceCount = slices;
+        double worst = worstSliceMs;
+        double total = totalSliceMs;
+        active = null;
+        activeSnapshot = null;
+        activeStart = null;
+        ProbeReport built = report(snapshot, start, result, setupMs, total, sliceCount, worst);
+        activeWorld = null;
+        return built;
+    }
+
+    /** Ends any run in flight and releases the world it held. Idempotent. */
+    public void cancel() {
+        if (active != null) {
+            active.cancel();
+        }
+        active = null;
+        activeSnapshot = null;
+        activeStart = null;
+        activeWorld = null;
+    }
+
+    private ProbeReport report(WorldSnapshot snapshot, Pos start, SegmentedResult result,
+                               double setupMs, double liveMs, int sliceCount, double worstMs) {
+        GoalBlock target = new GoalBlock(goal.x(), goal.y(), goal.z());
+        CapabilitySet caps = CapabilitySet.of(Capability.PARKOUR);
+        SegmentedSearch search = new SegmentedSearch(new AStarPathfinder(nodeBudget));
+
         SealedSnapshot sealed = snapshot.seal();
 
         // The fill/search split, measured rather than instrumented. Every position the live search
@@ -185,8 +311,8 @@ public final class PathProbe {
 
         PathResult combined = result.asPathResult();
 
-        ProbeBounds bounds = ProbeBounds.around(world, start, goal, result.path());
-        StringBuilder map = new StringBuilder(PathRenderer.render(world,
+        ProbeBounds bounds = ProbeBounds.around(activeWorld, start, goal, result.path());
+        StringBuilder map = new StringBuilder(PathRenderer.render(activeWorld,
             bounds.minX, bounds.minY, bounds.minZ,
             bounds.maxX, bounds.maxY, bounds.maxZ,
             start, goal, combined));
@@ -200,15 +326,15 @@ public final class PathProbe {
             .append(", cost ").append(result.cost())
             .append(", ").append(start).append(" -> ").append(goal)
             .append(", budget ").append(nodeBudget)
-            .append(", ").append(fmt(elapsedMs)).append(" ms")
+            .append(", ").append(fmt(liveMs)).append(" ms")
             .append(", split setup ").append(fmt(setupMs)).append("ms")
-            .append(", live ").append(fmt(elapsedMs)).append("ms")
+            .append(", live ").append(fmt(liveMs)).append("ms")
             .append(", sealed ").append(fmt(firstReplay.ms)).append("ms")
             .append(" then ").append(fmt(secondReplay.ms)).append("ms")
-            .append(", fill ~").append(fmt(elapsedMs - secondReplay.ms)).append("ms");
-        if (elapsedMs > 0.0) {
+            .append(", fill ~").append(fmt(liveMs - secondReplay.ms)).append("ms");
+        if (liveMs > 0.0) {
             summary.append(" (").append(Math.round(
-                100.0 * (elapsedMs - secondReplay.ms) / elapsedMs)).append("% of live)");
+                100.0 * (liveMs - secondReplay.ms) / liveMs)).append("% of live)");
         }
         summary.append(", snapshot ").append(sealed.size()).append(" positions / ")
             .append(sealed.reads()).append(" reads");
@@ -217,6 +343,15 @@ public final class PathProbe {
             // default locale writes "3,8x" where the reader expects "3.8x".
             summary.append(" (").append(String.format(java.util.Locale.ROOT, "%.1f",
                 (double) sealed.reads() / sealed.size())).append("x)");
+        }
+        summary.append(", ").append(sealed.slots()).append(" slots");
+        if (sealed.slots() > 0) {
+            summary.append(" (").append(Math.round(
+                100.0 * sealed.size() / sealed.slots())).append("% full)");
+        }
+        if (sliceCount > 0) {
+            summary.append(", sliced ").append(sliceCount).append(" slices")
+                .append(", worst ").append(fmt(worstMs)).append("ms");
         }
 
         String diverged = firstReplay.divergence != null
