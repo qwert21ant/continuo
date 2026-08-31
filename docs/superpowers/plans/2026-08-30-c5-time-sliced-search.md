@@ -1676,6 +1676,17 @@ Add fields:
     private int slices;
     private double worstSliceMs;
     private double totalSliceMs;
+    private double setupMs;
+    /**
+     * The live world {@code activeSnapshot} wraps, held so the render can read it after the search
+     * is done. NOT passed through {@code report}'s parameter list: the render deliberately bypasses
+     * the snapshot (see the class javadoc), and a sealed snapshot answers only for positions the
+     * search actually touched while the render window is larger -- rendering from it turns every
+     * untouched cell into a spurious UNMAPPED, which two pre-existing tests catch. Cleared
+     * everywhere {@code activeSnapshot} is, because a live BlockSource held across ticks is the
+     * level-pinning hazard this sub-project exists to close.
+     */
+    private BlockSource activeWorld;
 ```
 
 Add the three methods. `start` captures the world in a snapshot the run then owns:
