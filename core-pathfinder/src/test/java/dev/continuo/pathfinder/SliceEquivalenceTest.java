@@ -157,4 +157,149 @@ class SliceEquivalenceTest {
             }
         });
     }
+
+    /**
+     * A cave climb, for the multi-segment equivalence: 726 expansions of real terrain, where the
+     * A* equivalence above uses {@code d-cliff}'s 273. Both are committed fixtures already pinned
+     * by C4's own tests, so neither can quietly become unwalkable.
+     */
+    private static FixtureWorld cave() {
+        return TerrainFixture.load("b-cave-climb.txt");
+    }
+
+    /**
+     * The budget C4 already proved segments {@code d-cliff}: 232 is 84% of its 273 expansions, and
+     * {@code SegmentedSearchTest} pins the two-segment result it produces at cost
+     * 274.41707435261833. Reusing that number rather than inventing one means this test inherits a
+     * configuration known to segment instead of hoping one does.
+     */
+    private static final int SEGMENTING_BUDGET = 232;
+
+    private static SegmentedResult unslicedRun(FixtureWorld world, int budget) {
+        return new SegmentedSearch(new AStarPathfinder(budget)).run(world,
+            world.start().x(), world.start().y(), world.start().z(),
+            goalOf(world), CapabilitySet.none());
+    }
+
+    private static SegmentedResult slicedRun(FixtureWorld world, int budget, int sliceSize) {
+        Run run = new SegmentedSearch(new AStarPathfinder(budget)).begin(world,
+            world.start().x(), world.start().y(), world.start().z(),
+            goalOf(world), CapabilitySet.none());
+        int guard = 0;
+        while (!run.advance(sliceSize)) {
+            guard++;
+            if (guard > 1000000) {
+                throw new AssertionError("run never finished at slice size " + sliceSize);
+            }
+        }
+        return run.result();
+    }
+
+    @Test
+    void everySliceSizeProducesTheIdenticalSegmentedRun() {
+        FixtureWorld world = cave();
+        SegmentedResult expected = unslicedRun(world, 25000);
+
+        // The same vacuity guard the A* equivalence test carries, for the same reason: an
+        // unwalkable fixture makes every slice size agree on NO_PATH and passes for free.
+        assertEquals(PathOutcome.FOUND, expected.outcome(),
+            "the fixture must be pathable, or this compares two NO_PATHs");
+        assertTrue(expected.expanded().size() > 100,
+            "the fixture must need enough search that a slice boundary falls inside it; got "
+                + expected.expanded().size() + " expansions");
+
+        for (int i = 0; i < SLICE_SIZES.length; i++) {
+            int slice = SLICE_SIZES[i];
+            SegmentedResult actual = slicedRun(world, 25000, slice);
+
+            assertEquals(expected.outcome(), actual.outcome(), "outcome at slice " + slice);
+            assertEquals(expected.cost(), actual.cost(), 0.0, "cost at slice " + slice);
+            assertEquals(expected.path(), actual.path(), "path at slice " + slice);
+            assertEquals(expected.expanded(), actual.expanded(), "expansions at slice " + slice);
+            assertEquals(expected.segments(), actual.segments(), "segments at slice " + slice);
+        }
+    }
+
+    @Test
+    void aSliceBoundaryLandingOnASegmentBoundaryIsNotObservable() {
+        // Spec §5.5. A slice boundary and a segment boundary can coincide, and when they do the
+        // run's PARTIAL must be the segment's own, never an artefact of tick scheduling. The
+        // budget is chosen so the first segment ends mid-run, then swept across slice sizes that
+        // bracket that expansion count from both sides.
+        FixtureWorld world = cliff();
+        SegmentedResult expected = unslicedRun(world, SEGMENTING_BUDGET);
+        assertTrue(expected.segments() > 1,
+            "d-cliff at budget " + SEGMENTING_BUDGET + " must segment or this test proves nothing;"
+                + " got " + expected.segments() + " segments");
+
+        // 1..40 walk a boundary through the first segment's interior; 231, 232 and 233 bracket the
+        // exact expansion where the first segment ends, which is the coincidence this test exists
+        // for; 464 swallows two whole segments in one slice.
+        int[] boundarySlices = {1, 2, 3, 7, 40, 115, 231, 232, 233, 464};
+        for (int b = 0; b < boundarySlices.length; b++) {
+            int slice = boundarySlices[b];
+            SegmentedResult actual = slicedRun(world, SEGMENTING_BUDGET, slice);
+            assertEquals(expected.segments(), actual.segments(), "segments at slice " + slice);
+            assertEquals(expected.cost(), actual.cost(), 0.0, "cost at slice " + slice);
+            assertEquals(expected.outcome(), actual.outcome(), "outcome at slice " + slice);
+        }
+    }
+
+    @Test
+    void aCancelledRunReleasesItsWorldAndRefusesToContinue() {
+        // The level-pinning hazard, asserted by reference rather than by behaviour. A run holds
+        // the world it reads; under slicing that run lives for hundreds of milliseconds, so a
+        // level change during one must not leave the old level reachable.
+        FixtureWorld world = cave();
+        final Run run = new SegmentedSearch(new AStarPathfinder(25000)).begin(world,
+            world.start().x(), world.start().y(), world.start().z(),
+            goalOf(world), CapabilitySet.none());
+        run.advance(5);
+
+        run.cancel();
+
+        assertTrue(run.cancelled());
+        assertTrue(run.finished(), "a cancelled run is over, not merely paused");
+        assertThrows(IllegalStateException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                run.result();
+            }
+        });
+        assertThrows(IllegalStateException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                run.advance(5);
+            }
+        });
+
+        // The gap no test above closes: every assertion so far can pass with cancel() leaving
+        // Run.world pointing at the old level, because nothing routes back through it once
+        // cancelled is set. Reached by reflection since the field is private and Run exposes no
+        // accessor for it -- the point is that nothing outside this test should ever need one.
+        try {
+            java.lang.reflect.Field worldField = Run.class.getDeclaredField("world");
+            worldField.setAccessible(true);
+            assertEquals(null, worldField.get(run),
+                "cancel() must null out the world reference, or a cancelled run keeps the old"
+                    + " level reachable through it");
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("could not reach Run.world by reflection", e);
+        }
+    }
+
+    @Test
+    void cancellingTwiceIsHarmless() {
+        // The adapter calls onLevel every tick and compares by identity; a defensive second cancel
+        // is the normal path on the tick after a transition, exactly as ContinuoCore.stop() is.
+        FixtureWorld world = cave();
+        Run run = new SegmentedSearch(new AStarPathfinder(25000)).begin(world,
+            world.start().x(), world.start().y(), world.start().z(),
+            goalOf(world), CapabilitySet.none());
+
+        run.cancel();
+        run.cancel();
+
+        assertTrue(run.cancelled());
+    }
 }
