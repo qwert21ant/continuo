@@ -45,6 +45,10 @@ public final class SegmentedSearch {
      * @param goal what to reach; never {@code null}
      * @param caps what the caller grants; never {@code null}
      * @return the run's result; never {@code null}
+     * @throws IllegalArgumentException if {@code world}, {@code goal} or {@code caps} is null —
+     *         inherited from {@link #begin}, which this delegates to. Before C5 this method had no
+     *         null checks at all; routing it through {@code begin} closed that gap as a side
+     *         effect, and this line records it rather than leaving it undocumented
      */
     public SegmentedResult run(BlockSource world, int startX, int startY, int startZ,
                                Goal goal, CapabilitySet caps) {

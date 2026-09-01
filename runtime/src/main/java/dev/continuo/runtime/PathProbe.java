@@ -218,12 +218,12 @@ public final class PathProbe {
             return early;
         }
         long startedAt = System.nanoTime();
-        active.advance(Integer.MAX_VALUE);
-        double elapsedMs = msSince(startedAt);
-        SegmentedResult result = active.result();
-        WorldSnapshot snapshot = activeSnapshot;
-        Pos start = activeStart;
         try {
+            active.advance(Integer.MAX_VALUE);
+            double elapsedMs = msSince(startedAt);
+            SegmentedResult result = active.result();
+            WorldSnapshot snapshot = activeSnapshot;
+            Pos start = activeStart;
             return report(snapshot, start, result, setupMs, elapsedMs, 0, 0.0);
         } finally {
             active = null;

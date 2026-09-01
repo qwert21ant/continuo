@@ -73,8 +73,8 @@ public final class WorldSnapshot implements BlockSource {
         if (y < minY || y >= maxY) {
             return BlockData.UNKNOWN;
         }
-        BlockData cached = blocks.get(x, y, z);
-        if (blocks.has(x, y, z)) {
+        BlockData cached = blocks.getOrNull(x, y, z);
+        if (cached != null) {
             return cached;
         }
         BlockData fresh = live.at(x, y, z);
