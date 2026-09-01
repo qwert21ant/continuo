@@ -466,7 +466,7 @@ mutations its spec mandated were caught by tests that already existed:
 2. Memo not invalidated when a section is first created → wrong block after a fill.
 3. Memo key compared with `equals` on a boxed `Long` rather than `==` on a `long` → correct but slow; **predicted to be caught by nothing**, and named here for that reason.
 4. `null` slot treated as `UNKNOWN` at fill time rather than read time → `covers()` inverts.
-5. Section offset bit order transposed (`x`/`z` swapped) → a symmetric fixture will not catch this; the test must be asymmetric.
+5. ~~Section offset bit order transposed (`x`/`z` swapped) → a symmetric fixture will not catch this; the test must be asymmetric.~~ **Wrong, and corrected by execution on 2026-08-31.** The final review applied exactly this transposition and all nine `SectionStoreTest` tests passed. It is a genuine **equivalent mutant**, not a coverage gap: `offset` is private and used identically by `put`, `get` and `has`, so any *bijective* relabelling of which coordinate owns which bit field is unobservable through the class's public contract, and no test of `SectionStore` in isolation can ever close it. An asymmetric fixture does not help. The hazard that is real, and that `theThreeAxesAreNotInterchangeable` does catch, is a **non-bijective** offset — two coordinates sharing a shift amount — which aliases distinct positions onto one slot.
 6. Search state reset on `advance` re-entry → slice size 1 hangs or repeats.
 7. Snapshot not released on cancellation → the level stays pinned; assert by reference, not by behaviour.
 
