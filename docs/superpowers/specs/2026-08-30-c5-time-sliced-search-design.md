@@ -480,9 +480,11 @@ mutations its spec mandated were caught by tests that already existed:
 3. Existing snapshot and search tests pass **unchanged** — additions only.
 4. The shape constant has a committed sweep table, not a paragraph.
 5. Every mutation in §8 executed, each result recorded in the merge commit.
-6. **In-game.** A sliced search completes over C4 §13's route, reports total ticks and worst-slice
-   milliseconds, and matches an unsliced run of the same search. **The slice budget in §5.4 is set
-   from this run**, not from the projection in §3.2.
+6. ✅ **Done 2026-08-31 — see §13.** Five presses over C4 §13's route. The sliced run matched an
+   unsliced run of the same search (no divergence notice), cost `1169.8916476768006` bit-identical
+   across all five and identical to C4's runs. Worst slice **11.4 ms warm, 35.6 ms cold** against a
+   60 ms unsliced block. `SLICE_NODES` set to **2,000** from this run, not from §3.2's projection —
+   which §13.2 records as not having materialised.
 7. No SPI change, no new module, no new dependency, no `IGameEvents` method.
 
 ---
@@ -518,4 +520,69 @@ mutations its spec mandated were caught by tests that already existed:
 | The unsealed snapshot pins a level | §6 — the real form of C3 §9's inherited question, now stated correctly. Discharged by the level-identity trigger, and mutation 7 asserts release by reference rather than by behaviour |
 | The adapter edit breaks a global rule | D11 accepts two adapter edits knowingly. Adapters are untestable, so this is review-only, and every Minecraft API claim must be checked against the decompiled sources on disk |
 | Latency is still poor after all this | 7 ticks for a typical route (§5.4), against 1.2 ticks of freeze today. C5 trades a stutter for a delay, which is the right trade for a bot and the wrong one for a probe — and §10's first entry is what actually fixes it |
-| C5 is unnecessary because storage alone fits a tick | Honest possibility, and §3.2's projection lands at 43 ms against a 50 ms tick — a 15% margin, warm, on one route. Criterion 6 could show slicing is rarely needed. That would be a finding, not a failure, and the storage half stands regardless |
+| ~~C5 is unnecessary because storage alone fits a tick~~ | **Answered 2026-08-31 — see §13.3. No.** Storage alone left the total at 60 ms, a full tick over; §3.2's 43 ms projection did not materialise, because the fill grew by what the search saved. Slicing is what made the search survivable |
+
+---
+
+## 13. In-game verification, 2026-08-31
+
+Five presses on the C4 §13 route, `(1588, 71, −967) → (1737, 72, −786)`, budget 25,000. Every one
+returned `FOUND`, 2 segments, 245 steps, 25,053 expanded, cost `1169.8916476768006` — bit-identical
+to each other and to C4's runs of the same route, across the storage rewrite, both loop lifts and
+slicing.
+
+| press | setup | live | sealed 2nd | fill | **worst slice** |
+|---|---|---|---|---|---|
+| cold | 5.7 | 100.6 | 38.7 | 61.8 | **35.6** |
+| 2 | 0.7 | 59.0 | 38.9 | 20.1 | **11.2** |
+| 3 | 0.7 | 58.9 | 36.1 | 22.9 | **11.6** |
+| 4 | 0.7 | 61.3 | 37.2 | 24.1 | **11.6** |
+| 5 | 0.5 | 61.9 | 39.3 | 22.6 | **11.0** |
+
+Snapshot, stable across all five: 145,076 positions / 1,842,387 reads (12.7×), **335,488 slots,
+43% full**.
+
+### 13.1 Criterion 6, discharged
+
+**Slicing works, and that is what C5 was for.** Sixty milliseconds of search now costs a worst tick
+of **11.4 ms** instead of a 60 ms block. D7 is confirmed in a live client on real terrain, not just
+headlessly: the live run was sliced into 7, both sealed replays were unsliced, and no divergence
+notice fired — so a sliced search returned bit-identical results to an unsliced one.
+
+**`SLICE_NODES` is set to 2,000 by this run**, down from §5.4's arithmetic 4,000. Warm, 4,000 was
+comfortable at 11.4 ms. Cold it was **35.6 ms — 71% of a tick**, once per session on the first
+path, and the cold case is the one a user feels. Halving the budget halves the first slice's
+first-touch fill, which is what dominates it, at a cost of about 0.65 s per path instead of 0.35 s.
+
+### 13.2 The storage change did not deliver its projection
+
+§3.2 projected the search dropping from 45.4 ms to about 29.5 and a full search to about 43 ms
+against a 50 ms tick. Measured against the pre-C5 warm baseline:
+
+| | before | after | change |
+|---|---|---|---|
+| search arithmetic (`sealed`) | 45.3 ms | **37.9 ms** | −16% |
+| fill | 13.9 ms | **22.4 ms** | +62% |
+| **total** | 59.1 ms | **60.3 ms** | **unchanged** |
+
+The headless 35% became 16% in game, and the total did not move at all, because the fill grew by
+almost exactly what the search saved (+8.6 against −7.4 ms). §3.2's own caveat — that absolute
+times from that benchmark are not comparable and only within-run ratios are signal — turns out to
+have been the important sentence.
+
+**Hypothesis, labelled as one and not acted on here:** the fill path now does the section lookup
+twice. `WorldSnapshot.at` calls `getOrNull(x, y, z)` and, on a miss, `put(x, y, z, fresh)`, which
+recomputes the section key, re-walks the memo and boxes a `Long` for it. The pre-C5 code computed
+one key and reused it for `get` and `put`. That is 145,000 double lookups per search, all landing
+in the fill bucket. A combined locate-once-and-fill would test it. Recorded rather than fixed:
+this needs a measurement first, and reasoning about performance without one has been wrong twice
+in this sub-project already.
+
+**Occupancy beat its prediction.** 43% full on real terrain against the ~30% §3.2's synthetic
+corridor projected, so the 4×4×4 store costs 2.3× the references it holds rather than 3.4×.
+
+### 13.3 §12's last risk, answered
+
+*"C5 is unnecessary because storage alone fits a tick"* — **no.** Storage alone left the total at
+60 ms, a full tick over. Slicing is what made the search survivable, and the storage half is worth
+16% of the arithmetic rather than the third §3.2 hoped for.

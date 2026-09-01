@@ -79,18 +79,25 @@ public final class PathProbe {
     /**
      * How many nodes one slice expands.
      *
-     * <p>4,000, from the design §5.4's arithmetic rather than from taste: a 25,053-expansion route
-     * finishes in 7 slices, and a slice costs roughly 4,000 expansions of search plus the fill for
-     * about 23,000 newly-touched positions at the measured 88 ns each — near 7 ms, comfortably
-     * inside a 50 ms tick.
+     * <p><b>2,000, set by the in-game run of 2026-08-31 — design §13.</b> It was 4,000, from §5.4's
+     * arithmetic, which predicted a slice near 7 ms. Measured on the C4 §13 route, 4,000 gave a
+     * worst slice of <b>11.4 ms warm and 35.6 ms cold</b> — the cold figure being 71% of a 50 ms
+     * tick, once per session on the first path. Halving the budget halves the first slice's
+     * first-touch fill, which is what dominates it.
      *
-     * <p><b>Provisional until an in-game run sets it.</b> The per-slice cost is not uniform: early
-     * slices touch all-new terrain and pay the fill, later ones hit the snapshot's memo, and C4
-     * §13.3 measured that non-linearity directly. A node budget buys determinism — C1 §5.1, and a
-     * wall-clock slice boundary would make every path assertion in the suite flaky — at the price
-     * of a variable millisecond cost.
+     * <p>The cost is latency, and it is small: the same route takes about 13 slices instead of 7,
+     * so roughly 0.65 s rather than 0.35 s to compute. Against that, no slice should exceed about
+     * 6 ms warm or 18 ms cold.
+     *
+     * <p><b>Why the worst slice and not the average.</b> Per-slice cost is strongly non-uniform:
+     * early slices touch all-new terrain and pay the fill, later ones hit the snapshot's memo, and
+     * C4 §13.3 measured that non-linearity before C5 existed. The average slice on that route was
+     * 8.6 ms while the worst was 11.4; sizing to the average would put a hitch in every path.
+     *
+     * <p>A node budget buys determinism — C1 §5.1, and a wall-clock slice boundary would make every
+     * path assertion in the suite flaky — at the price of exactly this variable millisecond cost.
      */
-    public static final int SLICE_NODES = 4000;
+    public static final int SLICE_NODES = 2000;
 
     private final int nodeBudget;
 
