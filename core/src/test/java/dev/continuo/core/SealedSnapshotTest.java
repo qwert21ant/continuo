@@ -3,8 +3,6 @@ package dev.continuo.core;
 import org.junit.jupiter.api.Test;
 
 import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -21,9 +19,9 @@ class SealedSnapshotTest {
      * (1, 71, 2) — an unloaded chunk, say — over a world spanning -64..320.
      */
     private static SealedSnapshot fixture() {
-        Map<Long, BlockData> blocks = new HashMap<Long, BlockData>();
-        blocks.put(Long.valueOf(PositionKey.pack(1, 70, 2)), STONE);
-        blocks.put(Long.valueOf(PositionKey.pack(1, 71, 2)), BlockData.UNKNOWN);
+        SectionStore blocks = new SectionStore();
+        blocks.put(1, 70, 2, STONE);
+        blocks.put(1, 71, 2, BlockData.UNKNOWN);
         return new SealedSnapshot(blocks, -64, 320, 4242);
     }
 

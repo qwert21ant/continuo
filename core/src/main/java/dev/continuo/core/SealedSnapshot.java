@@ -1,16 +1,15 @@
 package dev.continuo.core;
 
-import java.util.Map;
-
 /**
  * A frozen {@code WorldSnapshot}: the part of the world one search read, and nothing else.
  *
- * <p>Readable from any thread. It holds no reference to a live source and has no method that
- * would use one, so it cannot call the SPI — that is a property of the type rather than a check
- * it performs. Its fields are {@code final} and its map is never mutated after construction, so
- * the JMM's final-field freeze guarantees that a thread seeing a properly constructed instance
- * sees the whole map. Handing one to an executor therefore needs no happens-before argument of
- * its own.
+ * <p><b>Read by one thread at a time.</b> Its storage keeps a memo of the last section touched, so
+ * two threads reading one instance would race on that field and hand each other another position's
+ * block. This is a narrowing of what this class promised before C5: the promise existed for an
+ * off-thread search, and C5 D2 rejected that design on measurement — the fill cannot leave the main
+ * thread under global rule 1 whatever the search does, and the fault protocol an off-thread search
+ * needs measured at 131 to 385 tick round trips per path. Nothing in this project reads a snapshot
+ * from more than one thread.
  *
  * <p><b>Staleness is the contract, not a bug.</b> A snapshot is a point-in-time copy by
  * definition. Nothing invalidates it and nothing refreshes it. When the world moves under a
@@ -23,7 +22,7 @@ import java.util.Map;
  */
 public final class SealedSnapshot implements BlockSource {
 
-    private final Map<Long, BlockData> blocks;
+    private final SectionStore blocks;
     private final int minY;
     private final int maxY;
     private final int reads;
@@ -35,7 +34,7 @@ public final class SealedSnapshot implements BlockSource {
      * @param maxY the world's exclusive upper bound at the time of filling
      * @param reads the filling handle's {@code reads()} at the moment of sealing
      */
-    SealedSnapshot(Map<Long, BlockData> blocks, int minY, int maxY, int reads) {
+    SealedSnapshot(SectionStore blocks, int minY, int maxY, int reads) {
         this.blocks = blocks;
         this.minY = minY;
         this.maxY = maxY;
@@ -56,8 +55,7 @@ public final class SealedSnapshot implements BlockSource {
         if (y < minY || y >= maxY) {
             return BlockData.UNKNOWN;
         }
-        BlockData held = blocks.get(Long.valueOf(PositionKey.pack(x, y, z)));
-        return held == null ? BlockData.UNKNOWN : held;
+        return blocks.get(x, y, z);
     }
 
     /** @return the world's inclusive lower bound, as it was when this was filled */
@@ -95,12 +93,17 @@ public final class SealedSnapshot implements BlockSource {
         if (y < minY || y >= maxY) {
             return true;
         }
-        return blocks.containsKey(Long.valueOf(PositionKey.pack(x, y, z)));
+        return blocks.has(x, y, z);
     }
 
     /** @return how many positions this snapshot holds */
     public int size() {
         return blocks.size();
+    }
+
+    /** @return how many array slots the store allocated; {@link #size} plus the sections' waste */
+    public long slots() {
+        return blocks.slots();
     }
 
     /**
