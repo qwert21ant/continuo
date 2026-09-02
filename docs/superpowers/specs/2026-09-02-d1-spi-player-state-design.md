@@ -382,16 +382,24 @@ void setLook(float yaw, float pitch);
 Rule 4 is today a hazard statement that explicitly declines to resolve itself and points at M5. It
 becomes an obligation on the core alone:
 
-> **While it is driving, the core states its full desired input set every tick.** It does not track
-> what it has already pressed and does not rely on any previous `setInput` call persisting.
+> **While it is driving, the core MUST state its full desired input set every tick.** It does not
+> track what it has already pressed and does not rely on any previous `setInput` call persisting.
 >
-> **While it is idle, the core writes nothing at all.** It must not hold every input at `false` each
+> **While it is idle, the core writes nothing at all.** It MUST NOT hold every input at `false` each
 > tick; that would fight the user's own keyboard whenever the bot is not running.
 >
 > **On `stop()` the core releases what it holds, once.**
 >
 > **Adapters owe nothing new.** `setInput` remains idempotent and remains documented as clearable at
-> any time.
+> any time. No adapter is required to re-assert anything.
+
+**The keywords are load-bearing, and this spec originally omitted them.** The package's own preamble
+says MUST, MUST NOT and MAY carry their RFC 2119 meanings, and rule 4's central clause — the one
+this whole sub-project exists to establish — was drafted here in the declarative. Task 3's review
+caught it in the shipped javadoc; the omission was the spec's. The clause is normative and now says
+so. The related hazard sentence in `IActuator.setInput` had the same problem in a worse place: it
+told a reader that the SPI requires "neither side" to re-assert, which after this rule is true only
+of adapters, and `setInput` is the method a core author actually reads.
 
 `IActuator`'s deferral paragraph (`IActuator.java:21–27`) and `IGameEvents`' M5 note
 (`IGameEvents.java:32–34`) both lose their forward references. The conformance suite's "Rules with
