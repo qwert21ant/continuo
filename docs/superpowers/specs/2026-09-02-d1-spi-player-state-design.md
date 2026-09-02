@@ -488,7 +488,7 @@ jobs, all cheap, all on paths the owner already presses several times a session:
 1. **Its search start comes from `IPlayerView`**, not from the integers the adapter passes in. This
    makes the new interface load-bearing rather than decorative, and it is what turns §3.2's hazard
    into something a press can expose.
-2. **It reports player state** in the summary line — position to three decimals, yaw, pitch,
+2. **It reports player state** in the summary line — position to two decimals, yaw, pitch,
    `onGround`.
 3. **It runs the two self-checks in §9.2**, reporting a divergence notice rather than passing
    silently, in the same style as C5's seal-and-replay comparison.
@@ -572,10 +572,22 @@ makes the check worth having:** correct behaviour fails it only in a short list 
 ladder, in fluid), and the bug fails it every time. A notice on plain flat ground is a real defect.
 
 **Check 2 — the look round trip.** After `setLook(yaw, pitch)`, the next tick's `IPlayerView.yaw()`
-and `pitch()` should agree, modulo wrapping. The contract does not guarantee this (§5), because the
-mouse and the server also write rotation — so it is a notice, not an assertion. But on a tick where
-nobody touched the mouse, a mismatch means one of the two new SPI halves is wrong, and **the two
-halves checking each other is the only automated-ish leverage D1 has on adapter code.**
+should agree, modulo wrapping. The contract does not guarantee this (§5), because the mouse and the
+server also write rotation — so it is a notice, not an assertion. But on a tick where nobody touched
+the mouse, a mismatch means one of the two new SPI halves is wrong, and **the two halves checking
+each other is the only automated-ish leverage D1 has on adapter code.**
+
+**Yaw only, corrected 2026-09-02 after the whole-branch review.** This section originally said "and
+`pitch()`". Checking pitch would prove nothing: the probe passes `IPlayerView.pitch()` straight back
+into `setLook` rather than choosing a pitch, so a pitch round trip compares a value to itself and
+holds even for an adapter that writes yaw and silently drops pitch — the exact failure it would
+appear to be testing. The shipped code checks yaw alone and is right; this is the spec catching up
+to it. **A pitch check would need the probe to ask for a pitch of its own**, which nothing yet has a
+reason to do.
+
+**And the order in which the adapter calls the probe is what makes this check real at all** — see
+§7.2. With `start` called before `advance` in the same tick handler, the "next tick's" read happens
+a few statements after the write and the check degenerates into a same-tick read-back.
 
 ### 9.3 In-game, by eye
 

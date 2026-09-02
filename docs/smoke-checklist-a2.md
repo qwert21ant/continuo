@@ -2,7 +2,13 @@
 
 This is a manual, in-game verification. It cannot be automated or run in CI: it requires a
 graphical Minecraft client, a real keypress, and a human watching the result. Run it after
-`./gradlew clean build` is green.
+`./gradlew build` is green.
+
+**Do not run `./gradlew clean`.** On the Forge 1.7.10 side it deletes
+`adapters/adapter-forge-1.7.10/build/rfg/minecraft-src/`, the decompiled Minecraft sources that are
+the only authority for verifying adapter code against — adapters have no tests, so review against
+those sources is their sole gate. Regenerating them costs a long decompile. `build` alone is the
+project's gate and is what every other document here specifies.
 
 Run: `./gradlew :adapters:adapter-forge-1.7.10:runClient`
 
