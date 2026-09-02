@@ -1285,7 +1285,7 @@ layer at `WALK_Y = 64`, so a player standing on the floor has `y() == 64.0`.
         ProbeReport report = drainToReport(probe);
 
         assertEquals(PathOutcome.FOUND, report.outcome(), "guard: the route must exist");
-        assertTrue(report.summary().contains("(2, 64, -3)"),
+        assertTrue(report.summary().contains("(2, 64, -4)"),
             "the start must be the floored player position, not a rounded one: " + report.summary());
     }
 
