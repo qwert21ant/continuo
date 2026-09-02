@@ -39,6 +39,8 @@ final class ForgeActuator implements IActuator {
     @Override
     public void setLook(float yaw, float pitch) {
         EntityClientPlayerMP player = minecraft.thePlayer;
+        // Unlike IPlayerView, this returns rather than throwing: a bot must never fault the game's
+        // tick loop over a race with a disconnect (SPI global rule 3).
         if (player == null) {
             return;
         }

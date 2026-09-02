@@ -29,6 +29,8 @@ final class FabricActuator implements IActuator {
     @Override
     public void setLook(float yaw, float pitch) {
         LocalPlayer player = minecraft.player;
+        // Unlike IPlayerView, this returns rather than throwing: a bot must never fault the game's
+        // tick loop over a race with a disconnect (SPI global rule 3).
         if (player == null) {
             return;
         }

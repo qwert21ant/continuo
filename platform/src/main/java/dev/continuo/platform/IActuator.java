@@ -76,10 +76,20 @@ public interface IActuator {
      * global rule 4's principle applied to rotation rather than to key state.
      *
      * <p>The core MUST pass a {@code pitch} in {@code [-90, 90]}; adapter behaviour outside that
-     * range is unspecified, exactly as it is for a {@code null} {@link Input}. Neither target version
-     * clamps on a direct field write, and an out-of-range pitch is both a rendering defect and the
-     * loudest signal a server-side plausibility check can read. {@code yaw} may be any finite value:
-     * both versions' movement arithmetic is periodic in it.
+     * range is unspecified, exactly as it is for a {@code null} {@link Input}. <b>The two target
+     * versions genuinely differ there, which is why it is unspecified rather than defined.</b>
+     * 1.7.10's {@code rotationPitch} is a public field an adapter writes directly, with no clamp on
+     * that path, so an out-of-range pitch survives to the renderer and to the server. 1.21.11 has no
+     * direct write at all — {@code xRot} is private, and {@code setXRot} stores
+     * {@code Math.clamp(f % 360, -90, 90)} — so the same call is silently corrected. An
+     * out-of-range pitch is therefore a rendering defect and a loud server-side plausibility signal
+     * on one version and invisible on the other, which makes it a core-side bug that only one
+     * adapter can ever expose. Do not pass one.
+     *
+     * <p>{@code yaw} may be any finite value: both versions' movement arithmetic is periodic in it,
+     * and neither normalises what an adapter writes. <b>Finite is a real requirement, not a
+     * formality</b> — 1.21.11's {@code setYRot} discards a non-finite value and logs it, while
+     * 1.7.10 writes it straight to the field, turning the player's motion into {@code NaN}.
      *
      * <p><b>Adapter obligation.</b> An implementation MUST also write the platform's
      * previous-rotation field — {@code prevRotationYaw}/{@code prevRotationPitch} on 1.7.10,
