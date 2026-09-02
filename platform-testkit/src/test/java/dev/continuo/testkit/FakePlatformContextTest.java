@@ -3,6 +3,8 @@ package dev.continuo.testkit;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,6 +20,7 @@ class FakePlatformContextTest {
     void playerReturnsTheSameInstanceOnEveryCall() {
         FakePlatformContext ctx = new FakePlatformContext();
 
+        assertNotNull(ctx.player());
         assertSame(ctx.player(), ctx.player());
         assertSame(ctx.fakePlayerView(), ctx.player());
     }
@@ -26,8 +29,11 @@ class FakePlatformContextTest {
     void everyAccessorReturnsTheSameInstanceOnEveryCall() {
         FakePlatformContext ctx = new FakePlatformContext();
 
+        assertNotNull(ctx.actuator());
         assertSame(ctx.actuator(), ctx.actuator());
+        assertNotNull(ctx.info());
         assertSame(ctx.info(), ctx.info());
+        assertNotNull(ctx.blocks());
         assertSame(ctx.blocks(), ctx.blocks());
     }
 
@@ -54,6 +60,6 @@ class FakePlatformContextTest {
         assertEquals(0.0, ctx.player().z());
         assertEquals(0.0f, ctx.player().yaw());
         assertEquals(0.0f, ctx.player().pitch());
-        assertEquals(false, ctx.player().onGround());
+        assertFalse(ctx.player().onGround());
     }
 }

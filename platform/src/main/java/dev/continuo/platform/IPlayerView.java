@@ -18,11 +18,11 @@ package dev.continuo.platform;
  * <p>Subject to all four global rules in this package's documentation, in particular rule 1: these
  * are main-thread calls and no implementation may block.
  *
- * <p><b>The field budget is deliberately six.</b> Velocity, eye height, bounding-box dimensions and
- * fluid state are all natively available on both target versions and are all deliberately absent,
- * because nothing consumes them yet. This package's documentation says every type added here is a
- * future version-compatibility problem; the same applies to every method. Widening this interface
- * when a real consumer appears is a two-file change.
+ * <p><b>The field budget is deliberately six.</b> Velocity, eye height, bounding-box dimensions,
+ * fluid state, and sneak/sprint state are all natively available on both target versions and are
+ * all deliberately absent, because nothing consumes them yet. This package's documentation says
+ * every type added here is a future version-compatibility problem; the same applies to every
+ * method. Widening this interface when a real consumer appears is a two-file change.
  */
 public interface IPlayerView {
 
