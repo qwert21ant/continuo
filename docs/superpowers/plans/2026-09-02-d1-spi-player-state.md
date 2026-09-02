@@ -111,14 +111,21 @@ package dev.continuo.testkit;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Pins {@code IPlatformContext}'s same-instance clause for the accessor D1 adds.
+ * Pins both of {@code IPlatformContext}'s accessor clauses for the accessor D1 adds: MUST NOT
+ * return {@code null}, and MUST return the same instance every call.
  *
- * <p>The clause is what lets the core cache what an accessor returns. It has always been stated
- * and never asserted; the fourth accessor is a cheap place to start asserting it.
+ * <p>Together they are what lets the core cache what an accessor returns. Both have always been
+ * stated and neither was asserted; the fourth accessor is a cheap place to start.
+ *
+ * <p><b>The null assertions are load-bearing, not belt-and-braces.</b> {@code assertSame(null, null)}
+ * passes, so a same-instance test alone is satisfied by an accessor that returns {@code null} every
+ * time — it would pin one clause while appearing to pin two.
  */
 class FakePlatformContextTest {
 
@@ -126,6 +133,10 @@ class FakePlatformContextTest {
     void playerReturnsTheSameInstanceOnEveryCall() {
         FakePlatformContext ctx = new FakePlatformContext();
 
+        // Asserted before assertSame, not after: assertSame(null, null) passes, so without this
+        // the test would be satisfied by an accessor that returns null every time -- pinning one
+        // of IPlatformContext's two clauses while appearing to pin both.
+        assertNotNull(ctx.player());
         assertSame(ctx.player(), ctx.player());
         assertSame(ctx.fakePlayerView(), ctx.player());
     }
@@ -134,6 +145,9 @@ class FakePlatformContextTest {
     void everyAccessorReturnsTheSameInstanceOnEveryCall() {
         FakePlatformContext ctx = new FakePlatformContext();
 
+        assertNotNull(ctx.actuator());
+        assertNotNull(ctx.info());
+        assertNotNull(ctx.blocks());
         assertSame(ctx.actuator(), ctx.actuator());
         assertSame(ctx.info(), ctx.info());
         assertSame(ctx.blocks(), ctx.blocks());
@@ -162,7 +176,7 @@ class FakePlatformContextTest {
         assertEquals(0.0, ctx.player().z());
         assertEquals(0.0f, ctx.player().yaw());
         assertEquals(0.0f, ctx.player().pitch());
-        assertEquals(false, ctx.player().onGround());
+        assertFalse(ctx.player().onGround());
     }
 }
 ```
