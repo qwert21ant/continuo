@@ -153,15 +153,13 @@ public final class ContinuoFabricMod implements ClientModInitializer {
                 return;
             }
             try {
-                BlockPos at = client.player.blockPosition();
                 if (mark) {
-                    probe.markGoal(at.getX(), at.getY(), at.getZ());
+                    probe.markGoal(context.player());
                     LOGGER.info("Continuo: path goal marked at {} {} {}",
-                        at.getX(), at.getY(), at.getZ());
+                        context.player().x(), context.player().y(), context.player().z());
                 }
                 if (path) {
-                    ProbeReport refused = probe.start(
-                        core.blocks(), at.getX(), at.getY(), at.getZ());
+                    ProbeReport refused = probe.start(core.blocks(), context.player());
                     if (refused != null) {
                         LOGGER.info(refused.summary());
                     }

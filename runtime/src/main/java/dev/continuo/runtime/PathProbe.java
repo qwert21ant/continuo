@@ -1,10 +1,12 @@
 package dev.continuo.runtime;
 
+import dev.continuo.core.BlockData;
 import dev.continuo.core.BlockSource;
 import dev.continuo.core.SealedSnapshot;
 import dev.continuo.core.WorldSnapshot;
 import dev.continuo.movement.Capability;
 import dev.continuo.movement.CapabilitySet;
+import dev.continuo.movement.Standability;
 import dev.continuo.pathfinder.AStarPathfinder;
 import dev.continuo.pathfinder.BlockLegend;
 import dev.continuo.pathfinder.GoalBlock;
@@ -14,6 +16,7 @@ import dev.continuo.pathfinder.Pos;
 import dev.continuo.pathfinder.Run;
 import dev.continuo.pathfinder.SegmentedResult;
 import dev.continuo.pathfinder.SegmentedSearch;
+import dev.continuo.platform.IPlayerView;
 
 /**
  * Runs A* against a live world and renders the result, so a route can be looked at in a
@@ -158,6 +161,17 @@ public final class PathProbe {
      */
     private SegmentedSearch activeSearch;
 
+    /** What {@link #start} read from {@link IPlayerView}, for the report. */
+    private String activePlayerState;
+
+    /**
+     * The standing-invariant notice for the run in flight, or {@code null} if it held.
+     *
+     * <p>Computed at {@link #start} because that is the only tick whose player state produced the
+     * search's start position. Cleared everywhere {@link #activeSnapshot} is.
+     */
+    private String activeStandingNotice;
+
     /** Uses {@link #NODE_BUDGET}. */
     public PathProbe() {
         this(NODE_BUDGET);
@@ -182,6 +196,18 @@ public final class PathProbe {
      */
     public void markGoal(int x, int y, int z) {
         this.goal = new Pos(x, y, z);
+    }
+
+    /**
+     * Records the player's current block position as the goal. Replaces any previous mark.
+     *
+     * @param player where the player is; never {@code null}
+     */
+    public void markGoal(IPlayerView player) {
+        if (player == null) {
+            throw new IllegalArgumentException("player must not be null");
+        }
+        markGoal(floor(player.x()), floor(player.y()), floor(player.z()));
     }
 
     /**
@@ -239,6 +265,8 @@ public final class PathProbe {
             activeGoal = null;
             activeSearch = null;
             activeWorld = null;
+            activePlayerState = null;
+            activeStandingNotice = null;
         }
     }
 
@@ -289,6 +317,79 @@ public final class PathProbe {
     }
 
     /**
+     * Begins a sliced run from where the player is standing.
+     *
+     * <p>The start comes from {@link IPlayerView} rather than from coordinates an adapter computed,
+     * which is what makes the SPI's feet definition load-bearing: an adapter reporting the stance
+     * instead of the feet on 1.7.10 would start every search 1.62 blocks above the ground. The
+     * standing invariant recorded here is what surfaces that.
+     *
+     * @param world  the world to read; never {@code null}
+     * @param player where the player is; never {@code null}
+     * @return a report if the run could not be started, or {@code null} if it was
+     */
+    public ProbeReport start(BlockSource world, IPlayerView player) {
+        if (player == null) {
+            throw new IllegalArgumentException("player must not be null");
+        }
+        int px = floor(player.x());
+        int py = floor(player.y());
+        int pz = floor(player.z());
+        ProbeReport refused = start(world, px, py, pz);
+        if (refused != null) {
+            return refused;
+        }
+        activePlayerState = "player " + fmt2(player.x()) + " " + fmt2(player.y()) + " "
+            + fmt2(player.z()) + ", yaw " + fmt(player.yaw()) + ", pitch " + fmt(player.pitch())
+            + ", onGround " + player.onGround();
+        activeStandingNotice = standingNotice(world, player, px, py, pz);
+        return null;
+    }
+
+    /**
+     * The standing invariant: a player the platform reports as on the ground should have something
+     * under its feet.
+     *
+     * <p><b>This is what catches a feet-versus-stance error in an adapter.</b> With {@code y()}
+     * reporting 1.62 blocks too high, the sampled block sits about a block above the player's head,
+     * and anywhere a player can stand has headroom — so it is air essentially always.
+     *
+     * <p>A notice rather than an assertion, because it has legitimate failures: standing on a slab
+     * or stair edge, on a fence post, straddling a block boundary, in a boat, on a ladder, or in
+     * fluid. On plain flat ground a notice is a real defect. The list is a first draft and the right
+     * response to finding another case is to extend it, not to weaken the check.
+     *
+     * @return the notice, or {@code null} if the invariant held or does not apply
+     */
+    private static String standingNotice(BlockSource world, IPlayerView player,
+                                         int px, int py, int pz) {
+        if (!player.onGround()) {
+            return null;
+        }
+        BlockData below = world.at(px, py - 1, pz);
+        if (Standability.supports(below)) {
+            return null;
+        }
+        return "onGround is true but the block below the feet at " + px + "," + (py - 1) + ","
+            + pz + " is " + below.shape() + ", which cannot support a standing player."
+            + " On plain ground this means IPlayerView.y() is not the bottom of the collision box"
+            + " -- on 1.7.10 that is posY (the stance, 1.62 blocks high) where it should be"
+            + " boundingBox.minY. Legitimate on a slab or stair edge, a fence post, a block"
+            + " boundary, a boat, a ladder or in fluid";
+    }
+
+    /** Floor toward negative infinity, so a negative coordinate lands in the block it is inside. */
+    private static int floor(double value) {
+        int truncated = (int) value;
+        return value < truncated ? truncated - 1 : truncated;
+    }
+
+    /** Two decimal places, in {@code Locale.ROOT}, for the same reason {@link #fmt} is. */
+    private static String fmt2(double value) {
+        return String.format(java.util.Locale.ROOT, "%.2f", Double.valueOf(value));
+    }
+
+    /**
      * Spends one slice on the run in flight, if there is one.
      *
      * <p>Call once per tick. Cheap and safe when nothing is running, which is the normal case.
@@ -325,6 +426,8 @@ public final class PathProbe {
             activeGoal = null;
             activeSearch = null;
             activeWorld = null;
+            activePlayerState = null;
+            activeStandingNotice = null;
         }
     }
 
@@ -339,6 +442,8 @@ public final class PathProbe {
         activeGoal = null;
         activeSearch = null;
         activeWorld = null;
+        activePlayerState = null;
+        activeStandingNotice = null;
     }
 
     private ProbeReport report(WorldSnapshot snapshot, Pos start, SegmentedResult result,
@@ -401,6 +506,12 @@ public final class PathProbe {
         if (sliceCount > 0) {
             summary.append(", sliced ").append(sliceCount).append(" slices")
                 .append(", worst ").append(fmt(worstMs)).append("ms");
+        }
+        if (activePlayerState != null) {
+            summary.append(", ").append(activePlayerState);
+        }
+        if (activeStandingNotice != null) {
+            append(summary, map, activeStandingNotice);
         }
 
         String diverged = firstReplay.divergence != null

@@ -15,6 +15,8 @@ import dev.continuo.pathfinder.PathOutcome;
 import dev.continuo.pathfinder.PathRenderer;
 import dev.continuo.pathfinder.SegmentedResult;
 import dev.continuo.pathfinder.SegmentedSearch;
+import dev.continuo.platform.IPlayerView;
+import dev.continuo.testkit.FakePlayerView;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -770,6 +772,122 @@ class PathProbeTest {
         }
         assertNotNull(done, "the replacing run must still finish");
         assertEquals(PathOutcome.FOUND, done.outcome(), done.summary());
+    }
+
+    @Test
+    void takesItsStartFromThePlayerViewAndFloorsIt() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        PathProbe probe = new PathProbe();
+        player.set(2.75, 64.0, -3.25, 0.0f, 0.0f, true);
+        probe.markGoal(5, ProbeWorld.WALK_Y, 0);
+
+        assertNull(probe.start(world, player), "the run must start");
+        ProbeReport report = drainToReport(probe);
+
+        assertEquals(PathOutcome.FOUND, report.outcome(), "guard: the route must exist");
+        assertTrue(report.summary().contains("(2, 64, -4)"),
+            "the start must be the floored player position, not a rounded one: " + report.summary());
+    }
+
+    @Test
+    void reportsThePlayerStateItRead() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, 64.0, 0.5, 90.0f, -12.5f, true);
+        probe.markGoal(4, ProbeWorld.WALK_Y, 0);
+
+        probe.start(world, player);
+        ProbeReport report = drainToReport(probe);
+
+        assertTrue(report.summary().contains("player 0.50 64.00 0.50"),
+            "position must be reported: " + report.summary());
+        assertTrue(report.summary().contains("yaw 90.0"),
+            "yaw must be reported: " + report.summary());
+        assertTrue(report.summary().contains("onGround true"),
+            "the ground flag must be reported: " + report.summary());
+    }
+
+    /**
+     * The check that catches a 1.62-block {@code y()} error on 1.7.10. Under that bug the sampled
+     * block sits about a block above the player's head, and anywhere a player can stand has
+     * headroom, so it is air essentially always.
+     */
+    @Test
+    void noticesWhenTheBlockBelowTheFeetCannotSupportTheStandingPlayer() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        PathProbe probe = new PathProbe();
+        // A whole block too high: on ground, but with air beneath the reported feet.
+        player.set(0.5, ProbeWorld.WALK_Y + 1, 0.5, 0.0f, 0.0f, true);
+        probe.markGoal(4, ProbeWorld.WALK_Y, 0);
+
+        probe.start(world, player);
+        ProbeReport report = drainToReport(probe);
+
+        assertTrue(report.summary().contains("onGround is true but the block below the feet"),
+            "the standing invariant must fire: " + report.summary());
+    }
+
+    @Test
+    void doesNotNoticeAnythingWhenThePlayerIsStandingOnTheFloor() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        probe.markGoal(4, ProbeWorld.WALK_Y, 0);
+
+        probe.start(world, player);
+        ProbeReport report = drainToReport(probe);
+
+        assertEquals(PathOutcome.FOUND, report.outcome(), "guard: the route must exist");
+        assertFalse(report.summary().contains("onGround is true but the block below the feet"),
+            "no notice on plain ground: " + report.summary());
+    }
+
+    @Test
+    void doesNotCheckTheStandingInvariantWhileAirborne() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y + 3, 0.5, 0.0f, 0.0f, false);
+        probe.markGoal(4, ProbeWorld.WALK_Y, 0);
+
+        probe.start(world, player);
+        ProbeReport report = drainToReport(probe);
+
+        assertFalse(report.summary().contains("onGround is true but the block below the feet"),
+            "a falling player stands on nothing and that is not a defect: " + report.summary());
+    }
+
+    @Test
+    void markGoalCanBeTakenFromThePlayerView() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        PathProbe probe = new PathProbe();
+
+        player.set(4.9, ProbeWorld.WALK_Y, -0.1, 0.0f, 0.0f, true);
+        probe.markGoal(player);
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+
+        probe.start(world, player);
+        ProbeReport report = drainToReport(probe);
+
+        assertEquals(PathOutcome.FOUND, report.outcome());
+        assertTrue(report.summary().contains("(4, 64, -1)"),
+            "the goal must be the floored marked position: " + report.summary());
+    }
+
+    /** Spends slices until the run finishes, and fails rather than looping forever. */
+    private static ProbeReport drainToReport(PathProbe probe) {
+        for (int i = 0; i < 10000; i++) {
+            ProbeReport report = probe.advance();
+            if (report != null) {
+                return report;
+            }
+        }
+        throw new AssertionError("the run did not finish within 10000 slices");
     }
 
     @Test
