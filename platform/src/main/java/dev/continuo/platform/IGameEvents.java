@@ -30,7 +30,7 @@ public interface IGameEvents {
      *       runs, and a world and local player still exist — but the level itself is frozen,
      *       so a core counting forty of these ticks can cover less than forty ticks of
      *       ground. What happens to a held input across those screens is global rule 4's
-     *       subject and is deferred to M5; this note only records that the tick count and the
+     *       subject, and is resolved there; this note only records that the tick count and the
      *       distance are not the same quantity.
      *   <li><b>{@link TickPhase#POST} MUST fire after the game has finished processing that
      *       tick's logic</b>, and after {@code PRE} for the same tick.
