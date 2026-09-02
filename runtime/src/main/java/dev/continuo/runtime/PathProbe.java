@@ -16,6 +16,7 @@ import dev.continuo.pathfinder.Pos;
 import dev.continuo.pathfinder.Run;
 import dev.continuo.pathfinder.SegmentedResult;
 import dev.continuo.pathfinder.SegmentedSearch;
+import dev.continuo.platform.IActuator;
 import dev.continuo.platform.IPlayerView;
 
 /**
@@ -102,6 +103,17 @@ public final class PathProbe {
      */
     public static final int SLICE_NODES = 2000;
 
+    /**
+     * How far the reported yaw may drift from the requested one before the round-trip check fires.
+     *
+     * <p>One degree. The write is a float field assignment on both versions, so an adapter that
+     * works is exact; the tolerance exists for the float round trip through {@code Math.toDegrees}
+     * and for a mouse that moved a pixel between the two ticks, not to absorb a real failure — the
+     * failure this catches is a wrong field or no write at all, which is degrees or tens of degrees
+     * out.
+     */
+    static final float LOOK_TOLERANCE_DEGREES = 1.0f;
+
     private final int nodeBudget;
 
     private Pos goal;
@@ -171,6 +183,19 @@ public final class PathProbe {
      * search's start position. Cleared everywhere {@link #activeSnapshot} is.
      */
     private String activeStandingNotice;
+
+    /**
+     * The look {@link #start} asked for, checked on the next {@link #advance}. {@code null} once
+     * checked, or when no look was set.
+     *
+     * <p>Holding an {@code IActuator} or an {@code IPlayerView} across ticks would be safe — both
+     * are adapter-lifetime instances by {@code IPlatformContext}'s contract, so neither pins a level
+     * the way a {@code BlockSource} does. They are still not held: the player is passed to
+     * {@link #advance} each tick instead, so the only thing that survives a tick boundary here is
+     * two floats and a string.
+     */
+    private Float pendingYaw;
+    private String activeLookNotice;
 
     /** Uses {@link #NODE_BUDGET}. */
     public PathProbe() {
@@ -267,6 +292,8 @@ public final class PathProbe {
             activeWorld = null;
             activePlayerState = null;
             activeStandingNotice = null;
+            pendingYaw = null;
+            activeLookNotice = null;
         }
     }
 
@@ -324,17 +351,22 @@ public final class PathProbe {
      * instead of the feet on 1.7.10 would start every search 1.62 blocks above the ground. The
      * standing invariant recorded here is what surfaces that.
      *
-     * @param world  the world to read; never {@code null}
-     * @param player where the player is; never {@code null}
+     * @param world    the world to read; never {@code null}
+     * @param player   where the player is; never {@code null}
+     * @param actuator turns the player to face the goal; never {@code null}
      * @return a report if the run could not be started, or {@code null} if it was
      */
-    public ProbeReport start(BlockSource world, IPlayerView player) {
+    public ProbeReport start(BlockSource world, IPlayerView player, IActuator actuator) {
         if (player == null) {
             throw new IllegalArgumentException("player must not be null");
+        }
+        if (actuator == null) {
+            throw new IllegalArgumentException("actuator must not be null");
         }
         int px = floor(player.x());
         int py = floor(player.y());
         int pz = floor(player.z());
+        Pos target = goal;
         ProbeReport refused = start(world, px, py, pz);
         if (refused != null) {
             return refused;
@@ -343,6 +375,9 @@ public final class PathProbe {
             + fmt2(player.z()) + ", yaw " + fmt(player.yaw()) + ", pitch " + fmt(player.pitch())
             + ", onGround " + player.onGround();
         activeStandingNotice = standingNotice(world, player, px, py, pz);
+        float yaw = yawToward(player.x(), player.z(), target.x(), target.z());
+        actuator.setLook(yaw, player.pitch());
+        pendingYaw = Float.valueOf(yaw);
         return null;
     }
 
@@ -390,15 +425,73 @@ public final class PathProbe {
     }
 
     /**
+     * The yaw that points from a position toward a block's centre, in the convention both target
+     * versions share: {@code 0} faces {@code +Z}, {@code 90} faces {@code -X}. Both derive forward
+     * motion as {@code (-sin yaw, cos yaw)}, which inverts to {@code yaw = -atan2(dx, dz)}.
+     *
+     * <p>Package-private so it can be tested against that convention directly, rather than only
+     * through a search.
+     */
+    static float yawToward(double fromX, double fromZ, int toX, int toZ) {
+        double dx = (toX + 0.5) - fromX;
+        double dz = (toZ + 0.5) - fromZ;
+        return (float) Math.toDegrees(-Math.atan2(dx, dz));
+    }
+
+    /**
+     * Whether a {@code setLook} appears to have taken effect, as a notice rather than an assertion.
+     *
+     * <p>{@link IActuator#setLook} guarantees no round trip — the user's mouse and the server both
+     * write rotation — so this cannot be asserted. But on a tick where nobody touched the mouse, a
+     * mismatch means one of {@code setLook} and {@link IPlayerView#yaw()} is wrong, and those two
+     * checking each other is the only leverage this project has on adapter code that no test can
+     * reach.
+     *
+     * @return the notice, or {@code null} if the two agree
+     */
+    private static String lookNotice(float asked, float got) {
+        float difference = Math.abs(wrapDegrees(asked - got));
+        if (difference <= LOOK_TOLERANCE_DEGREES) {
+            return null;
+        }
+        return "setLook did not take effect: asked for yaw " + fmt(asked) + " and the next tick"
+            + " reported " + fmt(got) + " (" + fmt(difference) + " degrees apart)."
+            + " Either IActuator.setLook is not writing the rotation field or IPlayerView.yaw() is"
+            + " not reading it. Expected after moving the mouse or a server position correction,"
+            + " which also rewrites rotation; a defect otherwise";
+    }
+
+    /** Degrees folded into {@code [-180, 180)}, so 359 and -1 are one degree apart. */
+    private static float wrapDegrees(float degrees) {
+        float wrapped = degrees % 360.0f;
+        if (wrapped >= 180.0f) {
+            wrapped -= 360.0f;
+        }
+        if (wrapped < -180.0f) {
+            wrapped += 360.0f;
+        }
+        return wrapped;
+    }
+
+    /**
      * Spends one slice on the run in flight, if there is one.
      *
      * <p>Call once per tick. Cheap and safe when nothing is running, which is the normal case.
      *
+     * @param player where the player is now, checked against the look {@link #start} asked for;
+     *               may be {@code null} only when nothing is running
      * @return the report when the run finishes on this call, otherwise {@code null}
      */
-    public ProbeReport advance() {
+    public ProbeReport advance(IPlayerView player) {
         if (active == null) {
             return null;
+        }
+        if (pendingYaw != null) {
+            if (player == null) {
+                throw new IllegalArgumentException("player must not be null while a run is in flight");
+            }
+            activeLookNotice = lookNotice(pendingYaw.floatValue(), player.yaw());
+            pendingYaw = null;
         }
         long at = System.nanoTime();
         boolean done = active.advance(SLICE_NODES);
@@ -428,6 +521,8 @@ public final class PathProbe {
             activeWorld = null;
             activePlayerState = null;
             activeStandingNotice = null;
+            pendingYaw = null;
+            activeLookNotice = null;
         }
     }
 
@@ -444,6 +539,8 @@ public final class PathProbe {
         activeWorld = null;
         activePlayerState = null;
         activeStandingNotice = null;
+        pendingYaw = null;
+        activeLookNotice = null;
     }
 
     private ProbeReport report(WorldSnapshot snapshot, Pos start, SegmentedResult result,
@@ -512,6 +609,9 @@ public final class PathProbe {
         }
         if (activeStandingNotice != null) {
             append(summary, map, activeStandingNotice);
+        }
+        if (activeLookNotice != null) {
+            append(summary, map, activeLookNotice);
         }
 
         String diverged = firstReplay.divergence != null
