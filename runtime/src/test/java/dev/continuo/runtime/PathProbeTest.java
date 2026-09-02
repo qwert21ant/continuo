@@ -15,7 +15,6 @@ import dev.continuo.pathfinder.PathOutcome;
 import dev.continuo.pathfinder.PathRenderer;
 import dev.continuo.pathfinder.SegmentedResult;
 import dev.continuo.pathfinder.SegmentedSearch;
-import dev.continuo.platform.IActuator;
 import dev.continuo.platform.IPlayerView;
 import dev.continuo.testkit.FakeActuator;
 import dev.continuo.testkit.FakePlayerView;
@@ -708,9 +707,10 @@ class PathProbeTest {
         sliced.markGoal(6, ProbeWorld.WALK_Y, 0);
         assertNull(sliced.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0),
             "a run that starts returns no report yet");
+        FakePlayerView slicedPlayer = new FakePlayerView();
         ProbeReport done = null;
         for (int tick = 0; tick < 10000 && done == null; tick++) {
-            done = sliced.advance(null);
+            done = sliced.advance(slicedPlayer);
         }
 
         assertNotNull(done, "the sliced run never finished");
@@ -725,9 +725,10 @@ class PathProbeTest {
         PathProbe probe = new PathProbe();
         probe.markGoal(12, ProbeWorld.WALK_Y, 12);
         probe.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+        FakePlayerView player = new FakePlayerView();
         ProbeReport done = null;
         for (int tick = 0; tick < 10000 && done == null; tick++) {
-            done = probe.advance(null);
+            done = probe.advance(player);
         }
 
         assertNotNull(done);
@@ -737,7 +738,8 @@ class PathProbeTest {
 
     @Test
     void advancingWithNothingStartedDoesNothing() {
-        // The adapter calls advance() every tick whether or not the key was pressed.
+        // The adapter always passes a real player; null here pins advance's own contract that the
+        // player may be null only when nothing is running, which is the case this test covers.
         assertNull(new PathProbe().advance(null));
     }
 
@@ -763,14 +765,15 @@ class PathProbeTest {
         // Pressing the key twice is the likeliest thing an owner does. Two live runs sharing one
         // probe would interleave slices and report a route neither of them took.
         PathProbe probe = new PathProbe();
+        FakePlayerView player = new FakePlayerView();
         probe.markGoal(12, ProbeWorld.WALK_Y, 12);
         probe.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
-        probe.advance(null);
+        probe.advance(player);
         probe.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
 
         ProbeReport done = null;
         for (int tick = 0; tick < 10000 && done == null; tick++) {
-            done = probe.advance(null);
+            done = probe.advance(player);
         }
         assertNotNull(done, "the replacing run must still finish");
         assertEquals(PathOutcome.FOUND, done.outcome(), done.summary());
@@ -919,6 +922,7 @@ class PathProbeTest {
         player.set(0.5, ProbeWorld.WALK_Y, 0.5, 180.0f, 0.0f, true);
         ProbeReport report = drainToReport(probe, player);
 
+        assertEquals(PathOutcome.FOUND, report.outcome(), "guard: the route must exist");
         assertFalse(report.summary().contains("setLook did not take effect"),
             "+180 and -180 are one heading: " + report.summary());
     }
@@ -993,6 +997,41 @@ class PathProbeTest {
             "360 and 0 are the same heading: " + report.summary());
     }
 
+    @Test
+    void theLookToleranceIsHalfADegreeInsideAndTwoDegreesOutside() {
+        // Pins PathProbe.LOOK_TOLERANCE_DEGREES itself, which nothing above constrains beyond
+        // "somewhere in [0, 137)": a mutation to 0.0f or 45.0f survives every other test in this
+        // file, because none of them drives an error close to the boundary.
+        ProbeWorld insideWorld = new ProbeWorld();
+        FakePlayerView insidePlayer = new FakePlayerView();
+        FakeActuator insideActuator = new FakeActuator();
+        PathProbe insideProbe = new PathProbe();
+        insidePlayer.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        insideProbe.markGoal(0, ProbeWorld.WALK_Y, 6);
+
+        insideProbe.start(insideWorld, insidePlayer, insideActuator);
+        assertEquals(0.0f, insideActuator.lookCalls().get(0).yaw, 0.001f, "guard: due south was asked for");
+        insidePlayer.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.5f, 0.0f, true);
+        ProbeReport insideReport = drainToReport(insideProbe, insidePlayer);
+
+        assertFalse(insideReport.summary().contains("setLook did not take effect"),
+            "0.5 degrees is inside the tolerance: " + insideReport.summary());
+
+        ProbeWorld outsideWorld = new ProbeWorld();
+        FakePlayerView outsidePlayer = new FakePlayerView();
+        FakeActuator outsideActuator = new FakeActuator();
+        PathProbe outsideProbe = new PathProbe();
+        outsidePlayer.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        outsideProbe.markGoal(0, ProbeWorld.WALK_Y, 6);
+
+        outsideProbe.start(outsideWorld, outsidePlayer, outsideActuator);
+        outsidePlayer.set(0.5, ProbeWorld.WALK_Y, 0.5, 2.0f, 0.0f, true);
+        ProbeReport outsideReport = drainToReport(outsideProbe, outsidePlayer);
+
+        assertTrue(outsideReport.summary().contains("setLook did not take effect"),
+            "2 degrees is outside the tolerance: " + outsideReport.summary());
+    }
+
     /** Spends slices until the run finishes, and fails rather than looping forever. */
     private static ProbeReport drainToReport(PathProbe probe, IPlayerView player) {
         for (int i = 0; i < 10000; i++) {
@@ -1016,14 +1055,15 @@ class PathProbeTest {
         // 4,000-node slice - too fast for a second advance() to land mid-run. HugeFlatWorld and a
         // goal far enough away forces several slices, which this test needs to prove anything.
         PathProbe probe = new PathProbe();
+        FakePlayerView player = new FakePlayerView();
         probe.markGoal(16000, HugeFlatWorld.WALK_Y, 0);
         assertNull(probe.start(new HugeFlatWorld(), 0, HugeFlatWorld.WALK_Y, 0));
-        assertNull(probe.advance(null), "one slice must not already finish a 16,000-block route");
+        assertNull(probe.advance(player), "one slice must not already finish a 16,000-block route");
         probe.markGoal(3, ProbeWorld.WALK_Y, 3);
 
         ProbeReport done = null;
         for (int tick = 0; tick < 10000 && done == null; tick++) {
-            done = probe.advance(null);
+            done = probe.advance(player);
         }
 
         assertNotNull(done, "the run must still finish");

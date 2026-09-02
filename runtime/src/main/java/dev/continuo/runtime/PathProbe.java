@@ -284,16 +284,7 @@ public final class PathProbe {
             Pos start = activeStart;
             return report(snapshot, start, result, setupMs, elapsedMs, 0, 0.0);
         } finally {
-            active = null;
-            activeSnapshot = null;
-            activeStart = null;
-            activeGoal = null;
-            activeSearch = null;
-            activeWorld = null;
-            activePlayerState = null;
-            activeStandingNotice = null;
-            pendingYaw = null;
-            activeLookNotice = null;
+            clearActiveState();
         }
     }
 
@@ -513,16 +504,7 @@ public final class PathProbe {
         try {
             return report(snapshot, start, result, setupMs, total, sliceCount, worst);
         } finally {
-            active = null;
-            activeSnapshot = null;
-            activeStart = null;
-            activeGoal = null;
-            activeSearch = null;
-            activeWorld = null;
-            activePlayerState = null;
-            activeStandingNotice = null;
-            pendingYaw = null;
-            activeLookNotice = null;
+            clearActiveState();
         }
     }
 
@@ -531,6 +513,19 @@ public final class PathProbe {
         if (active != null) {
             active.cancel();
         }
+        clearActiveState();
+    }
+
+    /**
+     * Clears every field describing the run in flight, so the next run starts from a clean slate
+     * and nothing about a finished or cancelled run leaks into the next report.
+     *
+     * <p>The single point all three exit paths — {@link #run}'s {@code finally}, {@link #advance}'s
+     * {@code finally}, and {@link #cancel} — go through, so the field list cannot drift between
+     * them. Does not itself call {@link Run#cancel()}; the caller in {@link #cancel} does that
+     * first, since only it needs to.
+     */
+    private void clearActiveState() {
         active = null;
         activeSnapshot = null;
         activeStart = null;

@@ -217,14 +217,10 @@ public final class ContinuoForgeMod {
                 LOGGER.info("Continuo: path goal marked at " + context.player().x() + " "
                     + context.player().y() + " " + context.player().z());
             }
-            if (path) {
-                ProbeReport refused = probe.start(core.blocks(), context.player(), context.actuator());
-                if (refused != null) {
-                    LOGGER.info(refused.summary());
-                }
-            }
             // Once per tick, whether or not the key was pressed: a sliced run advances on the
-            // tick, not on the keypress. Cheap and a no-op when nothing is in flight.
+            // tick, not on the keypress. Cheap and a no-op when nothing is in flight. Ahead of the
+            // start below so a run's look round trip is checked against a yaw setLook wrote on a
+            // previous tick, not one it is about to write this same tick.
             ProbeReport report = probe.advance(context.player());
             if (report != null) {
                 LOGGER.info(report.summary());
@@ -244,6 +240,12 @@ public final class ContinuoForgeMod {
                         }
                     }
                     LOGGER.info("Continuo: wrote path probe map to " + out.getAbsolutePath());
+                }
+            }
+            if (path) {
+                ProbeReport refused = probe.start(core.blocks(), context.player(), context.actuator());
+                if (refused != null) {
+                    LOGGER.info(refused.summary());
                 }
             }
         } catch (Exception e) {
