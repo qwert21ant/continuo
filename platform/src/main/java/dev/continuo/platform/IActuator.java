@@ -21,10 +21,10 @@ public interface IActuator {
      * <p>The effect does not necessarily persist. Global rule 4 in this package's
      * documentation applies: the platform may clear input state at any time without notice —
      * any screen opening does so on both target versions, as does the user physically tapping
-     * the key. This is a stated hazard, not an obligation: the SPI does not require either
-     * side to re-assert a held input. Global rule 4 resolves what the core does about it: while
-     * driving, the core re-states its full desired input set every tick, so an adapter is never
-     * required to re-assert anything.
+     * the key. This is a stated hazard, not an obligation: the SPI does not require an
+     * <em>adapter</em> to re-assert a held input. Global rule 4 resolves what the core does about
+     * it: while driving, the core re-states its full desired input set every tick, so an adapter
+     * is never required to re-assert anything.
      *
      * <p>Adapters MUST support every {@link Input} constant; throwing for a valid constant
      * is a conformance failure. The core MUST NOT pass {@code null}, and adapter behaviour

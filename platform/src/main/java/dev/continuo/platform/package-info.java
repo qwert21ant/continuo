@@ -105,7 +105,7 @@
  * <p><b>Resolved in M5/D1: the core absorbs this, and adapters owe nothing.</b>
  *
  * <ul>
- *   <li><b>While it is driving, the core states its full desired input set every tick.</b> It does
+ *   <li><b>While it is driving, the core MUST state its full desired input set every tick.</b> It does
  *       not track what it has already pressed and does not rely on any previous {@code setInput}
  *       call persisting. The worst case after a screen opens is one lost tick, which self-heals.
  *   <li><b>While it is idle, the core writes nothing at all.</b> It MUST NOT hold every input at

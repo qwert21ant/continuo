@@ -96,7 +96,9 @@ class ContinuoCoreTest {
      * input at {@code false} every tick, which would fight the user's own keyboard whenever the bot
      * is not running.
      *
-     * <p>Nothing asserted this before D1, because before D1 nothing could have violated it.
+     * <p>Both halves are also covered by {@code doesNothingBeforeAnyWalkIsRequested} and
+     * {@code doesNothingAfterTheWalkCompletes}; this states them together as one clause of rule
+     * 4, which is the form the contract is written in.
      */
     @Test
     void writesNothingWhileIdle() {
@@ -142,13 +144,14 @@ class ContinuoCoreTest {
         core.requestWalk();
         tick(30);
 
-        assertEquals(40, pressCount(), "40 held ticks in total, so the walk was not restarted");
+        assertEquals(40, pressCount(), "guard: 40 presses so far");
         assertTrue(lastCall().pressed, "guard: still walking at tick 40");
 
         tick(1);
 
         assertEquals(false, lastCall().pressed,
-            "released on tick 41, so the re-request did not extend the walk to tick 51");
+            "released on tick 41 -- a re-request that restarted or extended the walk would "
+                + "still be pressing here");
     }
 
     @Test
