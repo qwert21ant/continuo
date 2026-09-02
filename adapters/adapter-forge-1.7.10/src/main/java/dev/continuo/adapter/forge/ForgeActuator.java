@@ -3,6 +3,7 @@ package dev.continuo.adapter.forge;
 import dev.continuo.platform.IActuator;
 import dev.continuo.platform.Input;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.settings.KeyBinding;
 
 /**
@@ -33,6 +34,20 @@ final class ForgeActuator implements IActuator {
     @Override
     public void setInput(Input input, boolean pressed) {
         bindingFor(input).pressed = pressed;
+    }
+
+    @Override
+    public void setLook(float yaw, float pitch) {
+        EntityClientPlayerMP player = minecraft.thePlayer;
+        if (player == null) {
+            return;
+        }
+        player.rotationYaw = yaw;
+        player.rotationPitch = pitch;
+        // Written alongside the rotation itself, per IActuator#setLook's adapter obligation, and
+        // matching what this version's own setPositionAndRotation does.
+        player.prevRotationYaw = yaw;
+        player.prevRotationPitch = pitch;
     }
 
     private KeyBinding bindingFor(Input input) {

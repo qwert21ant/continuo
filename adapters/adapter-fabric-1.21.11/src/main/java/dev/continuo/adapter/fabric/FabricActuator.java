@@ -4,6 +4,7 @@ import dev.continuo.platform.IActuator;
 import dev.continuo.platform.Input;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 
 /**
  * Translates abstract {@link Input} values into Minecraft key mappings.
@@ -23,6 +24,21 @@ final class FabricActuator implements IActuator {
     @Override
     public void setInput(Input input, boolean pressed) {
         mappingFor(input).setDown(pressed);
+    }
+
+    @Override
+    public void setLook(float yaw, float pitch) {
+        LocalPlayer player = minecraft.player;
+        if (player == null) {
+            return;
+        }
+        player.setYRot(yaw);
+        player.setXRot(pitch);
+        // Written alongside the rotation itself, per IActuator#setLook's adapter obligation: the
+        // game snapshots the previous rotation once per tick, so a write landing after that
+        // snapshot would leave the camera interpolating from a stale angle.
+        player.yRotO = yaw;
+        player.xRotO = pitch;
     }
 
     private KeyMapping mappingFor(Input input) {

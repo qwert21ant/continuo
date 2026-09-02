@@ -50,4 +50,47 @@ public interface IActuator {
      * @param pressed {@code true} to press, {@code false} to release
      */
     void setInput(Input input, boolean pressed);
+
+    /**
+     * Points the player in a direction.
+     *
+     * <p>Absolute, not relative: this sets the facing rather than turning by an amount. Deltas
+     * compound rounding across ticks and go wrong the moment the server rewrites rotation, which it
+     * does — a position correction calls the platform's own set-position-and-rotation path and
+     * overwrites yaw and pitch along with the position.
+     *
+     * <p>Yaw and pitch are combined into one call because both target versions apply rotation as one
+     * write, and because a caller changing only its heading passes {@link IPlayerView#pitch()}
+     * straight back.
+     *
+     * <p><b>Conventions are {@link IPlayerView#yaw()}'s and {@link IPlayerView#pitch()}'s</b>, which
+     * are facts about both target versions rather than inventions of this SPI: yaw {@code 0} faces
+     * {@code +Z}, {@code 90} faces {@code -X}; pitch {@code -90} is straight up and {@code +90}
+     * straight down.
+     *
+     * <p><b>Takes effect at the game's next input read</b>, and therefore on the current tick when
+     * called from {@link TickPhase#PRE} — the same timing {@link #setInput} has.
+     *
+     * <p><b>No round trip is guaranteed.</b> {@link IPlayerView#yaw()} is not required to return what
+     * was last passed here: the user's mouse writes rotation too, and so does the server. This is
+     * global rule 4's principle applied to rotation rather than to key state.
+     *
+     * <p>The core MUST pass a {@code pitch} in {@code [-90, 90]}; adapter behaviour outside that
+     * range is unspecified, exactly as it is for a {@code null} {@link Input}. Neither target version
+     * clamps on a direct field write, and an out-of-range pitch is both a rendering defect and the
+     * loudest signal a server-side plausibility check can read. {@code yaw} may be any finite value:
+     * both versions' movement arithmetic is periodic in it.
+     *
+     * <p><b>Adapter obligation.</b> An implementation MUST also write the platform's
+     * previous-rotation field — {@code prevRotationYaw}/{@code prevRotationPitch} on 1.7.10,
+     * {@code yRotO}/{@code xRotO} on 1.21.11 — so the local camera does not visibly interpolate
+     * across the change. Both games snapshot the previous rotation once per tick and their own
+     * set-rotation paths write it; an adapter that skips it leaves the renderer interpolating from a
+     * stale angle. Cosmetic rather than behavioural, and stated as an obligation only so that one
+     * adapter cannot quietly do it while the other does not.
+     *
+     * @param yaw   the heading in degrees; any finite value
+     * @param pitch the elevation in degrees; MUST be in {@code [-90, 90]}
+     */
+    void setLook(float yaw, float pitch);
 }
