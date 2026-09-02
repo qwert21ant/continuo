@@ -1934,8 +1934,18 @@ In both mods, pass the actuator to `start` and the player to `advance`:
 
 > **`advance` is called on every tick, including ticks with no run in flight** — that is why it
 > returns immediately when `active == null`, and the ordering matters: the `active == null` check
-> comes first, so passing a player is harmless when nothing is running. Keep `advance` outside the
-> `if (path)` block exactly where it is today.
+> comes first, so passing a player is harmless when nothing is running.
+>
+> **Corrected after Task 5's review — the original instruction here was wrong.** It said to keep
+> `advance` where it already sat, which is *below* the `if (path)` block. That makes `start` and
+> `advance` run in the same tick handler, so `pendingYaw` is written and consumed a few statements
+> apart and the look round trip never crosses a tick — which is the entire point of deferring it,
+> and which three javadoc blocks and spec §9.2 all describe as a next-tick check. **Move the
+> `advance`-and-report block ABOVE the `if (path)` block** in both mods. The resulting per-tick
+> sequence is: `onLevel` → poll both keys → null-player check → `if (mark)` → advance-and-report →
+> `if (path)` start. Leave `onLevel` first and do not move either key poll — `consumeClick` and
+> `isPressed` drain a queued press as a side effect, so moving a poll changes behaviour. The cost
+> is that a run's first slice lands one tick later.
 
 - [ ] **Step 6: Build everything**
 

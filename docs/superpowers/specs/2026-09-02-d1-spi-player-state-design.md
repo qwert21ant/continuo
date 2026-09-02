@@ -495,6 +495,24 @@ jobs, all cheap, all on paths the owner already presses several times a session:
 4. **It faces the marked goal** when the path key is pressed, which is `setLook`'s entire in-game
    done criterion and takes one call.
 
+**The adapter's per-tick call order is load-bearing, and this spec did not say so.** Discovered in
+Task 5's review, recorded here because it is the difference between §9.2's check 2 working and
+being vacuous. Both adapters must call the probe's `advance` **before** the block that may `start`
+a new run:
+
+> `onLevel` → poll both keys → null-player check → `if (mark)` → advance-and-report → `if (path)`
+> start
+
+With `start` first, the look written by `setLook` is read back by `advance` a few statements later
+in the same tick handler, so the deferred read is not deferred at all. It still catches a
+wrong-field write or a wrong-field read — both halves touch real fields — but it cannot catch the
+failure the deferral exists for: **a rotation write that lands and then does not survive the
+tick**, which is live on 1.21.11, where the write happens at `END_CLIENT_TICK` and the game
+re-applies rotation during the next tick's input phase. It also makes §9.2's "no notice on a tick
+where the mouse was still" close to vacuous, since a mouse cannot move between two adjacent
+statements. Neither key poll may move: `consumeClick` and `isPressed` drain a queued press as a
+side effect. The cost of the correct order is that a run's first slice lands one tick later.
+
 Each adapter's own position read for the probe's start — `blockPosition()` on Fabric, floored
 `posX`/`boundingBox.minY`/`posZ` on Forge — is removed, which is what makes §3.2's duplicated
 knowledge collapse into the one place decision 4 puts it. The block-dump key keeps its own read; it
