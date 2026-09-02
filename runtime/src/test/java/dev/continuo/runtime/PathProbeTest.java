@@ -15,6 +15,9 @@ import dev.continuo.pathfinder.PathOutcome;
 import dev.continuo.pathfinder.PathRenderer;
 import dev.continuo.pathfinder.SegmentedResult;
 import dev.continuo.pathfinder.SegmentedSearch;
+import dev.continuo.platform.IPlayerView;
+import dev.continuo.testkit.FakeActuator;
+import dev.continuo.testkit.FakePlayerView;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -704,9 +707,10 @@ class PathProbeTest {
         sliced.markGoal(6, ProbeWorld.WALK_Y, 0);
         assertNull(sliced.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0),
             "a run that starts returns no report yet");
+        FakePlayerView slicedPlayer = new FakePlayerView();
         ProbeReport done = null;
         for (int tick = 0; tick < 10000 && done == null; tick++) {
-            done = sliced.advance();
+            done = sliced.advance(slicedPlayer);
         }
 
         assertNotNull(done, "the sliced run never finished");
@@ -721,9 +725,10 @@ class PathProbeTest {
         PathProbe probe = new PathProbe();
         probe.markGoal(12, ProbeWorld.WALK_Y, 12);
         probe.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
+        FakePlayerView player = new FakePlayerView();
         ProbeReport done = null;
         for (int tick = 0; tick < 10000 && done == null; tick++) {
-            done = probe.advance();
+            done = probe.advance(player);
         }
 
         assertNotNull(done);
@@ -733,8 +738,9 @@ class PathProbeTest {
 
     @Test
     void advancingWithNothingStartedDoesNothing() {
-        // The adapter calls advance() every tick whether or not the key was pressed.
-        assertNull(new PathProbe().advance());
+        // The adapter always passes a real player; null here pins advance's own contract that the
+        // player may be null only when nothing is running, which is the case this test covers.
+        assertNull(new PathProbe().advance(null));
     }
 
     @Test
@@ -750,7 +756,7 @@ class PathProbeTest {
 
         probe.onLevel(new Object());
 
-        assertNull(probe.advance(),
+        assertNull(probe.advance(null),
             "a run cancelled by a level change must not go on producing a report");
     }
 
@@ -759,17 +765,282 @@ class PathProbeTest {
         // Pressing the key twice is the likeliest thing an owner does. Two live runs sharing one
         // probe would interleave slices and report a route neither of them took.
         PathProbe probe = new PathProbe();
+        FakePlayerView player = new FakePlayerView();
         probe.markGoal(12, ProbeWorld.WALK_Y, 12);
         probe.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
-        probe.advance();
+        probe.advance(player);
         probe.start(new ProbeWorld(), 0, ProbeWorld.WALK_Y, 0);
 
         ProbeReport done = null;
         for (int tick = 0; tick < 10000 && done == null; tick++) {
-            done = probe.advance();
+            done = probe.advance(player);
         }
         assertNotNull(done, "the replacing run must still finish");
         assertEquals(PathOutcome.FOUND, done.outcome(), done.summary());
+    }
+
+    @Test
+    void takesItsStartFromThePlayerViewAndFloorsIt() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(2.75, 64.0, -3.25, 0.0f, 0.0f, true);
+        probe.markGoal(5, ProbeWorld.WALK_Y, 0);
+
+        assertNull(probe.start(world, player, actuator), "the run must start");
+        ProbeReport report = drainToReport(probe, player);
+
+        assertEquals(PathOutcome.FOUND, report.outcome(), "guard: the route must exist");
+        assertTrue(report.summary().contains("(2, 64, -4)"),
+            "the start must be the floored player position, not a rounded one: " + report.summary());
+    }
+
+    @Test
+    void reportsThePlayerStateItRead() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, 64.0, 0.5, 90.0f, -12.5f, true);
+        probe.markGoal(4, ProbeWorld.WALK_Y, 0);
+
+        probe.start(world, player, actuator);
+        ProbeReport report = drainToReport(probe, player);
+
+        assertTrue(report.summary().contains("player 0.50 64.00 0.50"),
+            "position must be reported: " + report.summary());
+        assertTrue(report.summary().contains("yaw 90.0"),
+            "yaw must be reported: " + report.summary());
+        assertTrue(report.summary().contains("pitch -12.5"),
+            "pitch must be reported: " + report.summary());
+        assertTrue(report.summary().contains("onGround true"),
+            "the ground flag must be reported: " + report.summary());
+    }
+
+    /**
+     * The check that catches a 1.62-block {@code y()} error on 1.7.10. Under that bug the sampled
+     * block sits about a block above the player's head, and anywhere a player can stand has
+     * headroom, so it is air essentially always.
+     */
+    @Test
+    void noticesWhenTheBlockBelowTheFeetCannotSupportTheStandingPlayer() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        // A whole block too high: on ground, but with air beneath the reported feet.
+        player.set(0.5, ProbeWorld.WALK_Y + 1, 0.5, 0.0f, 0.0f, true);
+        probe.markGoal(4, ProbeWorld.WALK_Y, 0);
+
+        probe.start(world, player, actuator);
+        ProbeReport report = drainToReport(probe, player);
+
+        assertTrue(report.summary().contains("onGround is true but the block below the feet"),
+            "the standing invariant must fire: " + report.summary());
+    }
+
+    @Test
+    void doesNotNoticeAnythingWhenThePlayerIsStandingOnTheFloor() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        probe.markGoal(4, ProbeWorld.WALK_Y, 0);
+
+        probe.start(world, player, actuator);
+        ProbeReport report = drainToReport(probe, player);
+
+        assertEquals(PathOutcome.FOUND, report.outcome(), "guard: the route must exist");
+        assertFalse(report.summary().contains("onGround is true but the block below the feet"),
+            "no notice on plain ground: " + report.summary());
+    }
+
+    @Test
+    void doesNotCheckTheStandingInvariantWhileAirborne() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y + 3, 0.5, 0.0f, 0.0f, false);
+        probe.markGoal(4, ProbeWorld.WALK_Y, 0);
+
+        probe.start(world, player, actuator);
+        ProbeReport report = drainToReport(probe, player);
+
+        assertFalse(report.summary().contains("onGround is true but the block below the feet"),
+            "a falling player stands on nothing and that is not a defect: " + report.summary());
+    }
+
+    @Test
+    void markGoalCanBeTakenFromThePlayerView() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+
+        player.set(4.9, ProbeWorld.WALK_Y, -0.1, 0.0f, 0.0f, true);
+        probe.markGoal(player);
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+
+        probe.start(world, player, actuator);
+        ProbeReport report = drainToReport(probe, player);
+
+        assertEquals(PathOutcome.FOUND, report.outcome());
+        assertTrue(report.summary().contains("(4, 64, -1)"),
+            "the goal must be the floored marked position: " + report.summary());
+    }
+
+    @Test
+    void yawTowardUsesTheConventionBothVersionsShare() {
+        // 0 faces +Z, 90 faces -X, 180 faces -Z, -90 faces +X.
+        assertEquals(0.0f, PathProbe.yawToward(0.5, 0.5, 0, 10), 0.001f);
+        assertEquals(90.0f, PathProbe.yawToward(0.5, 0.5, -10, 0), 0.001f);
+        assertEquals(-90.0f, PathProbe.yawToward(0.5, 0.5, 10, 0), 0.001f);
+        // Due north comes back as -180 rather than +180: atan2(+0.0, -z) is +pi, and yawToward
+        // deliberately does not normalise -- IPlayerView.yaw() is documented as unnormalised and
+        // setLook accepts any finite yaw, so inventing a normalisation here would impose a
+        // requirement the SPI declines to make. The two are the same heading, which the next
+        // assertion is what actually pins.
+        assertEquals(-180.0f, PathProbe.yawToward(0.5, 0.5, 0, -10), 0.001f);
+    }
+
+    @Test
+    void theLookCheckTreatsPlusAndMinus180AsTheSameHeading() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        probe.markGoal(0, ProbeWorld.WALK_Y, -6);
+
+        probe.start(world, player, actuator);
+        assertEquals(-180.0f, actuator.lookCalls().get(0).yaw, 0.001f, "guard: due north was asked for");
+        // The platform reports the same heading with the opposite sign, which a raw float
+        // comparison would call 360 degrees of error.
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 180.0f, 0.0f, true);
+        ProbeReport report = drainToReport(probe, player);
+
+        assertEquals(PathOutcome.FOUND, report.outcome(), "guard: the route must exist");
+        assertFalse(report.summary().contains("setLook did not take effect"),
+            "+180 and -180 are one heading: " + report.summary());
+    }
+
+    @Test
+    void facesTheGoalWhenTheRunStarts() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, -20.0f, true);
+        probe.markGoal(0, ProbeWorld.WALK_Y, 6);
+
+        probe.start(world, player, actuator);
+
+        assertEquals(1, actuator.lookCalls().size(), "starting a run must point at the goal");
+        assertEquals(0.0f, actuator.lookCalls().get(0).yaw, 0.001f, "the goal is at +Z");
+        assertEquals(-20.0f, actuator.lookCalls().get(0).pitch,
+            "pitch must be passed straight back, not invented");
+    }
+
+    @Test
+    void doesNotTouchTheLookWhenThereIsNoGoalToFace() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+
+        ProbeReport refused = probe.start(world, player, actuator);
+
+        assertNotNull(refused, "guard: with no goal marked the run must be refused");
+        assertEquals(0, actuator.lookCalls().size());
+    }
+
+    @Test
+    void noticesWhenTheLookDidNotTakeEffect() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        probe.markGoal(0, ProbeWorld.WALK_Y, 6);
+
+        probe.start(world, player, actuator);
+        // The fake actuator writes nothing back, so the player still reports the old yaw. A real
+        // adapter that failed to write the rotation field would look exactly like this.
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 137.0f, 0.0f, true);
+        ProbeReport report = drainToReport(probe, player);
+
+        assertTrue(report.summary().contains("setLook did not take effect"),
+            "the round-trip check must fire: " + report.summary());
+    }
+
+    @Test
+    void doesNotNoticeWhenTheLookDidTakeEffect() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        probe.markGoal(0, ProbeWorld.WALK_Y, 6);
+
+        probe.start(world, player, actuator);
+        // Simulate the adapter having written the rotation, wrapped by a full turn to prove the
+        // comparison normalises rather than comparing raw floats.
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 360.0f, 0.0f, true);
+        ProbeReport report = drainToReport(probe, player);
+
+        assertEquals(PathOutcome.FOUND, report.outcome(), "guard: the route must exist");
+        assertFalse(report.summary().contains("setLook did not take effect"),
+            "360 and 0 are the same heading: " + report.summary());
+    }
+
+    @Test
+    void theLookToleranceIsHalfADegreeInsideAndTwoDegreesOutside() {
+        // Pins PathProbe.LOOK_TOLERANCE_DEGREES itself, which nothing above constrains beyond
+        // "somewhere in [0, 137)": a mutation to 0.0f or 45.0f survives every other test in this
+        // file, because none of them drives an error close to the boundary.
+        ProbeWorld insideWorld = new ProbeWorld();
+        FakePlayerView insidePlayer = new FakePlayerView();
+        FakeActuator insideActuator = new FakeActuator();
+        PathProbe insideProbe = new PathProbe();
+        insidePlayer.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        insideProbe.markGoal(0, ProbeWorld.WALK_Y, 6);
+
+        insideProbe.start(insideWorld, insidePlayer, insideActuator);
+        assertEquals(0.0f, insideActuator.lookCalls().get(0).yaw, 0.001f, "guard: due south was asked for");
+        insidePlayer.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.5f, 0.0f, true);
+        ProbeReport insideReport = drainToReport(insideProbe, insidePlayer);
+
+        assertFalse(insideReport.summary().contains("setLook did not take effect"),
+            "0.5 degrees is inside the tolerance: " + insideReport.summary());
+
+        ProbeWorld outsideWorld = new ProbeWorld();
+        FakePlayerView outsidePlayer = new FakePlayerView();
+        FakeActuator outsideActuator = new FakeActuator();
+        PathProbe outsideProbe = new PathProbe();
+        outsidePlayer.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        outsideProbe.markGoal(0, ProbeWorld.WALK_Y, 6);
+
+        outsideProbe.start(outsideWorld, outsidePlayer, outsideActuator);
+        outsidePlayer.set(0.5, ProbeWorld.WALK_Y, 0.5, 2.0f, 0.0f, true);
+        ProbeReport outsideReport = drainToReport(outsideProbe, outsidePlayer);
+
+        assertTrue(outsideReport.summary().contains("setLook did not take effect"),
+            "2 degrees is outside the tolerance: " + outsideReport.summary());
+    }
+
+    /** Spends slices until the run finishes, and fails rather than looping forever. */
+    private static ProbeReport drainToReport(PathProbe probe, IPlayerView player) {
+        for (int i = 0; i < 10000; i++) {
+            ProbeReport report = probe.advance(player);
+            if (report != null) {
+                return report;
+            }
+        }
+        throw new AssertionError("the run did not finish within 10000 slices");
     }
 
     @Test
@@ -784,14 +1055,15 @@ class PathProbeTest {
         // 4,000-node slice - too fast for a second advance() to land mid-run. HugeFlatWorld and a
         // goal far enough away forces several slices, which this test needs to prove anything.
         PathProbe probe = new PathProbe();
+        FakePlayerView player = new FakePlayerView();
         probe.markGoal(16000, HugeFlatWorld.WALK_Y, 0);
         assertNull(probe.start(new HugeFlatWorld(), 0, HugeFlatWorld.WALK_Y, 0));
-        assertNull(probe.advance(), "one slice must not already finish a 16,000-block route");
+        assertNull(probe.advance(player), "one slice must not already finish a 16,000-block route");
         probe.markGoal(3, ProbeWorld.WALK_Y, 3);
 
         ProbeReport done = null;
         for (int tick = 0; tick < 10000 && done == null; tick++) {
-            done = probe.advance();
+            done = probe.advance(player);
         }
 
         assertNotNull(done, "the run must still finish");

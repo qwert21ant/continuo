@@ -3,14 +3,16 @@ package dev.continuo.adapter.forge;
 import dev.continuo.platform.IActuator;
 import dev.continuo.platform.Input;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.settings.KeyBinding;
 
 /**
- * Translates abstract {@link Input} values into Minecraft key bindings.
+ * Translates abstract {@link Input} values and rotation into Minecraft key bindings and player
+ * fields.
  *
  * <p>Pure translation: an enum maps to a field. No decision is made here. If this class ever
- * grows a conditional that changes behaviour rather than resolving a name, that logic belongs
- * in the core.
+ * grows a conditional that changes behaviour rather than resolving a name or guarding a null,
+ * that logic belongs in the core.
  *
  * <p>Writes {@code pressed} on the binding instance, which an access transformer makes
  * accessible. This is the per-instance equivalent of Fabric's {@code KeyMapping#setDown}; the
@@ -33,6 +35,22 @@ final class ForgeActuator implements IActuator {
     @Override
     public void setInput(Input input, boolean pressed) {
         bindingFor(input).pressed = pressed;
+    }
+
+    @Override
+    public void setLook(float yaw, float pitch) {
+        EntityClientPlayerMP player = minecraft.thePlayer;
+        // Unlike IPlayerView, this returns rather than throwing: a bot must never fault the game's
+        // tick loop over a race with a disconnect (SPI global rule 3).
+        if (player == null) {
+            return;
+        }
+        player.rotationYaw = yaw;
+        player.rotationPitch = pitch;
+        // Written alongside the rotation itself, per IActuator#setLook's adapter obligation, and
+        // matching what this version's own setPositionAndRotation does.
+        player.prevRotationYaw = yaw;
+        player.prevRotationPitch = pitch;
     }
 
     private KeyBinding bindingFor(Input input) {

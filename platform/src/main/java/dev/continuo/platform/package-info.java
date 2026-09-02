@@ -12,10 +12,12 @@
  * directions. Per-type documentation cites them by number. The conformance suite in
  * {@code platform-testkit} is organised by this numbering, so <b>the numbering is
  * load-bearing and must not change</b>. Not every rule reduces to a test: rule 1's "no
- * implementation may block" and rule 4's "may be cleared at any time" have no assertion to
- * write, and neither has {@code onClientTick}'s "MUST NOT be delivered re-entrantly", which is
- * a property of an adapter's event source that no runtime can enforce on its own caller. The
- * suite records those gaps in its own documentation rather than leaving them silent. Rules 2
+ * implementation may block" has no assertion to write, and neither has {@code onClientTick}'s
+ * "MUST NOT be delivered re-entrantly", which is a property of an adapter's event source that
+ * no runtime can enforce on its own caller. Rule 4's hazard clause — "may be cleared at any
+ * time" — has no adapter-side assertion for the same reason; its obligation binds the core
+ * rather than an adapter, and is asserted in {@code ContinuoCoreTest}. The suite records those
+ * gaps in its own documentation rather than leaving them silent. Rules 2
  * and 3 bind {@code start} and {@code stop}, which are declared on no type in this package,
  * so the suite asserts them against the core-side interface that does declare them. The
  * keywords MUST, MUST NOT and MAY carry their RFC 2119 meanings.
@@ -95,18 +97,37 @@
  * opens the tick window under {@link dev.continuo.platform.IGameEvents#onClientTick} — one
  * event, one state transition, no separate recovery machinery.
  *
- * <h3>Rule 4 — Input persistence is not guaranteed</h3>
+ * <h3>Rule 4 — Actuation is level-triggered</h3>
  *
- * <p>State set through {@link dev.continuo.platform.IActuator#setInput} may be cleared by
- * the platform at any time without notice. Any screen opening does this on both target
- * versions ({@code KeyMapping.releaseAll}; 1.7.10's {@code KeyBinding.unPressAllKeys}), as
- * does the user physically tapping the key. This SPI requires neither edge- nor
- * level-triggered actuation from core or adapter.
+ * <p>State set through {@link dev.continuo.platform.IActuator#setInput} may be cleared by the
+ * platform at any time without notice. Any screen opening does this on both target versions
+ * ({@code KeyMapping.releaseAll}; 1.7.10's {@code KeyBinding.unPressAllKeys}), as does the user
+ * physically tapping the key.
  *
- * <p>Resolving this is deferred to milestone M5, whose per-tick position resync will make
- * re-assertion of held inputs a special case of the same reconciliation loop. Until then
- * every adapter MUST behave identically here, so that M5 can change them all in one move.
- * The current core's assumption that a single {@code setInput(FORWARD, true)} persists for
- * forty ticks is documented-as-unguaranteed by this rule, not fixed by it.
+ * <p><b>Resolved in M5/D1: the core absorbs this, and adapters owe nothing.</b>
+ *
+ * <ul>
+ *   <li><b>While it is driving, the core MUST state its full desired input set every tick.</b> It does
+ *       not track what it has already pressed and does not rely on any previous {@code setInput}
+ *       call persisting. The worst case after a screen opens is one lost tick, which self-heals.
+ *   <li><b>While it is idle, the core writes nothing at all.</b> It MUST NOT hold every input at
+ *       {@code false} each tick; that would fight the user's own keyboard whenever the bot is not
+ *       running.
+ *   <li><b>On {@code stop} the core releases what it holds, once.</b>
+ *   <li><b>An adapter owes nothing new.</b> {@code setInput} remains idempotent, and remains
+ *       documented as clearable at any time. No adapter is required to re-assert anything.
+ * </ul>
+ *
+ * <p>Level rather than edge was chosen for three reasons. It needs no SPI addition, where an
+ * edge-triggered core would need either a read-back of held state or a notification that state was
+ * cleared. The two models produce byte-identical network output, since re-asserting is a field write
+ * inside the client and the server sees only the resulting movement packets — so neither is more
+ * plausible than the other. And it makes a path executor a pure function of its path and the
+ * player's state, recomputed each tick, rather than a state machine remembering what it has already
+ * sent.
+ *
+ * <p>The same reasoning covers {@link dev.continuo.platform.IActuator#setLook}: a core driving the
+ * player rewrites its desired facing every tick, which is what makes a server's rotation correction
+ * self-healing rather than a case to detect.
  */
 package dev.continuo.platform;

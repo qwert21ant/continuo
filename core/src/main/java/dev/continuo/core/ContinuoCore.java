@@ -74,19 +74,31 @@ public final class ContinuoCore implements CoreApi {
         tick = 0;
     }
 
+    /**
+     * Holds {@code FORWARD} for {@link #WALK_TICKS} ticks, re-asserting it every tick.
+     *
+     * <p><b>Level-triggered, per global rule 4.</b> The desired input is re-stated on every tick of
+     * the walk rather than pressed once at the start: both target versions clear held key state
+     * whenever a screen opens ({@code KeyMapping.releaseAll}; 1.7.10's
+     * {@code KeyBinding.unPressAllKeys}), and an edge-triggered core never learns that it happened.
+     * The walk would silently truncate and present as a wrong distance.
+     *
+     * <p><b>Nothing is written while idle</b> — not even a release. A core that held every input at
+     * {@code false} every tick would fight the user's own keyboard whenever the bot is not running.
+     */
     @Override
     public void onClientTick(TickPhase phase) {
         if (phase != TickPhase.PRE || !walking) {
             return;
         }
         tick++;
-        if (tick == 1) {
-            context.actuator().setInput(Input.FORWARD, true);
-        } else if (tick == WALK_TICKS + 1) {
+        if (tick > WALK_TICKS) {
             context.actuator().setInput(Input.FORWARD, false);
             walking = false;
             tick = 0;
+            return;
         }
+        context.actuator().setInput(Input.FORWARD, true);
     }
 
     /**

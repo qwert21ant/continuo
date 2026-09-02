@@ -43,18 +43,115 @@ class ContinuoCoreTest {
         assertTrue(actuator.calls().get(0).pressed);
     }
 
+    /** How many of the recorded calls were presses. */
+    private int pressCount() {
+        int n = 0;
+        for (FakeActuator.Call call : actuator.calls()) {
+            if (call.pressed) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private FakeActuator.Call lastCall() {
+        assertTrue(actuator.callCount() > 0, "expected at least one actuator call");
+        return actuator.calls().get(actuator.callCount() - 1);
+    }
+
+    /**
+     * Global rule 4's whole content, as one assertion. The core re-states its desired input every
+     * tick rather than pressing once and trusting the press to persist — which both target versions
+     * break whenever a screen opens.
+     */
     @Test
-    void holdsForwardForFortyTicksThenReleasesOnTickFortyOne() {
+    void reAssertsForwardOnEveryTickOfTheWalk() {
         core.requestWalk();
         tick(40);
 
-        assertEquals(1, actuator.callCount(), "no release before tick 41");
+        assertEquals(40, actuator.callCount(), "level-triggered: one call per tick, not one in total");
+        assertEquals(40, pressCount());
+        for (FakeActuator.Call call : actuator.calls()) {
+            assertEquals(Input.FORWARD, call.input);
+            assertTrue(call.pressed);
+        }
+    }
+
+    @Test
+    void releasesExactlyOnceOnTickFortyOne() {
+        core.requestWalk();
+        tick(40);
+        assertEquals(40, actuator.callCount(), "guard: the walk must still be running at tick 40");
 
         tick(1);
 
-        assertEquals(2, actuator.callCount());
-        assertEquals(Input.FORWARD, actuator.calls().get(1).input);
-        assertEquals(false, actuator.calls().get(1).pressed);
+        assertEquals(41, actuator.callCount());
+        assertEquals(Input.FORWARD, lastCall().input);
+        assertEquals(false, lastCall().pressed);
+        assertEquals(40, pressCount(), "exactly one release, and no extra press on tick 41");
+    }
+
+    /**
+     * Global rule 4's second clause. An idle core writes nothing at all — it must not hold every
+     * input at {@code false} every tick, which would fight the user's own keyboard whenever the bot
+     * is not running.
+     *
+     * <p>Both halves are also covered by {@code doesNothingBeforeAnyWalkIsRequested} and
+     * {@code doesNothingAfterTheWalkCompletes}; this states them together as one clause of rule
+     * 4, which is the form the contract is written in.
+     */
+    @Test
+    void writesNothingWhileIdle() {
+        tick(20);
+        assertEquals(0, actuator.callCount(), "before any walk is requested");
+
+        core.requestWalk();
+        tick(41);
+        actuator.clear();
+        tick(20);
+
+        assertEquals(0, actuator.callCount(), "after the walk has finished");
+    }
+
+    /**
+     * The same clause on the path that reaches idleness through {@code stop()} rather than through
+     * the walk running out. Level-triggering makes this newly worth pinning: a core that re-stated
+     * its inputs unconditionally would keep writing here, where before D1 there was no per-tick
+     * write that could.
+     */
+    @Test
+    void writesNothingOnTicksAfterStop() {
+        core.requestWalk();
+        tick(20);
+        core.stop();
+        actuator.clear();
+
+        tick(20);
+
+        assertEquals(0, actuator.callCount(), "stop() ends the walk, and an idle core is silent");
+    }
+
+    /**
+     * Re-requesting mid-walk is still ignored. Asserted through the walk's *length* rather than
+     * through a call count, because under level-triggering every tick produces a call and a count
+     * can no longer distinguish "ignored" from "restarted".
+     */
+    @Test
+    void reRequestingMidWalkDoesNotRestartOrExtendIt() {
+        core.requestWalk();
+        tick(10);
+
+        core.requestWalk();
+        tick(30);
+
+        assertEquals(40, pressCount(), "guard: 40 presses so far");
+        assertTrue(lastCall().pressed, "guard: still walking at tick 40");
+
+        tick(1);
+
+        assertEquals(false, lastCall().pressed,
+            "released on tick 41 -- a re-request that restarted or extended the walk would "
+                + "still be pressing here");
     }
 
     @Test
@@ -77,18 +174,6 @@ class ContinuoCoreTest {
         for (FakeActuator.Call call : actuator.calls()) {
             assertEquals(Input.FORWARD, call.input);
         }
-    }
-
-    @Test
-    void ignoresRequestWalkWhileAlreadyWalking() {
-        core.requestWalk();
-        tick(10);
-        actuator.clear();
-
-        core.requestWalk();
-        tick(10);
-
-        assertEquals(0, actuator.callCount(), "re-triggering mid-walk must be ignored");
     }
 
     @Test

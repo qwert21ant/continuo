@@ -23,9 +23,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p><b>Rule 1 (Threading)</b> — "no implementation may block" is unfalsifiable as a test.
  * The package javadoc says so; this suite records the gap rather than leaving it silent.
  *
- * <p><b>Rule 4 (Input persistence)</b> — a hazard statement, not an obligation. That
- * {@code setInput}'s effect may not persist is precisely what the SPI declines to require
- * either side to handle before M5.
+ * <p><b>Rule 4 (Actuation is level-triggered)</b> — an obligation on the <em>core</em>, not on an
+ * adapter. The rule requires the core to re-state its desired input set every tick and requires
+ * nothing of an adapter, so this suite — which drives adapters — has nothing to assert. The
+ * obligation is asserted against the core, in {@code ContinuoCoreTest}.
  *
  * <p><b>{@code onClientTick}'s "MUST NOT be delivered re-entrantly"</b> — a property of the
  * adapter's event source, not of anything this suite can drive. A runtime cannot stop its own

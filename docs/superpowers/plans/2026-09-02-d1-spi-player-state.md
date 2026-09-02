@@ -111,14 +111,21 @@ package dev.continuo.testkit;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Pins {@code IPlatformContext}'s same-instance clause for the accessor D1 adds.
+ * Pins both of {@code IPlatformContext}'s accessor clauses for the accessor D1 adds: MUST NOT
+ * return {@code null}, and MUST return the same instance every call.
  *
- * <p>The clause is what lets the core cache what an accessor returns. It has always been stated
- * and never asserted; the fourth accessor is a cheap place to start asserting it.
+ * <p>Together they are what lets the core cache what an accessor returns. Both have always been
+ * stated and neither was asserted; the fourth accessor is a cheap place to start.
+ *
+ * <p><b>The null assertions are load-bearing, not belt-and-braces.</b> {@code assertSame(null, null)}
+ * passes, so a same-instance test alone is satisfied by an accessor that returns {@code null} every
+ * time — it would pin one clause while appearing to pin two.
  */
 class FakePlatformContextTest {
 
@@ -126,6 +133,10 @@ class FakePlatformContextTest {
     void playerReturnsTheSameInstanceOnEveryCall() {
         FakePlatformContext ctx = new FakePlatformContext();
 
+        // Asserted before assertSame, not after: assertSame(null, null) passes, so without this
+        // the test would be satisfied by an accessor that returns null every time -- pinning one
+        // of IPlatformContext's two clauses while appearing to pin both.
+        assertNotNull(ctx.player());
         assertSame(ctx.player(), ctx.player());
         assertSame(ctx.fakePlayerView(), ctx.player());
     }
@@ -134,6 +145,9 @@ class FakePlatformContextTest {
     void everyAccessorReturnsTheSameInstanceOnEveryCall() {
         FakePlatformContext ctx = new FakePlatformContext();
 
+        assertNotNull(ctx.actuator());
+        assertNotNull(ctx.info());
+        assertNotNull(ctx.blocks());
         assertSame(ctx.actuator(), ctx.actuator());
         assertSame(ctx.info(), ctx.info());
         assertSame(ctx.blocks(), ctx.blocks());
@@ -162,7 +176,7 @@ class FakePlatformContextTest {
         assertEquals(0.0, ctx.player().z());
         assertEquals(0.0f, ctx.player().yaw());
         assertEquals(0.0f, ctx.player().pitch());
-        assertEquals(false, ctx.player().onGround());
+        assertFalse(ctx.player().onGround());
     }
 }
 ```
@@ -1271,7 +1285,7 @@ layer at `WALK_Y = 64`, so a player standing on the floor has `y() == 64.0`.
         ProbeReport report = drainToReport(probe);
 
         assertEquals(PathOutcome.FOUND, report.outcome(), "guard: the route must exist");
-        assertTrue(report.summary().contains("(2, 64, -3)"),
+        assertTrue(report.summary().contains("(2, 64, -4)"),
             "the start must be the floored player position, not a rounded one: " + report.summary());
     }
 
@@ -1624,11 +1638,36 @@ Add to `PathProbeTest`:
 ```java
     @Test
     void yawTowardUsesTheConventionBothVersionsShare() {
-        // 0 faces +Z, 90 faces -X, 180 faces -Z, 270/-90 faces +X.
+        // 0 faces +Z, 90 faces -X, 180 faces -Z, -90 faces +X.
         assertEquals(0.0f, PathProbe.yawToward(0.5, 0.5, 0, 10), 0.001f);
         assertEquals(90.0f, PathProbe.yawToward(0.5, 0.5, -10, 0), 0.001f);
-        assertEquals(180.0f, PathProbe.yawToward(0.5, 0.5, 0, -10), 0.001f);
         assertEquals(-90.0f, PathProbe.yawToward(0.5, 0.5, 10, 0), 0.001f);
+        // Due north comes back as -180 rather than +180: atan2(+0.0, -z) is +pi, and yawToward
+        // deliberately does not normalise -- IPlayerView.yaw() is documented as unnormalised and
+        // setLook accepts any finite yaw, so inventing a normalisation here would impose a
+        // requirement the SPI declines to make. The two are the same heading, which the next
+        // assertion is what actually pins.
+        assertEquals(-180.0f, PathProbe.yawToward(0.5, 0.5, 0, -10), 0.001f);
+    }
+
+    @Test
+    void theLookCheckTreatsPlusAndMinus180AsTheSameHeading() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        probe.markGoal(0, ProbeWorld.WALK_Y, -6);
+
+        probe.start(world, player, actuator);
+        assertEquals(-180.0f, actuator.lookCalls().get(0).yaw, 0.001f, "guard: due north was asked for");
+        // The platform reports the same heading with the opposite sign, which a raw float
+        // comparison would call 360 degrees of error.
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 180.0f, 0.0f, true);
+        ProbeReport report = drainToReport(probe, player);
+
+        assertFalse(report.summary().contains("setLook did not take effect"),
+            "+180 and -180 are one heading: " + report.summary());
     }
 
     @Test
@@ -1877,7 +1916,7 @@ Append the notice in `report(...)`, beside the standing notice:
 - [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `./gradlew :runtime:test --tests '*PathProbeTest*'`
-Expected: PASS — 5 new tests plus Task 4's six, all green.
+Expected: PASS — 6 new tests plus Task 4's six, all green.
 
 - [ ] **Step 5: Wire both adapters**
 
@@ -1895,8 +1934,18 @@ In both mods, pass the actuator to `start` and the player to `advance`:
 
 > **`advance` is called on every tick, including ticks with no run in flight** — that is why it
 > returns immediately when `active == null`, and the ordering matters: the `active == null` check
-> comes first, so passing a player is harmless when nothing is running. Keep `advance` outside the
-> `if (path)` block exactly where it is today.
+> comes first, so passing a player is harmless when nothing is running.
+>
+> **Corrected after Task 5's review — the original instruction here was wrong.** It said to keep
+> `advance` where it already sat, which is *below* the `if (path)` block. That makes `start` and
+> `advance` run in the same tick handler, so `pendingYaw` is written and consumed a few statements
+> apart and the look round trip never crosses a tick — which is the entire point of deferring it,
+> and which three javadoc blocks and spec §9.2 all describe as a next-tick check. **Move the
+> `advance`-and-report block ABOVE the `if (path)` block** in both mods. The resulting per-tick
+> sequence is: `onLevel` → poll both keys → null-player check → `if (mark)` → advance-and-report →
+> `if (path)` start. Leave `onLevel` first and do not move either key poll — `consumeClick` and
+> `isPressed` drain a queued press as a side effect, so moving a poll changes behaviour. The cost
+> is that a run's first slice lands one tick later.
 
 - [ ] **Step 6: Build everything**
 

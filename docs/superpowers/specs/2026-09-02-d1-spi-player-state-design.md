@@ -96,7 +96,7 @@ are from those trees.
 |---|---|---|
 | position | `Entity.posX/posY/posZ`, public fields (`Entity.java:74`) | `Entity.getX()/getY()/getZ()`, public final (`Entity.java:3699/3715/3735`) |
 | rotation, read | `rotationYaw`, `rotationPitch`, public (`:86`, `:88`) | `getYRot()`, `getXRot()` (`:3823`, `:3840`) |
-| rotation, write | the same public fields | `setYRot(float)`, `setXRot(float)` (`:3832`, `:3844`) |
+| rotation, write | the same public fields | `setYRot(float)`, `setXRot(float)` (`:3832`, `:3844`) — the fields themselves are **private**, and `setXRot` clamps; see §3.6 |
 | previous rotation | `prevRotationYaw`, `prevRotationPitch`, public (`:89–90`) | `yRotO`, `xRotO`, public (`:223–224`) |
 | ground flag | `onGround`, public (`:93`) | `onGround()` (`:696`) |
 | velocity | `motionX/Y/Z`, public (`:80`) | `getDeltaMovement()` (`:3675`) |
@@ -226,6 +226,43 @@ Note also what the handler does to rotation: `setPositionAndRotation` overwrites
 as well as position. Under decision 7 that is self-healing rather than a special case, because the
 core rewrites its desired look every tick.
 
+### 3.6 The rotation *write* paths diverge, and this spec originally got it wrong
+
+Added 2026-09-02, after Task 2's review caught a false claim in §5 that had already reached shipped
+javadoc. Recorded here rather than silently corrected, because the correction is more useful than
+the original claim was.
+
+**What §5 originally asserted:** *"Neither version clamps on a direct field write."* That is wrong
+for 1.21.11, twice over.
+
+| | 1.7.10 | 1.21.11 |
+|---|---|---|
+| the field | `public float rotationPitch` (`Entity.java:88`) — a direct write is possible | `private float yRot; private float xRot;` (`Entity.java:221–222`) — **there is no direct write path at all** |
+| the setter | `setRotation` does `% 360` but an adapter writing the field bypasses it (`:336–340`) | `setXRot` stores `Math.clamp(f % 360.0F, -90.0F, 90.0F)` (`:3844–3849`) — **it clamps** |
+| a non-finite value | reaches the field, and turns the player's motion into `NaN` | `setYRot`/`setXRot` **discard it and log** (`:3832–3849`) |
+
+**Two consequences, both of which improve the contract rather than weakening it.**
+
+*An out-of-range pitch is a core bug only one adapter can expose.* Passing pitch `200` on 1.7.10
+produces a visibly broken player and sends `200` to the server, which is the loudest signal a
+plausibility check can read. The identical call on 1.21.11 is silently corrected to `90`. A core
+developing against 1.21.11 would therefore never see the bug it is shipping to 1.7.10 users. That
+is a sharper reason for the `[−90, 90]` obligation than "neither version clamps" ever was.
+
+*"Finite" is a real requirement.* The spec asked for it on the reasoning that the movement
+arithmetic is periodic, which is true but incidental. The actual reason is that the two versions
+handle a non-finite yaw differently and one of them handles it catastrophically.
+
+**This is the B1 carpet-and-farmland pattern again** — the two games genuinely disagree, and the
+adapters are left to report their own platform's behaviour truthfully rather than being made to
+agree. Nothing in the design changes; what changes is that the divergence is now written down.
+
+**Method note.** The wrong sentence survived a spec self-review, a plan self-review and a
+pre-flight scan, and was caught only because Task 2's reviewer was told to verify every Minecraft
+claim against the decompiled sources rather than against the implementer's report. Every claim in
+§3 is cited to a file and line for exactly this reason; §5's was not, and that is where the error
+was.
+
 ---
 
 ## 4. Design — `IPlayerView`
@@ -313,10 +350,14 @@ void setLook(float yaw, float pitch);
   straight back. One method, one atomic write, matching how both games apply rotation.
 - **Pitch MUST be in `[−90, 90]`; behaviour outside is unspecified.** This mirrors how `setInput`
   treats `null` — an obligation on the core, not a clamp in the adapter, because a clamp is a
-  judgement. Neither version clamps on a direct field write, and an out-of-range pitch is both a
-  visible rendering defect and the single loudest signal a server-side plausibility check can read.
+  judgement. **It is unspecified rather than defined because the two versions genuinely differ**,
+  which §3.6 establishes: 1.7.10 writes an out-of-range pitch straight through to the renderer and
+  the server, while 1.21.11 silently clamps it. So an out-of-range pitch is a core-side bug that
+  **only one adapter can ever expose** — loud on one version, invisible on the other. That
+  asymmetry is the argument for the obligation, and it is stronger than the one this spec
+  originally gave.
 - **Yaw may be any finite value.** Both games' movement arithmetic is periodic in yaw (§3.3), so
-  requiring normalisation would buy nothing.
+  requiring normalisation would buy nothing. **Finite is load-bearing, not a formality** — §3.6.
 - **No round-trip guarantee.** `yaw()` is not required to return the last value passed here. The
   user's mouse writes it, and so does the server. This is global rule 4's principle applied to
   rotation instead of key state, and stating it now stops any core from ever assuming otherwise.
@@ -341,16 +382,24 @@ void setLook(float yaw, float pitch);
 Rule 4 is today a hazard statement that explicitly declines to resolve itself and points at M5. It
 becomes an obligation on the core alone:
 
-> **While it is driving, the core states its full desired input set every tick.** It does not track
-> what it has already pressed and does not rely on any previous `setInput` call persisting.
+> **While it is driving, the core MUST state its full desired input set every tick.** It does not
+> track what it has already pressed and does not rely on any previous `setInput` call persisting.
 >
-> **While it is idle, the core writes nothing at all.** It must not hold every input at `false` each
+> **While it is idle, the core writes nothing at all.** It MUST NOT hold every input at `false` each
 > tick; that would fight the user's own keyboard whenever the bot is not running.
 >
 > **On `stop()` the core releases what it holds, once.**
 >
 > **Adapters owe nothing new.** `setInput` remains idempotent and remains documented as clearable at
-> any time.
+> any time. No adapter is required to re-assert anything.
+
+**The keywords are load-bearing, and this spec originally omitted them.** The package's own preamble
+says MUST, MUST NOT and MAY carry their RFC 2119 meanings, and rule 4's central clause — the one
+this whole sub-project exists to establish — was drafted here in the declarative. Task 3's review
+caught it in the shipped javadoc; the omission was the spec's. The clause is normative and now says
+so. The related hazard sentence in `IActuator.setInput` had the same problem in a worse place: it
+told a reader that the SPI requires "neither side" to re-assert, which after this rule is true only
+of adapters, and `setInput` is the method a core author actually reads.
 
 `IActuator`'s deferral paragraph (`IActuator.java:21–27`) and `IGameEvents`' M5 note
 (`IGameEvents.java:32–34`) both lose their forward references. The conformance suite's "Rules with
@@ -439,12 +488,30 @@ jobs, all cheap, all on paths the owner already presses several times a session:
 1. **Its search start comes from `IPlayerView`**, not from the integers the adapter passes in. This
    makes the new interface load-bearing rather than decorative, and it is what turns §3.2's hazard
    into something a press can expose.
-2. **It reports player state** in the summary line — position to three decimals, yaw, pitch,
+2. **It reports player state** in the summary line — position to two decimals, yaw, pitch,
    `onGround`.
 3. **It runs the two self-checks in §9.2**, reporting a divergence notice rather than passing
    silently, in the same style as C5's seal-and-replay comparison.
 4. **It faces the marked goal** when the path key is pressed, which is `setLook`'s entire in-game
    done criterion and takes one call.
+
+**The adapter's per-tick call order is load-bearing, and this spec did not say so.** Discovered in
+Task 5's review, recorded here because it is the difference between §9.2's check 2 working and
+being vacuous. Both adapters must call the probe's `advance` **before** the block that may `start`
+a new run:
+
+> `onLevel` → poll both keys → null-player check → `if (mark)` → advance-and-report → `if (path)`
+> start
+
+With `start` first, the look written by `setLook` is read back by `advance` a few statements later
+in the same tick handler, so the deferred read is not deferred at all. It still catches a
+wrong-field write or a wrong-field read — both halves touch real fields — but it cannot catch the
+failure the deferral exists for: **a rotation write that lands and then does not survive the
+tick**, which is live on 1.21.11, where the write happens at `END_CLIENT_TICK` and the game
+re-applies rotation during the next tick's input phase. It also makes §9.2's "no notice on a tick
+where the mouse was still" close to vacuous, since a mouse cannot move between two adjacent
+statements. Neither key poll may move: `consumeClick` and `isPressed` drain a queued press as a
+side effect. The cost of the correct order is that a run's first slice lands one tick later.
 
 Each adapter's own position read for the probe's start — `blockPosition()` on Fabric, floored
 `posX`/`boundingBox.minY`/`posZ` on Forge — is removed, which is what makes §3.2's duplicated
@@ -505,10 +572,22 @@ makes the check worth having:** correct behaviour fails it only in a short list 
 ladder, in fluid), and the bug fails it every time. A notice on plain flat ground is a real defect.
 
 **Check 2 — the look round trip.** After `setLook(yaw, pitch)`, the next tick's `IPlayerView.yaw()`
-and `pitch()` should agree, modulo wrapping. The contract does not guarantee this (§5), because the
-mouse and the server also write rotation — so it is a notice, not an assertion. But on a tick where
-nobody touched the mouse, a mismatch means one of the two new SPI halves is wrong, and **the two
-halves checking each other is the only automated-ish leverage D1 has on adapter code.**
+should agree, modulo wrapping. The contract does not guarantee this (§5), because the mouse and the
+server also write rotation — so it is a notice, not an assertion. But on a tick where nobody touched
+the mouse, a mismatch means one of the two new SPI halves is wrong, and **the two halves checking
+each other is the only automated-ish leverage D1 has on adapter code.**
+
+**Yaw only, corrected 2026-09-02 after the whole-branch review.** This section originally said "and
+`pitch()`". Checking pitch would prove nothing: the probe passes `IPlayerView.pitch()` straight back
+into `setLook` rather than choosing a pitch, so a pitch round trip compares a value to itself and
+holds even for an adapter that writes yaw and silently drops pitch — the exact failure it would
+appear to be testing. The shipped code checks yaw alone and is right; this is the spec catching up
+to it. **A pitch check would need the probe to ask for a pitch of its own**, which nothing yet has a
+reason to do.
+
+**And the order in which the adapter calls the probe is what makes this check real at all** — see
+§7.2. With `start` called before `advance` in the same tick handler, the "next tick's" read happens
+a few statements after the write and the check degenerates into a same-tick read-back.
 
 ### 9.3 In-game, by eye
 

@@ -212,27 +212,16 @@ public final class ContinuoForgeMod {
             return;
         }
         try {
-            // Feet, via the bounding box -- see the note in pollDumpKey. This one is not cosmetic:
-            // every movement offers only standable destinations and GoalBlock.isReached is exact
-            // equality, so a goal marked one block above the floor is unreachable by construction
-            // and the probe could never report FOUND on 1.7.10.
-            int px = MathHelper.floor_double(client.thePlayer.posX);
-            int py = MathHelper.floor_double(client.thePlayer.boundingBox.minY);
-            int pz = MathHelper.floor_double(client.thePlayer.posZ);
-
             if (mark) {
-                probe.markGoal(px, py, pz);
-                LOGGER.info("Continuo: path goal marked at " + px + " " + py + " " + pz);
-            }
-            if (path) {
-                ProbeReport refused = probe.start(core.blocks(), px, py, pz);
-                if (refused != null) {
-                    LOGGER.info(refused.summary());
-                }
+                probe.markGoal(context.player());
+                LOGGER.info("Continuo: path goal marked at " + context.player().x() + " "
+                    + context.player().y() + " " + context.player().z());
             }
             // Once per tick, whether or not the key was pressed: a sliced run advances on the
-            // tick, not on the keypress. Cheap and a no-op when nothing is in flight.
-            ProbeReport report = probe.advance();
+            // tick, not on the keypress. Cheap and a no-op when nothing is in flight. Ahead of the
+            // start below so a run's look round trip is checked against a yaw setLook wrote on a
+            // previous tick, not one it is about to write this same tick.
+            ProbeReport report = probe.advance(context.player());
             if (report != null) {
                 LOGGER.info(report.summary());
                 if (report.ran()) {
@@ -251,6 +240,12 @@ public final class ContinuoForgeMod {
                         }
                     }
                     LOGGER.info("Continuo: wrote path probe map to " + out.getAbsolutePath());
+                }
+            }
+            if (path) {
+                ProbeReport refused = probe.start(core.blocks(), context.player(), context.actuator());
+                if (refused != null) {
+                    LOGGER.info(refused.summary());
                 }
             }
         } catch (Exception e) {

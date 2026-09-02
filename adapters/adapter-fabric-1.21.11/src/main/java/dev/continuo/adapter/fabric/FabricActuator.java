@@ -4,13 +4,15 @@ import dev.continuo.platform.IActuator;
 import dev.continuo.platform.Input;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 
 /**
- * Translates abstract {@link Input} values into Minecraft key mappings.
+ * Translates abstract {@link Input} values and rotation into Minecraft key mappings and player
+ * fields.
  *
  * <p>Pure translation: an enum maps to an enum. No decision is made here. If this class
- * ever grows a conditional that changes behaviour rather than resolving a name, that logic
- * belongs in the core.
+ * ever grows a conditional that changes behaviour rather than resolving a name or guarding a
+ * null, that logic belongs in the core.
  */
 final class FabricActuator implements IActuator {
 
@@ -23,6 +25,23 @@ final class FabricActuator implements IActuator {
     @Override
     public void setInput(Input input, boolean pressed) {
         mappingFor(input).setDown(pressed);
+    }
+
+    @Override
+    public void setLook(float yaw, float pitch) {
+        LocalPlayer player = minecraft.player;
+        // Unlike IPlayerView, this returns rather than throwing: a bot must never fault the game's
+        // tick loop over a race with a disconnect (SPI global rule 3).
+        if (player == null) {
+            return;
+        }
+        player.setYRot(yaw);
+        player.setXRot(pitch);
+        // Written alongside the rotation itself, per IActuator#setLook's adapter obligation: the
+        // game snapshots the previous rotation once per tick, so a write landing after that
+        // snapshot would leave the camera interpolating from a stale angle.
+        player.yRotO = yaw;
+        player.xRotO = pitch;
     }
 
     private KeyMapping mappingFor(Input input) {
