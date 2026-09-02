@@ -226,6 +226,12 @@ public final class PathProbe {
     /**
      * Records the player's current block position as the goal. Replaces any previous mark.
      *
+     * <p>The marked position must be the player's feet, per {@link IPlayerView#y()}: every
+     * movement offers only standable destinations, and {@link GoalBlock#isReached} is exact
+     * block-coordinate equality, not a tolerance. A goal marked one block above the floor is
+     * therefore unreachable by construction — on 1.7.10, where the obvious field is the stance
+     * rather than the feet, the probe could never report {@code FOUND}.
+     *
      * @param player where the player is; never {@code null}
      */
     public void markGoal(IPlayerView player) {
@@ -342,6 +348,9 @@ public final class PathProbe {
      * instead of the feet on 1.7.10 would start every search 1.62 blocks above the ground. The
      * standing invariant recorded here is what surfaces that.
      *
+     * <p>Call {@link #advance} before any call to this method on the same tick — see its javadoc
+     * for why.
+     *
      * @param world    the world to read; never {@code null}
      * @param player   where the player is; never {@code null}
      * @param actuator turns the player to face the goal; never {@code null}
@@ -357,6 +366,10 @@ public final class PathProbe {
         int px = floor(player.x());
         int py = floor(player.y());
         int pz = floor(player.z());
+        // Read before the delegating start(world, px, py, pz) call below: that call captures
+        // goal into activeGoal, but goal is a mutable field a caller can change between ticks.
+        // target must name the goal this start() call actually searched toward, not whatever
+        // goal happens to hold afterward.
         Pos target = goal;
         ProbeReport refused = start(world, px, py, pz);
         if (refused != null) {
@@ -468,6 +481,14 @@ public final class PathProbe {
      * Spends one slice on the run in flight, if there is one.
      *
      * <p>Call once per tick. Cheap and safe when nothing is running, which is the normal case.
+     *
+     * <p><b>A caller MUST call this before any code path that may call {@link #start} on the same
+     * tick.</b> The look round trip this method checks was written by a previous tick's {@code
+     * start}; it must be read back before this tick's {@code start} (if any) overwrites {@link
+     * #pendingYaw} with a new pending yaw. Call this after {@code start} instead, and the deferred
+     * check degenerates into a same-tick read of a rotation this same tick just wrote — which
+     * cannot catch the failure it exists for, a rotation write that lands and then does not
+     * survive the tick. The check is only meaningful because it crosses a tick boundary.
      *
      * @param player where the player is now, checked against the look {@link #start} asked for;
      *               may be {@code null} only when nothing is running
@@ -721,8 +742,8 @@ public final class PathProbe {
      * <p>Not the default locale: this reaches a log file that gets read on other machines, and a
      * default locale writes {@code "3,8"} where the reader expects {@code "3.8"}.
      */
-    private static String fmt(double ms) {
-        return String.format(java.util.Locale.ROOT, "%.1f", Double.valueOf(ms));
+    private static String fmt(double value) {
+        return String.format(java.util.Locale.ROOT, "%.1f", Double.valueOf(value));
     }
 
     /**

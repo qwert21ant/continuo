@@ -9,10 +9,18 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Pins {@code IPlatformContext}'s same-instance clause for the accessor D1 adds.
+ * Pins {@code IPlatformContext}'s same-instance clause for the accessor D1 adds, and that the
+ * accessor returns something.
  *
- * <p>The clause is what lets the core cache what an accessor returns. It has always been stated
- * and never asserted; the fourth accessor is a cheap place to start asserting it.
+ * <p>The same-instance clause is what lets the core cache what an accessor returns. It has
+ * always been stated and never asserted; the fourth accessor is a cheap place to start
+ * asserting it.
+ *
+ * <p>The non-null assertions are load-bearing, not decoration: {@code assertSame(null, null)}
+ * passes, so a same-instance test alone would be satisfied by an accessor that returns
+ * {@code null} on every call — pinning the same-instance clause while silently saying nothing
+ * about the accessor actually producing a value. Each {@code assertNotNull} below runs before
+ * its paired {@code assertSame} so that the same-instance check cannot vacuously pass this way.
  */
 class FakePlatformContextTest {
 
@@ -20,6 +28,8 @@ class FakePlatformContextTest {
     void playerReturnsTheSameInstanceOnEveryCall() {
         FakePlatformContext ctx = new FakePlatformContext();
 
+        // Must come before assertSame: assertSame(null, null) passes, so without this the
+        // same-instance check below could vacuously pass on an accessor returning null.
         assertNotNull(ctx.player());
         assertSame(ctx.player(), ctx.player());
         assertSame(ctx.fakePlayerView(), ctx.player());

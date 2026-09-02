@@ -12,10 +12,12 @@
  * directions. Per-type documentation cites them by number. The conformance suite in
  * {@code platform-testkit} is organised by this numbering, so <b>the numbering is
  * load-bearing and must not change</b>. Not every rule reduces to a test: rule 1's "no
- * implementation may block" and rule 4's "may be cleared at any time" have no assertion to
- * write, and neither has {@code onClientTick}'s "MUST NOT be delivered re-entrantly", which is
- * a property of an adapter's event source that no runtime can enforce on its own caller. The
- * suite records those gaps in its own documentation rather than leaving them silent. Rules 2
+ * implementation may block" has no assertion to write, and neither has {@code onClientTick}'s
+ * "MUST NOT be delivered re-entrantly", which is a property of an adapter's event source that
+ * no runtime can enforce on its own caller. Rule 4's hazard clause — "may be cleared at any
+ * time" — has no adapter-side assertion for the same reason; its obligation binds the core
+ * rather than an adapter, and is asserted in {@code ContinuoCoreTest}. The suite records those
+ * gaps in its own documentation rather than leaving them silent. Rules 2
  * and 3 bind {@code start} and {@code stop}, which are declared on no type in this package,
  * so the suite asserts them against the core-side interface that does declare them. The
  * keywords MUST, MUST NOT and MAY carry their RFC 2119 meanings.

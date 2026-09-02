@@ -7,11 +7,12 @@ import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.settings.KeyBinding;
 
 /**
- * Translates abstract {@link Input} values into Minecraft key bindings.
+ * Translates abstract {@link Input} values and rotation into Minecraft key bindings and player
+ * fields.
  *
  * <p>Pure translation: an enum maps to a field. No decision is made here. If this class ever
- * grows a conditional that changes behaviour rather than resolving a name, that logic belongs
- * in the core.
+ * grows a conditional that changes behaviour rather than resolving a name or guarding a null,
+ * that logic belongs in the core.
  *
  * <p>Writes {@code pressed} on the binding instance, which an access transformer makes
  * accessible. This is the per-instance equivalent of Fabric's {@code KeyMapping#setDown}; the

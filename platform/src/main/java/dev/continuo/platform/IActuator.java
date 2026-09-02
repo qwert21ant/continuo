@@ -99,6 +99,12 @@ public interface IActuator {
      * stale angle. Cosmetic rather than behavioural, and stated as an obligation only so that one
      * adapter cannot quietly do it while the other does not.
      *
+     * <p><b>Outside {@link IGameEvents#onClientTick}'s delivery window, or when no local player
+     * exists, an implementation MUST NOT throw — it does nothing.</b> Unlike {@link IPlayerView},
+     * whose implementations throw outside that window, this method is written from rather than
+     * read for state: a bot must never fault the game's tick loop over a race with a disconnect,
+     * which is global rule 3's concern.
+     *
      * @param yaw   the heading in degrees; any finite value
      * @param pitch the elevation in degrees; MUST be in {@code [-90, 90]}
      */
