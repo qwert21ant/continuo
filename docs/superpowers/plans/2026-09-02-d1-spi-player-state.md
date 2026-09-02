@@ -1624,11 +1624,36 @@ Add to `PathProbeTest`:
 ```java
     @Test
     void yawTowardUsesTheConventionBothVersionsShare() {
-        // 0 faces +Z, 90 faces -X, 180 faces -Z, 270/-90 faces +X.
+        // 0 faces +Z, 90 faces -X, 180 faces -Z, -90 faces +X.
         assertEquals(0.0f, PathProbe.yawToward(0.5, 0.5, 0, 10), 0.001f);
         assertEquals(90.0f, PathProbe.yawToward(0.5, 0.5, -10, 0), 0.001f);
-        assertEquals(180.0f, PathProbe.yawToward(0.5, 0.5, 0, -10), 0.001f);
         assertEquals(-90.0f, PathProbe.yawToward(0.5, 0.5, 10, 0), 0.001f);
+        // Due north comes back as -180 rather than +180: atan2(+0.0, -z) is +pi, and yawToward
+        // deliberately does not normalise -- IPlayerView.yaw() is documented as unnormalised and
+        // setLook accepts any finite yaw, so inventing a normalisation here would impose a
+        // requirement the SPI declines to make. The two are the same heading, which the next
+        // assertion is what actually pins.
+        assertEquals(-180.0f, PathProbe.yawToward(0.5, 0.5, 0, -10), 0.001f);
+    }
+
+    @Test
+    void theLookCheckTreatsPlusAndMinus180AsTheSameHeading() {
+        ProbeWorld world = new ProbeWorld();
+        FakePlayerView player = new FakePlayerView();
+        FakeActuator actuator = new FakeActuator();
+        PathProbe probe = new PathProbe();
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 0.0f, 0.0f, true);
+        probe.markGoal(0, ProbeWorld.WALK_Y, -6);
+
+        probe.start(world, player, actuator);
+        assertEquals(-180.0f, actuator.lookCalls().get(0).yaw, 0.001f, "guard: due north was asked for");
+        // The platform reports the same heading with the opposite sign, which a raw float
+        // comparison would call 360 degrees of error.
+        player.set(0.5, ProbeWorld.WALK_Y, 0.5, 180.0f, 0.0f, true);
+        ProbeReport report = drainToReport(probe, player);
+
+        assertFalse(report.summary().contains("setLook did not take effect"),
+            "+180 and -180 are one heading: " + report.summary());
     }
 
     @Test
@@ -1877,7 +1902,7 @@ Append the notice in `report(...)`, beside the standing notice:
 - [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `./gradlew :runtime:test --tests '*PathProbeTest*'`
-Expected: PASS — 5 new tests plus Task 4's six, all green.
+Expected: PASS — 6 new tests plus Task 4's six, all green.
 
 - [ ] **Step 5: Wire both adapters**
 
