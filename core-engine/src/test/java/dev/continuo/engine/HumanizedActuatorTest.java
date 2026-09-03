@@ -30,8 +30,9 @@ class HumanizedActuatorTest {
 
         actuator.setLook(180.0f, 0.0f);
 
-        assertEquals(HumanizedActuator.MAX_DEG_PER_TICK, delegate.lookCalls().get(0).yaw, 0.001f,
-            "a 180 degree request must not arrive in one frame");
+        assertEquals(-HumanizedActuator.MAX_DEG_PER_TICK, delegate.lookCalls().get(0).yaw, 0.001f,
+            "a 180 degree request must not arrive in one frame; at exactly 180 both directions are "
+                + "equally short and Yaw.wrap's half-open fold picks the negative one");
     }
 
     @Test
@@ -47,7 +48,7 @@ class HumanizedActuatorTest {
             player.set(0.0, 64.0, 0.0, delegate.lookCalls().get(tick).yaw, 0.0f, true);
         }
 
-        assertEquals(180.0f, delegate.lookCalls().get(5).yaw, 0.001f, "six ticks reaches it");
+        assertEquals(-180.0f, delegate.lookCalls().get(5).yaw, 0.001f, "six ticks reaches it");
         assertTrue(Math.abs(delegate.lookCalls().get(4).yaw) < 180.0f, "five ticks does not");
     }
 
@@ -76,8 +77,8 @@ class HumanizedActuatorTest {
         player.set(0.0, 64.0, 0.0, -90.0f, 0.0f, true);
         actuator.setLook(90.0f, 0.0f);
 
-        assertEquals(-60.0f, delegate.lookCalls().get(1).yaw, 0.001f,
-            "thirty degrees on from -90, not from the 30 it last wrote");
+        assertEquals(-120.0f, delegate.lookCalls().get(1).yaw, 0.001f,
+            "thirty degrees on from -90 via the shortest arc, not from the 30 it last wrote");
     }
 
     @Test
@@ -99,5 +100,18 @@ class HumanizedActuatorTest {
         assertTrue(delegate.calls().get(0).pressed);
         assertEquals(Input.JUMP, delegate.calls().get(1).input);
         assertEquals(false, delegate.calls().get(1).pressed);
+    }
+
+    @Test
+    void aLargeTurnTakesTheShortWayEvenWhenTheRawDifferenceIsLarge() {
+        // current 0, target 300: the raw difference is +300 but the short way is -60. Clamping on
+        // the sign of the raw difference sends the player 300 degrees the wrong way round. Yaw is
+        // documented as unnormalised, so this is the ordinary case, not a corner one.
+        player.set(0.0, 64.0, 0.0, 0.0f, 0.0f, true);
+
+        actuator.setLook(300.0f, 0.0f);
+
+        assertEquals(-HumanizedActuator.MAX_DEG_PER_TICK, delegate.lookCalls().get(0).yaw, 0.001f,
+            "sixty degrees anticlockwise is the short way; +30 would be the long way round");
     }
 }

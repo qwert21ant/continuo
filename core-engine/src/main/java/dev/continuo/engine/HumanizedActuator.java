@@ -81,11 +81,11 @@ public final class HumanizedActuator implements IActuator {
     @Override
     public void setLook(float yaw, float pitch) {
         float current = player.yaw();
-        float unwrappedDelta = yaw - current;
-        float delta = Yaw.wrap(unwrappedDelta);
-        float absDelta = Math.abs(delta);
-        if (absDelta > MAX_DEG_PER_TICK) {
-            delta = (unwrappedDelta >= 0) ? MAX_DEG_PER_TICK : -MAX_DEG_PER_TICK;
+        float delta = Yaw.wrap(yaw - current);
+        if (delta > MAX_DEG_PER_TICK) {
+            delta = MAX_DEG_PER_TICK;
+        } else if (delta < -MAX_DEG_PER_TICK) {
+            delta = -MAX_DEG_PER_TICK;
         }
         delegate.setLook(current + delta, pitch);
     }
