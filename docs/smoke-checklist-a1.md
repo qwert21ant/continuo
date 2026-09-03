@@ -27,15 +27,16 @@ A1 sign-off — do not skip a step or assume it would have passed.
    creation; once you've spawned, switch to Survival with `/gamemode survival`.
    *Observe:* the F3 debug screen (or the pause menu) confirms you are in Survival, not
    Creative.
-   *Why this matters:* Creative flight and Creative's movement differ from vanilla walking
-   speed. If you're not in Survival, the distance measured in step 5 is meaningless and the
-   checklist result is not valid — go back and fix the game mode before continuing.
+   *Why this matters:* the executor's constants — its turn rate, when it presses JUMP on an
+   ascend, how close counts as arrival — are all sized against ordinary Survival walking and
+   ground collision. Creative flight bypasses gravity and moves at a different speed entirely,
+   so none of the walk steps below would be exercising the real thing in Creative. If you're
+   not in Survival, every walk step after this one is invalid — go back and fix the game mode
+   before continuing.
 
-3. **Baseline.** Press F3 to open the debug overlay. Record the XYZ coordinates shown and
-   note which axis you're facing (the "Facing" line shows a compass direction and which of
-   X/Z is changing as you look that way).
-   *Observe:* write down the starting X, Y, Z and the facing axis (X or Z) before doing
-   anything else.
+3. **Baseline.** Press F3 to open the debug overlay. Record the XYZ coordinates shown.
+   *Observe:* write down the starting X, Y, Z before doing anything else — step 4 uses this as
+   the point you walk away from before marking a goal.
 
 4. **Mark and walk.** Walk about ten blocks from your step-3 baseline, over open flat ground,
    and note the block you are standing on. Press `H` to mark it as the goal. Walk back to (or

@@ -57,13 +57,24 @@ public final class ContinuoCore implements CoreApi {
      * two different non-{@code null} instances, and from {@code null} to non-{@code null}),
      * and on client shutdown where the platform exposes a main-thread client-stopping event.
      * Without it, a disconnect mid-walk leaves the client holding a movement key.
+     *
+     * <p><b>{@code executor} and {@code blocks} are guarded symmetrically</b>, both against being
+     * {@code null}, even though {@code start} always assigns both before either is used. The
+     * guard is not for an ordinary caller -- {@code context == null} above already rejects one --
+     * but for a {@code start} that itself threw partway through (an SPI implementation is free to
+     * throw from {@code context.blocks()} or {@code context.actuator()}), which would leave
+     * {@code context} assigned but one or both of the others still {@code null}. A caller in that
+     * position is already in an unspecified state, but {@code stop()} should not itself NPE on
+     * top of it.
      */
     @Override
     public void stop() {
         if (context == null) {
             throw new IllegalStateException("start(IPlatformContext) must be called first");
         }
-        executor.stop();
+        if (executor != null) {
+            executor.stop();
+        }
         if (blocks != null) {
             blocks.clear();
         }

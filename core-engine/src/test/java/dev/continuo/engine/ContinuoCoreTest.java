@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -49,11 +50,35 @@ class ContinuoCoreTest {
         assertEquals(0, actuator.callCount());
     }
 
+    /**
+     * Fix round 1 finding 1: the original version of this test ticked {@code POST} on an
+     * <em>idle</em> core and asserted zero actuator calls -- but an idle core writes nothing on
+     * {@code PRE} either, so deleting the {@code phase != TickPhase.PRE} guard in {@code
+     * onClientTick} still passed it. This version exercises a <em>driving</em> core instead, so a
+     * missing guard is observable: against the {@code NO_PATH} fixture below, a {@code POST} tick
+     * that reached the executor would advance and eventually terminate the pending search,
+     * producing the "no path" log line this test checks is absent. {@code AdapterRuntime}
+     * delivers {@code POST} every tick, so a missing guard here would double every search's slice
+     * rate and, once driving, double the tick rate {@code drive()}/{@code driveToward()} write
+     * inputs at -- exactly the defect class the deleted 40-tick checklist's "roughly double"
+     * diagnostic used to catch in game. That manual detector is gone (it measured a fixed-length
+     * walk's distance, which the executor no longer has), so this unit test is now the only gate
+     * left for it.
+     */
     @Test
-    void ignoresPostPhaseTicksWhileIdle() {
-        core.onClientTick(TickPhase.POST);
+    void ignoresPostPhaseTicksEvenWhileDriving() {
+        ctx.fakePlayerView().set(0.5, 64.0, 0.5, 0f, 0f, true);
+        core.walkTo(10, 64, 0);
 
-        assertEquals(0, actuator.callCount());
+        for (int i = 0; i < 20; i++) {
+            core.onClientTick(TickPhase.POST);
+        }
+
+        assertEquals(0, actuator.callCount(), "POST must never drive anything");
+        assertFalse(log.messages().toString().contains("no path"),
+            "POST must never advance the pending search either -- if it did, this NO_PATH"
+                + " fixture would have settled and logged within 20 ticks, exactly as it does"
+                + " under PRE in walkToReachesTheExecutorAndTheExecutorsLogReachesTheOneStartWasGiven");
     }
 
     /**
