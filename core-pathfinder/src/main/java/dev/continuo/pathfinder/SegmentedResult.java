@@ -12,6 +12,7 @@ public final class SegmentedResult {
     private final List<Pos> expanded;
     private final double cost;
     private final int segments;
+    private final List<Step> steps;
 
     SegmentedResult(PathOutcome outcome, List<Pos> path, List<Pos> expanded,
                     double cost, int segments) {
@@ -20,6 +21,7 @@ public final class SegmentedResult {
         this.expanded = Collections.unmodifiableList(new ArrayList<Pos>(expanded));
         this.cost = cost;
         this.segments = segments;
+        this.steps = Steps.derive(this.path);
     }
 
     /**
@@ -77,6 +79,19 @@ public final class SegmentedResult {
     /** @return how many searches ran; 1 when the first one settled it */
     public int segments() {
         return segments;
+    }
+
+    /**
+     * The moves this run's {@link #path()} is made of: one per adjacent pair of entries, so
+     * {@code steps().size()} is {@code path().size() - 1}, and empty whenever the path is.
+     *
+     * <p>Derived from this run's own {@link #path()} rather than by delegating to
+     * {@link #asPathResult()}, which copies {@link #expanded()} a second time.
+     *
+     * @return the steps, unmodifiable
+     */
+    public List<Step> steps() {
+        return steps;
     }
 
     /**
