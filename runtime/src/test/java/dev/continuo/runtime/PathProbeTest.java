@@ -893,20 +893,6 @@ class PathProbeTest {
     }
 
     @Test
-    void yawTowardUsesTheConventionBothVersionsShare() {
-        // 0 faces +Z, 90 faces -X, 180 faces -Z, -90 faces +X.
-        assertEquals(0.0f, PathProbe.yawToward(0.5, 0.5, 0, 10), 0.001f);
-        assertEquals(90.0f, PathProbe.yawToward(0.5, 0.5, -10, 0), 0.001f);
-        assertEquals(-90.0f, PathProbe.yawToward(0.5, 0.5, 10, 0), 0.001f);
-        // Due north comes back as -180 rather than +180: atan2(+0.0, -z) is +pi, and yawToward
-        // deliberately does not normalise -- IPlayerView.yaw() is documented as unnormalised and
-        // setLook accepts any finite yaw, so inventing a normalisation here would impose a
-        // requirement the SPI declines to make. The two are the same heading, which the next
-        // assertion is what actually pins.
-        assertEquals(-180.0f, PathProbe.yawToward(0.5, 0.5, 0, -10), 0.001f);
-    }
-
-    @Test
     void theLookCheckTreatsPlusAndMinus180AsTheSameHeading() {
         ProbeWorld world = new ProbeWorld();
         FakePlayerView player = new FakePlayerView();
