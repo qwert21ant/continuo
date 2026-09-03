@@ -145,6 +145,48 @@ and 6.1–8.8 ms warm.
 `setLook` call in order. Both shipped in D1 and are what makes §10 real coverage rather than
 review-by-proxy.
 
+### 3.9 Jumping, on both versions — read 2026-09-03
+
+This section did not exist when the spec was first written; §6.3's ascend rule rested on an uncited
+claim, §14 named it as the one such claim in the document, and reading it turned out to change the
+design. It is recorded here rather than silently patched.
+
+**1.7.10**, `EntityLivingBase.onLivingUpdate`. The counter is decremented at the top of the method
+(`:1930–1932`), and the jump block is `:1998–2016`:
+
+```java
+if (this.isJumping) {
+    if (!this.isInWater() && !this.handleLavaMovement()) {
+        if (this.onGround && this.jumpTicks == 0) { this.jump(); this.jumpTicks = 10; }
+    } else { this.motionY += 0.03999999910593033D; }
+} else { this.jumpTicks = 0; }
+```
+
+**1.21.11**, `LivingEntity.aiStep`. Decremented at `:2871–2873`, jump block at `:2926–2950`:
+
+```java
+if (this.jumping && this.isAffectedByFluids()) {
+    ...
+    if ((this.onGround() || bl && g <= h) && this.noJumpDelay == 0) {
+        this.jumpFromGround(); this.noJumpDelay = 10;
+    }
+    ...
+} else { this.noJumpDelay = 0; }
+```
+
+**Three facts, identical on both versions fifteen years apart:**
+
+1. **A held jump does nothing while airborne.** Both gate on their own ground flag. The original
+   claim holds.
+2. **Both impose a ten-tick cooldown**, armed on jumping (`jumpTicks = 10`, `noJumpDelay = 10`) and
+   decremented once per tick.
+3. **Both clear that cooldown when the key is released** — the `else` branch of the outer `if`, on
+   both. The cooldown is therefore a property of *holding* the key, not of having jumped.
+
+Fact 3 is what §6.3 acts on, and it is the one that could not have been guessed: it means a
+level-triggered executor that holds `JUMP` for the whole of an ascend is throttled where one that
+conditions on `onGround()` is not.
+
 ---
 
 ## 4. Design — module layout
@@ -330,7 +372,7 @@ Every driving tick writes **all seven `Input` constants**, per §3.4:
 |---|---|---|---|
 | `TRAVERSE` | true | false | false |
 | `DIAGONAL` | true | false | false |
-| `ASCEND` | true | **true** | false |
+| `ASCEND` | true | **`player.onGround()`** | false |
 | `DESCEND` | true | false | false |
 | `PARKOUR` | — | — | — cannot occur under decision 7; stops with a message |
 | `null` | — | — | — §5.2; stops with a message |
@@ -343,10 +385,19 @@ Facing is `humanizer.setLook(Yaw.toward(player.x(), player.z(), step.to()), play
 is passed straight back, which is the case `IActuator.setLook`'s javadoc anticipates when it explains
 why yaw and pitch are one call (`:62–64`).
 
-`ASCEND` holds `JUMP` for the whole step rather than pulsing it. Both games ignore a held jump while
-airborne, so the effect is one jump per ascend; the visible cost is that a run of consecutive
-ascends bunny-hops up a staircase. That is a cosmetic prediction, not a measurement, and §11
-observes it in a client.
+**`ASCEND` presses `JUMP` only while `player.onGround()`, and §3.9 is why.** Both games gate the jump
+on their own ground flag *and* impose a ten-tick cooldown that is armed on jumping and **cleared the
+moment the key is released**. Holding `JUMP` through a staircase therefore throttles the ascent to
+one block per ten ticks; releasing it while airborne clears the cooldown so the next landing jumps
+immediately.
+
+Conditioning on `onGround()` produces exactly that release, and it does so **without any memory** —
+it remains a pure function of the path and the player's current state, which is the property §6.2
+rests on. A version that remembered whether it pressed last tick would achieve the same effect and
+forfeit that.
+
+This is the one design change the pre-implementation source check produced, and it reverses one of
+§12's residual answers: **`onGround()` acquires its first consumer after all.**
 
 ### 6.4 Two lifecycle obligations
 
@@ -510,7 +561,9 @@ and `FakeActuator` (§3.8) are the whole harness.
 
 - **Level-triggering**: every driving tick writes all seven constants; an idle tick writes **zero**
   actuator calls. The second half is the one that pins rule 4's idle clause.
-- Drive table per kind; `ASCEND` presses `JUMP` and `DESCEND` does not.
+- Drive table per kind; `DESCEND` never presses `JUMP`; **`ASCEND` presses `JUMP` when
+  `onGround()` is true and releases it when false**, which is §3.9's cooldown rule and needs both
+  halves asserted — a test that only checks the press passes on an implementation that holds it.
 - Facing equals `Yaw.toward` for the current step's destination.
 - The anchor **absorbs** a displacement inside the window and does not repath.
 - The anchor **repaths** on a displacement outside it, and releases all seven inputs once first.
@@ -552,8 +605,10 @@ inconvenience.
 1. `./gradlew build --rerun-tasks` green, test count recorded from a full unfiltered run.
 2. §5.3's totality guard exists and is demonstrated to fail when a colliding movement is added.
 3. §10.2's spiral test is demonstrated to fail with an unbounded window.
-4. The executor drives the player to an H-marked goal on **both** versions, over flat ground, up
-   stairs, and off a drop.
+4. The executor drives the player to an H-marked goal on **both** versions, over flat ground, off a
+   drop, and **up a staircase of at least four consecutive ascends** — four because §3.9's cooldown
+   is ten ticks and a single ascend cannot expose a throttle, and because a run of ascends is what
+   exercises `onGround()`, which §12 now makes load-bearing.
 5. **Opening the inventory mid-walk does not stop the player** — rule 4's regression check,
    re-pointed at the executor now that the 40-tick walk is gone. This is the check D1 §15.1 found
    was the only real in-game evidence for level-triggering.
@@ -573,14 +628,14 @@ inconvenience.
 
 ## 12. Carried forward, not solved here
 
-**Three residuals D2 was expected to settle and does not — which is itself the finding.**
-
 - **`covers()` gets its answer, and the answer is no.** D2 does no path revalidation against the live
   world, so its last candidate consumer declines it. Four sub-projects after C3 argued for it, it
   should be **recorded as unused rather than carried forward a fifth time**.
-- **`onGround()` stays unaudited.** §6.3's drive table never consults it — `JUMP` is held
-  level-triggered and both games ignore it while airborne — so D2, named in D1's merge record as its
-  first real consumer, turns out not to be one.
+- **`onGround()` acquires its first consumer**, which the first draft of this spec denied. §3.9's
+  ten-tick cooldown is why: `ASCEND` conditions `JUMP` on it. D1's merge record predicted D2 would be
+  where the two versions' ground flags get their first real comparison, and that prediction is now
+  live rather than deferred. **If they disagree about coyote-time or standing on a fence, the visible
+  symptom is a missed or throttled jump on a staircase**, which criterion 4 exercises directly.
 - **Velocity stays absent from `IPlayerView`, and 1.7.10's `SPRINT` stays unaudited.** Both are
   downstream of parkour, which decision 7 excludes.
 
@@ -607,7 +662,7 @@ New from D2:
 | **Seven extrapolated constants** | Real, and the top risk. Mitigated by every one having a failure mode visible in a client rather than silent, and by §11's criterion 9 making the measurement a done criterion rather than a follow-up. This is the same trade `SLICE_NODES` took and closed in one run |
 | The anchor window is wrong for real terrain | `W` is the one constant whose failure is *not* obvious — too large silently skips a loop, which looks like a pathfinding bug. This is exactly why criterion 10 executes it as a mutation rather than trusting §10.2's fixture |
 | Facing a block centre and holding `FORWARD` oscillates near the target | Plausible and unmeasured. Bounded by the anchor advancing as soon as the player is nearer the next node, so the worst case is a wobble rather than a stall. Observed in criterion 4 |
-| Holding `JUMP` through an ascend bunny-hops a staircase | Cosmetic, predicted, unmeasured. Criterion 4 observes it; if it looks wrong, pulsing `JUMP` on `onGround()` is the fix, and that would give `onGround()` its first consumer after all |
+| The two versions' `onGround()` flags disagree | Now load-bearing, per §12. Never audited to the depth `y()` was. The symptom is a missed or throttled jump on a staircase rather than anything silent, and criterion 4 walks a staircase on both versions specifically to expose it |
 | The module move breaks an adapter | Two adapter edits, and adapters have no tests. Review is the only gate, permanently. Mitigated by the edits being an import and a build file rather than Minecraft-facing code |
 | Repath thrash on hostile terrain | `MAX_CONSECUTIVE_REPATHS` bounds it, and the counter resetting on progress stops a long successful route being killed by it. The bound is extrapolated like the rest |
 | D2 quietly worsens `expanded()`'s accumulation | Named in §6.4 as a design rule rather than left to an implementer to notice. Asserted in §10.2's `stop()` test by reference |
@@ -620,11 +675,12 @@ New from D2:
 - **Nothing in D2 has run in a client**, and the whole of §9 is arithmetic until it has. The pattern
   from D1 is instructive: warm figures landed on their prediction and cold ran 24% over, so the
   assumption behind the extrapolation was wrong even where the value survived.
-- **§6.3's claim that both games ignore a held `JUMP` while airborne is stated from general
-  knowledge, not read from the decompiled sources.** It is the one claim in this spec without a
-  citation, and D1's post-mortem found every one of its defects in exactly that category. **It must
-  be verified against both trees before implementation**, and if it is wrong, the ascend row of the
-  drive table changes.
+- **Resolved before implementation, and it changed the design.** §6.3's ascend rule originally rested
+  on the one claim in this spec carrying no citation. It was read from both trees on 2026-09-03 and
+  is now §3.9. The claim itself held; the ten-tick cooldown beside it did not appear in the claim at
+  all, and it is what moved `JUMP` from held to `onGround()`-conditioned. **D1's post-mortem said
+  every one of its five defects was in an uncited claim; this is the first time that lesson was
+  applied before an implementer saw the text rather than after.**
 - **`PLAN_AHEAD_STEPS` assumes the executor's searches cost roughly what the probe's do.** The probe
   searches with `PARKOUR` and D2 does not, so D2's branching factor is lower and its searches should
   be cheaper — meaning 20 is conservative in the safe direction, but by an unmeasured amount.
