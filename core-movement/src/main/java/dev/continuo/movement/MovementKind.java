@@ -83,6 +83,6 @@ public enum MovementKind {
         if (dy == 1) {
             return ASCEND;
         }
-        return dy < 0 ? DESCEND : null;
+        return dy < 0 && dy >= -MovementCosts.MAX_SAFE_FALL ? DESCEND : null;
     }
 }

@@ -55,6 +55,8 @@ class MovementKindTest {
         assertNull(MovementKind.forDelta(2, 0, 2), "no diagonal parkour exists");
         assertNull(MovementKind.forDelta(0, 2, 1), "nothing climbs two blocks in one step");
         assertNull(MovementKind.forDelta(2, 1, 0), "no parkour ascend exists");
+        assertNull(MovementKind.forDelta(1, -(MovementCosts.MAX_SAFE_FALL + 1), 0),
+            "no movement can emit a drop deeper than MAX_SAFE_FALL, so nothing names one");
     }
 
     @Test
