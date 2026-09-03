@@ -1,16 +1,16 @@
 package dev.continuo.engine;
 
 import dev.continuo.core.BlockClassifier;
-import dev.continuo.core.BlockData;
 import dev.continuo.core.BlockLookup;
 import dev.continuo.core.BlockTableLoader;
 import dev.continuo.core.CoreApi;
+import dev.continuo.core.RuntimeLog;
 import dev.continuo.platform.IPlatformContext;
-import dev.continuo.platform.Input;
 import dev.continuo.platform.TickPhase;
 
 /**
- * The entire core, for now: on request, hold FORWARD for {@link #WALK_TICKS} ticks.
+ * The entire core, for now: drive a {@link PathExecutor} toward whatever destination the owner
+ * last asked for.
  *
  * <p>Deliberately has no static state and no knowledge of its owner. The adapter constructs
  * it and hands it to the shared {@code AdapterRuntime}, which is what holds it and drives it,
@@ -19,17 +19,22 @@ import dev.continuo.platform.TickPhase;
  */
 public final class ContinuoCore implements CoreApi {
 
-    /**
-     * Roughly 8.6 blocks at steady-state vanilla walking speed. Measured travel from a
-     * standing start is a little under that — 8 blocks in the 2026-08-11 smoke run — because
-     * the first few ticks are spent accelerating. Both figures describe the same 40 ticks.
-     */
-    public static final int WALK_TICKS = 40;
+    private final RuntimeLog log;
 
     private IPlatformContext context;
-    private boolean walking;
-    private int tick;
     private BlockLookup blocks;
+    private PathExecutor executor;
+
+    /**
+     * @param log where the executor explains why it stopped; never {@code null}
+     * @throws IllegalArgumentException if {@code log} is {@code null}
+     */
+    public ContinuoCore(RuntimeLog log) {
+        if (log == null) {
+            throw new IllegalArgumentException("log must not be null");
+        }
+        this.log = log;
+    }
 
     /** Called once by the adapter, before any other method. */
     @Override
@@ -41,6 +46,7 @@ public final class ContinuoCore implements CoreApi {
         this.blocks = new BlockLookup(
             context.blocks(),
             new BlockClassifier(BlockTableLoader.forVersion(context.info().gameVersion())));
+        this.executor = new PathExecutor(blocks, context.actuator(), context.player(), log);
     }
 
     /**
@@ -57,62 +63,47 @@ public final class ContinuoCore implements CoreApi {
         if (context == null) {
             throw new IllegalStateException("start(IPlatformContext) must be called first");
         }
-        if (walking) {
-            context.actuator().setInput(Input.FORWARD, false);
-        }
+        executor.stop();
         if (blocks != null) {
             blocks.clear();
         }
-        walking = false;
-        tick = 0;
-    }
-
-    /** Begins a walk. Ignored if a walk is already in progress. */
-    public void requestWalk() {
-        if (context == null) {
-            throw new IllegalStateException("start(IPlatformContext) must be called first");
-        }
-        if (walking) {
-            return;
-        }
-        walking = true;
-        tick = 0;
     }
 
     /**
-     * Holds {@code FORWARD} for {@link #WALK_TICKS} ticks, re-asserting it every tick.
+     * Walks to a block position, replacing any walk in progress.
      *
-     * <p><b>Level-triggered, per global rule 4.</b> The desired input is re-stated on every tick of
-     * the walk rather than pressed once at the start: both target versions clear held key state
-     * whenever a screen opens ({@code KeyMapping.releaseAll}; 1.7.10's
-     * {@code KeyBinding.unPressAllKeys}), and an edge-triggered core never learns that it happened.
-     * The walk would silently truncate and present as a wrong distance.
+     * @param x the destination's X
+     * @param y the destination's Y — the block the feet will occupy, per {@code IPlayerView.y()}
+     * @param z the destination's Z
+     * @throws IllegalStateException if {@code start} has not been called
+     */
+    public void walkTo(int x, int y, int z) {
+        if (executor == null) {
+            throw new IllegalStateException("start(IPlatformContext) must be called first");
+        }
+        executor.walkTo(x, y, z);
+    }
+
+    /**
+     * Drives the executor one tick.
      *
      * <p><b>Nothing is written while idle</b> — not even a release. A core that held every input at
      * {@code false} every tick would fight the user's own keyboard whenever the bot is not running.
      */
     @Override
     public void onClientTick(TickPhase phase) {
-        if (phase != TickPhase.PRE || !walking) {
+        if (phase != TickPhase.PRE) {
             return;
         }
-        tick++;
-        if (tick > WALK_TICKS) {
-            context.actuator().setInput(Input.FORWARD, false);
-            walking = false;
-            tick = 0;
-            return;
-        }
-        context.actuator().setInput(Input.FORWARD, true);
+        executor.tick(context.player());
     }
 
     /**
      * Classified block reads for the current level.
      *
-     * <p>Nothing in the core consumes this yet — M4's pathfinder is its first reader. It is
-     * wired now so the whole chain, from an adapter's raw facts through the shared classifier
-     * to a memoised {@link BlockData}, is exercised and its lifecycle is real rather than
-     * hypothetical.
+     * <p>{@link #executor} reads through this as its {@code BlockSource}, and the dev-only
+     * {@code PathProbe} an adapter drives separately reads through it too, so the classification
+     * memo and its level-transition lifecycle are shared by every reader rather than duplicated.
      *
      * @return the lookup; never {@code null} after {@code start}
      * @throws IllegalStateException if {@code start} has not been called

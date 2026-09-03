@@ -220,6 +220,15 @@ public final class PathProbe {
     }
 
     /**
+     * The marked goal, for a caller that wants to walk there rather than search to it.
+     *
+     * @return the mark, or {@code null} if none is set or a level change discarded it
+     */
+    public Pos goal() {
+        return goal;
+    }
+
+    /**
      * Discards any marked goal when the client level instance changes.
      *
      * <p>Call once per tick from the adapter's poll, before the keys are read, passing whatever

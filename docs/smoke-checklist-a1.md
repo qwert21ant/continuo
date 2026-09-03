@@ -37,47 +37,51 @@ A1 sign-off — do not skip a step or assume it would have passed.
    *Observe:* write down the starting X, Y, Z and the facing axis (X or Z) before doing
    anything else.
 
-4. **Walk.** Press `K`. Expected: the player walks forward on its own, with no further input
-   from you, and stops by itself after a short walk. The log should contain the line
-   `Continuo walk requested`.
-   *If the player does not move at all:* the actuator is not reaching the key mapping, or the
-   keybind is bound to something other than `K` (check the Controls screen for
-   "key.continuo.walk" under the "continuo" category) — see step 5's "zero" case too.
-   *If the player never stops walking:* do not wait indefinitely — this is a failure. See
-   step 5's "never stopping" case.
+4. **Mark and walk.** Walk about ten blocks from your step-3 baseline, over open flat ground,
+   and note the block you are standing on. Press `H` to mark it as the goal. Walk back to (or
+   past) the baseline, then press `K`.
+   *Observe:* the log must contain the line `Continuo: walking to (x, y, z)`, naming the block
+   you marked. The player then walks there on its own, with no further input from you, turning
+   gradually rather than snapping, and stops once it reaches the marked block.
+   *If the log instead reads `Continuo: no goal marked -- stand on the destination and press the
+   mark key`:* the mark key did not register — check the Controls screen for
+   "key.continuo.mark" under the "continuo" category (bound to `H` by default) and try again.
+   *If the player does not move at all despite the "walking to" log line:* the actuator is not
+   reaching the key mapping, or the walk keybind is bound to something other than `K` (check the
+   Controls screen for "key.continuo.walk" under the "continuo" category).
+   *If the player never stops, well past the marked block:* do not wait indefinitely — this is
+   a failure. The executor is specified to stop the instant it reaches the marked block.
 
-5. **Distance.** Once the player has stopped, press F3 again and read the new XYZ. Compute
-   the displacement along the facing axis you recorded in step 3 (the difference in X or Z,
-   whichever was changing).
-   *Observe:* displacement should be **8–9 blocks**. Forty ticks at vanilla walking speed is
-   about 8.6 blocks, so this is the expected range, not exactly 8 or exactly 10.
-   *Diagnostic interpretations if it's outside 8–9 blocks:*
-   - Roughly double (~17 blocks) or roughly half (~4 blocks) means the core is acting on the
-     wrong number of ticks. Note that the adapter is *deliberately* registered on both client
-     tick phases (START_CLIENT_TICK -> PRE, END_CLIENT_TICK -> POST) and that is correct and
-     required by the SPI contract. The bug to look for is the core acting on POST as well as
-     PRE, or the hook being on server tick instead of client tick.
-   - Zero (player never moved) means the actuator is not reaching the key mapping — the W key
-     is not actually being pressed in-game even though the walk was requested.
-   - Never stopping (movement continues past a reasonable point, e.g. well past 9 blocks and
-     still going) means the tick counter is not advancing or the stop condition never fires.
+5. **Arrival.** Once the player has stopped, press F3 again and read the new XYZ.
+   *Observe:* the reported block position must match the block you marked in step 4 exactly —
+   the executor walks to a named block, not an approximate distance, so there is no expected
+   range here the way a fixed tick-count walk would have.
+   *Diagnostic interpretations if it does not match:*
+   - Stops well short of the mark: terrain may have forced a repath still in flight — wait a
+     few more seconds before recording a failure.
+   - Overshoots or oscillates around the mark rather than settling on it: the follower's arrival
+     check is misbehaving — a real defect.
+   - Never moves: see step 4's "does not move at all" case.
 
-6. **Repeat.** Press `K` again from wherever you ended up. Expected: the walk repeats
-   identically — forward movement starts, then stops on its own after the same ~8–9 blocks.
-   *If it does not repeat (e.g. nothing happens, or the walk is a different length):* internal
-   state is not resetting between walks.
+6. **Repeat.** From wherever you ended up, walk a short distance in a different direction, press
+   `H` to mark a new goal, then press `K`.
+   *Observe:* the walk repeats correctly against the new mark — the player walks there and
+   stops on it, exactly as step 4 described.
+   *If it does not repeat (e.g. nothing happens, or the player walks to the old mark instead):*
+   internal state is not resetting between walks, or the mark is not being replaced.
 
-7. **Re-trigger mid-walk.** Press `K` to start a walk, then press `K` again while the bot is
-   still moving (partway through, not after it has stopped).
-   *Observe:* the bot must walk the same 8–9 blocks total from where the first `K` was
-   pressed, not further than that.
-   *If the second press extends or restarts the walk:* re-triggering is specified as ignored
-   while a walk is in progress, so this is a failure — the mid-walk `K` press is being
-   accepted when it should be dropped.
+7. **Re-trigger mid-walk.** Mark a distant goal and press `K` to start walking there. While the
+   bot is still moving (partway there, not after it has stopped), mark a different goal from
+   wherever you currently are (press `H`) and press `K` again.
+   *Observe:* `walkTo` replaces any walk in progress — the player must abandon the first
+   destination and walk to the second mark instead.
+   *If the second press is ignored, or the player still ends up at the first mark:*
+   re-triggering is specified to replace the walk in progress, not to be ignored, so this is a
+   failure.
 
-8. **Disconnect mid-walk.** Press `K` to start a walk, and while the bot is still moving
-   (before it has stopped on its own), open the pause menu and choose "Save and Quit to
-   Title". Rejoin the same world.
+8. **Disconnect mid-walk.** Mark a distant goal and press `K` to start walking there, and while
+   the bot is still moving (before it has stopped on its own), open the pause menu and choose
+   "Save and Quit to Title". Rejoin the same world.
    *Observe:* after rejoining, the player must **not** be drifting forward on its own, and
    the W key must not be stuck down (movement should behave completely normally — you should
    be able to stand still).
@@ -87,14 +91,17 @@ A1 sign-off — do not skip a step or assume it would have passed.
    defect — verify it properly, don't assume it passed because the earlier steps did.
 
 9. **Title-screen keypress.** From the main menu, before loading any world, press `K` five
-   or six times. Then load the world you created in step 2 (reuse it — do not create a new
-   one).
-   *Observe:* the log must **not** contain `Continuo walk requested` from those presses, and
-   the player must not start walking on its own at any point after the world loads.
+   or six times (no goal can be marked at the title screen — there is no player to mark from —
+   so this exercises the click drain against the walk key's handler, which would otherwise log
+   and, if a goal happened to be set, start a walk). Then load the world you created in step 2
+   (reuse it — do not create a new one).
+   *Observe:* the log must **not** contain either `Continuo: walking to` or `Continuo: no goal
+   marked` from those presses, and the player must not start walking on its own at any point
+   after the world loads.
    *Why this matters:* the SPI's `onClientTick` contract delivers ticks only while a world is
-   loaded with a local player. A `Continuo walk requested` line logged at the title screen, or
-   a walk starting on its own after the world loads, means something is driving the core
-   outside the tick window — a real defect, whatever its cause.
+   loaded with a local player. Either walk-key log line appearing at the title screen, or a walk
+   starting on its own after the world loads, means something is driving the core outside the
+   tick window — a real defect, whatever its cause.
    *What this step does NOT verify — read before recording a pass:* it exercises neither the
    shared `AdapterRuntime`'s out-of-world click drain nor its in-world guard, which is where
    both now live rather than in this adapter. Minecraft only accumulates
@@ -105,9 +112,9 @@ A1 sign-off — do not skip a step or assume it would have passed.
    drain's only reachable path is the faulted one, which is in-world; see the coverage note
    below for why this checklist cannot reach it.
 
-10. **Leave a singleplayer world mid-walk.** Press `K`, and while the bot is still moving
-    choose "Save and Quit to Title". Stay at the title screen this time rather than
-    rejoining.
+10. **Leave a singleplayer world mid-walk.** Mark a distant goal and press `K`, and while the
+    bot is still moving choose "Save and Quit to Title". Stay at the title screen this time
+    rather than rejoining.
     *Observe:* the log must contain `Continuo stopping: client level changed`.
     *Why this matters:* global rule 2 requires `stop()` on world unload, and A2a settled that
     trigger as a level-identity change rather than a connection event. Step 8 checks the
@@ -120,8 +127,9 @@ A1 sign-off — do not skip a step or assume it would have passed.
     just that it exists earlier in the log.
 
 11. **Dimension change mid-walk.** Build a nether portal near spawn (you will need to switch
-    to Creative for materials; switch back to Survival before pressing `K`). Press `K` and
-    step into the portal while the bot is still moving.
+    to Creative for materials; switch back to Survival before pressing `K`). Mark a goal on the
+    far side of the portal from where you'll stand, press `K`, and step into the portal while
+    the bot is still moving.
     *Observe:* once the loading screen clears and you are in the Nether, the player must
     **not** still be walking forward, and must not be drifting.
     *Why this matters:* global rule 2 was settled in A2a so that a dimension change counts as

@@ -5,7 +5,6 @@ import dev.continuo.core.CoreApi;
 import dev.continuo.testkit.FakeActuator;
 import dev.continuo.testkit.FakePlatformContext;
 import dev.continuo.platform.BlockDescription;
-import dev.continuo.platform.Input;
 import dev.continuo.platform.TickPhase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,13 +18,15 @@ class ContinuoCoreTest {
 
     private FakePlatformContext ctx;
     private FakeActuator actuator;
+    private RecordingLog log;
     private ContinuoCore core;
 
     @BeforeEach
     void setUp() {
         ctx = new FakePlatformContext();
         actuator = ctx.fakeActuator();
-        core = new ContinuoCore();
+        log = new RecordingLog();
+        core = new ContinuoCore(log);
         core.start(ctx);
     }
 
@@ -35,231 +36,54 @@ class ContinuoCoreTest {
         }
     }
 
-    @Test
-    void pressesForwardOnFirstTickAfterRequest() {
-        core.requestWalk();
-        tick(1);
-
-        assertEquals(1, actuator.callCount());
-        assertEquals(Input.FORWARD, actuator.calls().get(0).input);
-        assertTrue(actuator.calls().get(0).pressed);
-    }
-
-    /** How many of the recorded calls were presses. */
-    private int pressCount() {
-        int n = 0;
-        for (FakeActuator.Call call : actuator.calls()) {
-            if (call.pressed) {
-                n++;
-            }
-        }
-        return n;
-    }
-
-    private FakeActuator.Call lastCall() {
-        assertTrue(actuator.callCount() > 0, "expected at least one actuator call");
-        return actuator.calls().get(actuator.callCount() - 1);
-    }
-
     /**
-     * Global rule 4's whole content, as one assertion. The core re-states its desired input every
-     * tick rather than pressing once and trusting the press to persist — which both target versions
-     * break whenever a screen opens.
-     */
-    @Test
-    void reAssertsForwardOnEveryTickOfTheWalk() {
-        core.requestWalk();
-        tick(40);
-
-        assertEquals(40, actuator.callCount(), "level-triggered: one call per tick, not one in total");
-        assertEquals(40, pressCount());
-        for (FakeActuator.Call call : actuator.calls()) {
-            assertEquals(Input.FORWARD, call.input);
-            assertTrue(call.pressed);
-        }
-    }
-
-    @Test
-    void releasesExactlyOnceOnTickFortyOne() {
-        core.requestWalk();
-        tick(40);
-        assertEquals(40, actuator.callCount(), "guard: the walk must still be running at tick 40");
-
-        tick(1);
-
-        assertEquals(41, actuator.callCount());
-        assertEquals(Input.FORWARD, lastCall().input);
-        assertEquals(false, lastCall().pressed);
-        assertEquals(40, pressCount(), "exactly one release, and no extra press on tick 41");
-    }
-
-    /**
-     * Global rule 4's second clause. An idle core writes nothing at all — it must not hold every
-     * input at {@code false} every tick, which would fight the user's own keyboard whenever the bot
-     * is not running.
-     *
-     * <p>Both halves are also covered by {@code doesNothingBeforeAnyWalkIsRequested} and
-     * {@code doesNothingAfterTheWalkCompletes}; this states them together as one clause of rule
-     * 4, which is the form the contract is written in.
+     * Global rule 4's second clause, stated at the core's own boundary now that the 40-tick demo
+     * (rule 4's only obeying consumer) is gone and {@link PathExecutor} carries the rule instead:
+     * with no walk requested, {@link ContinuoCore#onClientTick} must not touch the actuator at
+     * all, not even to release an input nobody is holding.
      */
     @Test
     void writesNothingWhileIdle() {
         tick(20);
-        assertEquals(0, actuator.callCount(), "before any walk is requested");
-
-        core.requestWalk();
-        tick(41);
-        actuator.clear();
-        tick(20);
-
-        assertEquals(0, actuator.callCount(), "after the walk has finished");
-    }
-
-    /**
-     * The same clause on the path that reaches idleness through {@code stop()} rather than through
-     * the walk running out. Level-triggering makes this newly worth pinning: a core that re-stated
-     * its inputs unconditionally would keep writing here, where before D1 there was no per-tick
-     * write that could.
-     */
-    @Test
-    void writesNothingOnTicksAfterStop() {
-        core.requestWalk();
-        tick(20);
-        core.stop();
-        actuator.clear();
-
-        tick(20);
-
-        assertEquals(0, actuator.callCount(), "stop() ends the walk, and an idle core is silent");
-    }
-
-    /**
-     * Re-requesting mid-walk is still ignored. Asserted through the walk's *length* rather than
-     * through a call count, because under level-triggering every tick produces a call and a count
-     * can no longer distinguish "ignored" from "restarted".
-     */
-    @Test
-    void reRequestingMidWalkDoesNotRestartOrExtendIt() {
-        core.requestWalk();
-        tick(10);
-
-        core.requestWalk();
-        tick(30);
-
-        assertEquals(40, pressCount(), "guard: 40 presses so far");
-        assertTrue(lastCall().pressed, "guard: still walking at tick 40");
-
-        tick(1);
-
-        assertEquals(false, lastCall().pressed,
-            "released on tick 41 -- a re-request that restarted or extended the walk would "
-                + "still be pressing here");
-    }
-
-    @Test
-    void doesNothingAfterTheWalkCompletes() {
-        core.requestWalk();
-        tick(41);
-        actuator.clear();
-
-        tick(4);
 
         assertEquals(0, actuator.callCount());
     }
 
     @Test
-    void neverTouchesAnyInputOtherThanForward() {
-        core.requestWalk();
-        tick(45);
-
-        assertTrue(actuator.callCount() > 0, "walk must produce actuator calls");
-        for (FakeActuator.Call call : actuator.calls()) {
-            assertEquals(Input.FORWARD, call.input);
-        }
-    }
-
-    @Test
-    void doesNothingBeforeAnyWalkIsRequested() {
-        tick(20);
-
-        assertEquals(0, actuator.callCount());
-    }
-
-    @Test
-    void ignoresPostPhaseTicks() {
-        core.requestWalk();
+    void ignoresPostPhaseTicksWhileIdle() {
         core.onClientTick(TickPhase.POST);
 
         assertEquals(0, actuator.callCount());
     }
 
-    @Test
-    void stopReleasesForwardMidWalk() {
-        core.requestWalk();
-        tick(20);
-        actuator.clear();
-
-        core.stop();
-
-        assertEquals(1, actuator.callCount());
-        assertEquals(Input.FORWARD, actuator.calls().get(0).input);
-        assertEquals(false, actuator.calls().get(0).pressed);
-    }
-
-    @Test
-    void stopWhenNotWalkingReleasesNothing() {
-        core.stop();
-
-        assertEquals(0, actuator.callCount());
-    }
-
     /**
-     * Global rule 2 states that {@code stop()} is idempotent. The core already satisfies
-     * this; the test exists to pin it, so that a future change to {@code stop()} cannot
-     * quietly break an adapter that calls it on both world unload and client shutdown.
+     * End-to-end wiring, not {@link PathExecutor}'s own behaviour -- that is
+     * {@code PathExecutorSearchTest}'s job. This exists only to pin that {@link
+     * ContinuoCore#walkTo} actually reaches the executor built in {@code start}, that {@link
+     * ContinuoCore#onClientTick} actually drives it, and that the {@code RuntimeLog} passed into
+     * the constructor is the one the executor logs to.
+     *
+     * <p>A fresh {@code FakeBlockView} answers every {@code stateId} query with -1, so {@code
+     * BlockLookup.at()} returns {@code BlockData.UNKNOWN} everywhere -- the same property {@code
+     * PathExecutorSearchTest.noPathStopsWithoutRetrying} relies on for its own {@code
+     * EmptyWorld}. That makes {@code NO_PATH} deterministic here with no terrain fixture at all.
      */
     @Test
-    void stopIsIdempotent() {
-        core.requestWalk();
+    void walkToReachesTheExecutorAndTheExecutorsLogReachesTheOneStartWasGiven() {
+        ctx.fakePlayerView().set(0.5, 64.0, 0.5, 0f, 0f, true);
+
+        core.walkTo(10, 64, 0);
         tick(20);
-        core.stop();
-        actuator.clear();
 
-        core.stop();
-        core.stop();
-
-        assertEquals(0, actuator.callCount(), "repeated stop() must not touch the actuator");
-    }
-
-    @Test
-    void canWalkAgainAfterStop() {
-        core.requestWalk();
-        tick(20);
-        core.stop();
-        actuator.clear();
-
-        core.requestWalk();
-        tick(1);
-
-        assertEquals(1, actuator.callCount());
-        assertTrue(actuator.calls().get(0).pressed);
-    }
-
-    @Test
-    void requestWalkBeforeStartFails() {
-        ContinuoCore unstarted = new ContinuoCore();
-
-        assertThrows(IllegalStateException.class, new org.junit.jupiter.api.function.Executable() {
-            @Override
-            public void execute() {
-                unstarted.requestWalk();
-            }
-        });
+        assertEquals(0, actuator.callCount(),
+            "NO_PATH must leave the executor idle -- nothing was ever driven to release");
+        assertTrue(log.messages().toString().contains("no path"),
+            "the RuntimeLog given to the constructor must be the one PathExecutor logs to");
     }
 
     @Test
     void stopBeforeStartFails() {
-        ContinuoCore unstarted = new ContinuoCore();
+        final ContinuoCore unstarted = new ContinuoCore(new RecordingLog());
 
         assertThrows(IllegalStateException.class, new org.junit.jupiter.api.function.Executable() {
             @Override
@@ -270,8 +94,20 @@ class ContinuoCoreTest {
     }
 
     @Test
+    void walkToBeforeStartFails() {
+        final ContinuoCore unstarted = new ContinuoCore(new RecordingLog());
+
+        assertThrows(IllegalStateException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                unstarted.walkTo(0, 0, 0);
+            }
+        });
+    }
+
+    @Test
     void startWithNullContextFails() {
-        final ContinuoCore unstarted = new ContinuoCore();
+        final ContinuoCore unstarted = new ContinuoCore(new RecordingLog());
 
         assertThrows(IllegalArgumentException.class, new org.junit.jupiter.api.function.Executable() {
             @Override
@@ -279,6 +115,30 @@ class ContinuoCoreTest {
                 unstarted.start(null);
             }
         });
+    }
+
+    @Test
+    void constructorRejectsANullLog() {
+        assertThrows(IllegalArgumentException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                new ContinuoCore(null);
+            }
+        });
+    }
+
+    /**
+     * Global rule 2 states that {@code stop()} is idempotent. The core already satisfies
+     * this; the test exists to pin it, so that a future change to {@code stop()} cannot
+     * quietly break an adapter that calls it on both world unload and client shutdown.
+     */
+    @Test
+    void stopIsIdempotentWhenNothingIsRunning() {
+        core.stop();
+        core.stop();
+
+        assertEquals(0, actuator.callCount(),
+            "repeated stop() with nothing running must not touch the actuator");
     }
 
     /**
@@ -293,16 +153,15 @@ class ContinuoCoreTest {
     @Test
     void startTwiceReplacesContext() {
         FakePlatformContext secondCtx = new FakePlatformContext();
-        FakeActuator secondActuator = secondCtx.fakeActuator();
+        secondCtx.fakeBlockView().put(0, 64, 0, new BlockDescription(
+            "minecraft:stone", "minecraft:stone", new double[]{0, 0, 0, 1, 1, 1}, null, false, false));
 
         core.start(secondCtx);
-        core.requestWalk();
-        tick(1);
 
-        assertEquals(0, actuator.callCount(), "original context's actuator must not be used");
-        assertEquals(1, secondActuator.callCount());
-        assertEquals(Input.FORWARD, secondActuator.calls().get(0).input);
-        assertTrue(secondActuator.calls().get(0).pressed);
+        assertEquals(BlockShape.FULL, core.blocks().at(0, 64, 0).shape(),
+            "blocks() must read through the second context, not the first");
+        assertEquals(0, ctx.fakeBlockView().describeCallCount(),
+            "the original context's block view must not be used after a second start()");
     }
 
     /**
@@ -312,7 +171,7 @@ class ContinuoCoreTest {
      */
     @Test
     void continuoCoreIsUsableThroughTheCoreApiSeam() {
-        CoreApi seam = new ContinuoCore();
+        CoreApi seam = new ContinuoCore(new RecordingLog());
         seam.start(new FakePlatformContext());
         seam.onClientTick(TickPhase.PRE);
         seam.stop();
@@ -351,7 +210,7 @@ class ContinuoCoreTest {
 
     @Test
     void blocksBeforeStartIsAnError() {
-        ContinuoCore fresh = new ContinuoCore();
+        ContinuoCore fresh = new ContinuoCore(new RecordingLog());
         assertThrows(IllegalStateException.class, fresh::blocks);
     }
 }

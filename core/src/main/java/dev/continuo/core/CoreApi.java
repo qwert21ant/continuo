@@ -17,7 +17,7 @@ import dev.continuo.platform.IPlatformContext;
  * declared on any type in {@code dev.continuo.platform}. A suite encoding those rules has to
  * name a core-side type; this is that type.
  *
- * <p>Deliberately absent: {@code requestWalk}. It is bot behaviour, not conformance. An
+ * <p>Deliberately absent: {@code walkTo}. It is bot behaviour, not conformance. An
  * adapter runtime dispatches a consumed click to a supplied {@code Runnable} instead, so the
  * runtime never learns what a walk is.
  */
