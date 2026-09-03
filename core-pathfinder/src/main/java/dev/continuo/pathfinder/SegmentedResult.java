@@ -121,6 +121,6 @@ public final class SegmentedResult {
     @Override
     public String toString() {
         return "SegmentedResult[" + outcome + ", " + segments + " segments, "
-            + path.size() + " steps, cost " + cost + "]";
+            + path.size() + " nodes, cost " + cost + "]";
     }
 }

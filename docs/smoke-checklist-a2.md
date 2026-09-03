@@ -25,6 +25,8 @@ confuse it with the `IllegalAccessError` step 4 warns about** — the OpenAL
 `UnsatisfiedLinkError` is normal noise, while an `IllegalAccessError` on `K` means the
 access transformer failed and is a real, reportable failure.
 
+**Known noise: the probe key mid-walk.** Pressing the probe key (`L`) while the walk key (`K`) is still driving puts two `setLook` writers on one actuator, so the probe's look-round-trip and standing notices can fire spuriously during a walk — dev-only, expected, not a defect.
+
 1. **Startup log.** Watch the launcher/game log while the client boots, before you reach the
    main menu. It must contain the line:
    `Continuo core started on 1.7.10 / FORGE`

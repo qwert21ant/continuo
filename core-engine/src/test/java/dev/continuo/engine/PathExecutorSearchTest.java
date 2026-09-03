@@ -404,6 +404,44 @@ class PathExecutorSearchTest {
     }
 
     @Test
+    void arrivalDoesNotFireAtAPrefixEndWhileAPlanAheadIsStillInFlight() {
+        // Finding 2: tick() checked follower.arrived(player) before the plan-ahead block, and
+        // PathFollower.arrived only asks "is the anchor the last node" -- never "is the last
+        // node actually the goal". A short prefix toward a real goal therefore looked like
+        // arrival the moment the player reached the prefix's own end, even while the plan-ahead
+        // searching past it was still in flight -- reachable whenever a plan-ahead outruns the
+        // remaining margin. Reproduced with a 3-step prefix toward the maze's real goal: driving
+        // it to its own end logged "arrived", cancelled the plan-ahead, cleared the goal, and
+        // went idle far short of x=80.
+        MazeRoom world = new MazeRoom();
+        Harness h = new Harness(world);
+        int y = MazeRoom.FLOOR_Y + 1;
+        int z = MazeRoom.WIDTH / 2;
+
+        SegmentedResult full = fullMazeSearch(world);
+        List<Pos> prefix = new ArrayList<Pos>(full.path().subList(0, 4)); // 3 steps
+
+        standOn(h, 0, y, z, true);
+        h.executor.walkTo(MazeRoom.LENGTH, y, z);
+        h.executor.follow(prefix, PathResults.stepsOf(prefix));
+
+        for (int i = 0; i < prefix.size(); i++) {
+            Pos node = prefix.get(i);
+            standOn(h, node.x(), node.y(), node.z(), true);
+            h.executor.tick(h.player);
+        }
+
+        assertFalse(h.log.messages().toString().contains("arrived"),
+            "arrival must not fire at the prefix's own end while a plan-ahead toward the real"
+                + " goal is still pending");
+        assertNotNull(h.executor.pendingRun(),
+            "fixture assumption: the plan-ahead must still be in flight once the 3-step prefix"
+                + " is fully walked -- otherwise this test cannot distinguish the fix from the"
+                + " bug");
+        assertTrue(h.executor.active(), "must still be driving/searching, not idle");
+    }
+
+    @Test
     void aRepathCancelsAPendingPlanAhead() {
         // A plan-ahead searches from a path end the repath is about to discard, so letting the
         // two race would append a continuation of a route that no longer exists. Assert through

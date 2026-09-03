@@ -271,6 +271,32 @@ class PathExecutorDriveTest {
     }
 
     @Test
+    void walkToWhileDrivingReleasesEveryInputInsteadOfLeavingItLatched() {
+        // Finding 1: walkTo() set follower = null and started a search WITHOUT releasing
+        // inputs first. tick() then returns early (follower == null), writing nothing at all,
+        // so whatever was held from the previous drive -- FORWARD, and JUMP if mid-ascend --
+        // stayed latched in the game for the whole search. Reproduced against the unfixed code:
+        // walkTo() itself made zero actuator calls, and every following tick wrote nothing
+        // while FORWARD was still pressed.
+        followFlat(10);
+        standOn(0, 64, 0, true);
+        executor.tick(player);
+        assertEquals(Boolean.TRUE, written().get(Input.FORWARD),
+            "fixture assumption: it must be driving forward before walkTo is called again");
+        actuator.clear();
+
+        executor.walkTo(50, 64, 0);
+
+        assertEquals(Input.values().length, actuator.callCount(),
+            "walkTo() mid-walk must release every input exactly once rather than leaving the"
+                + " previous drive's inputs latched while the new search runs");
+        for (Input input : Input.values()) {
+            assertEquals(Boolean.FALSE, written().get(input),
+                input + " must be released by walkTo(), not left latched");
+        }
+    }
+
+    @Test
     void beingPastTheLastStepButShortOfArrivalDrivesOnRatherThanThrowing() {
         // reanchor accepts anywhere within OFF_PATH_RADIUS (2.0) but arrived() needs ARRIVE_RADIUS
         // (0.5), so there is an annulus around the final node where the anchor is the last index,

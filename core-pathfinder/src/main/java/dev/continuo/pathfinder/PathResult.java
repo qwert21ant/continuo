@@ -86,7 +86,7 @@ public final class PathResult {
 
     @Override
     public String toString() {
-        return "PathResult[" + outcome + ", " + path.size() + " steps, "
+        return "PathResult[" + outcome + ", " + path.size() + " nodes, "
             + expanded.size() + " expanded, cost " + cost + "]";
     }
 }

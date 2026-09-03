@@ -12,6 +12,8 @@ project's gate and is what every other document here specifies.
 
 Run: `./gradlew :adapters:adapter-fabric-1.21.11:runClient`
 
+**Known noise: the probe key mid-walk.** Pressing the probe key (`L`) while the walk key (`K`) is still driving puts two `setLook` writers on one actuator, so the probe's look-round-trip and standing notices can fire spuriously during a walk — dev-only, expected, not a defect.
+
 Work through every step below, in order, and record pass/fail for each. Any failure blocks
 A1 sign-off — do not skip a step or assume it would have passed.
 

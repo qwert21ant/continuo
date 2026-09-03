@@ -162,15 +162,20 @@ public final class PathExecutor {
      * <p>Replaces whatever was being driven or searched for. Grants no capabilities — decision 7 —
      * so a search this executor runs never produces a parkour step.
      *
+     * <p><b>A clean slate, via {@link #stop}.</b> Without releasing first, a {@code walkTo} issued
+     * while driving would leave whatever was held — {@code FORWARD}, and {@code JUMP} if mid-ascend
+     * — latched in the game for the entire search: {@code tick()} writes nothing while the follower
+     * is {@code null}, and {@link IActuator#setInput} state persists until overwritten. {@link
+     * #stop} clears {@link #goal} too, so the assignment below must follow it, not precede it.
+     *
      * @param x target X
      * @param y target Y
      * @param z target Z
      */
     public void walkTo(int x, int y, int z) {
+        stop();
         goal = new Pos(x, y, z);
         consecutiveRepaths = 0;
-        cancelPending();
-        follower = null;
         beginSearch(floorInt(player.x()), floorInt(player.y()), floorInt(player.z()), false);
     }
 
@@ -230,7 +235,15 @@ public final class PathExecutor {
             offPath(player);
             return;
         }
-        if (follower.arrived(player)) {
+        // The goal == null clause keeps a hand-installed follow() path (no walkTo behind it, and
+        // so nothing to plan ahead against) arriving as it always has. Without the second clause,
+        // PathFollower.arrived only asks "is the anchor the last node" -- never "is the last node
+        // actually the goal" -- so a short prefix installed while its own plan-ahead is still in
+        // flight would report arrival the moment the player reached the prefix's own end, up to
+        // PLAN_AHEAD_STEPS-plus-slack blocks short of the real destination. When this guard
+        // declines, current() == null below falls through to driveToward(follower.last()), and
+        // the stuck detector bounds the case where that cannot make further progress.
+        if (follower.arrived(player) && (goal == null || follower.last().equals(goal))) {
             log.info("Continuo executor: arrived");
             stop();
             return;
@@ -343,11 +356,7 @@ public final class PathExecutor {
         }
     }
 
-    /**
-     * Off-path handling: release every input once, cancel any pending plan-ahead -- it was
-     * searching from a path end this is about to discard -- drop the follower, and repath from the
-     * player.
-     */
+    /** Off-path handling: log why, then hand off to {@link #beginRepath} to do the actual work. */
     private void offPath(IPlayerView player) {
         log.info("Continuo executor: off path, repathing");
         beginRepath(player);

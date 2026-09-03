@@ -100,10 +100,24 @@ public final class ContinuoCore implements CoreApi {
      *
      * <p><b>Nothing is written while idle</b> — not even a release. A core that held every input at
      * {@code false} every tick would fight the user's own keyboard whenever the bot is not running.
+     *
+     * <p><b>{@code executor} and {@code context} are guarded, symmetrically with {@link #stop}</b>,
+     * for exactly the same partially-failed-{@code start} case: a caller in that position is
+     * already in an unspecified state, but this should not itself NPE on top of it.
      */
     @Override
     public void onClientTick(TickPhase phase) {
         if (phase != TickPhase.PRE) {
+            return;
+        }
+        if (executor == null || context == null) {
+            return;
+        }
+        // Spec design §6.1's guard, restored: the shipped code had dropped `!executor.active()`,
+        // which left PathExecutor.active() with no production caller at all. Behaviourally
+        // identical today -- nothing else calls tick() while the executor is inactive -- but this
+        // matches what was actually designed, and gives active() a real caller.
+        if (!executor.active()) {
             return;
         }
         executor.tick(context.player());
