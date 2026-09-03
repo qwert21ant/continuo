@@ -2,18 +2,27 @@ package dev.continuo.engine;
 
 import dev.continuo.core.BlockSource;
 import dev.continuo.core.RuntimeLog;
+import dev.continuo.core.WorldSnapshot;
 import dev.continuo.core.Yaw;
+import dev.continuo.movement.CapabilitySet;
 import dev.continuo.movement.MovementKind;
+import dev.continuo.pathfinder.AStarPathfinder;
+import dev.continuo.pathfinder.GoalBlock;
+import dev.continuo.pathfinder.PathOutcome;
 import dev.continuo.pathfinder.Pos;
+import dev.continuo.pathfinder.Run;
+import dev.continuo.pathfinder.SegmentedResult;
+import dev.continuo.pathfinder.SegmentedSearch;
 import dev.continuo.pathfinder.Step;
 import dev.continuo.platform.IActuator;
 import dev.continuo.platform.IPlayerView;
 import dev.continuo.platform.Input;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Turns a path into per-tick game inputs.
+ * Turns a path into per-tick game inputs, and searches for the next one while doing it.
  *
  * <p><b>A function of the path and the player's current state, not a state machine.</b> Every tick
  * it recomputes where the player is on the path and writes the full input set that follows from
@@ -29,19 +38,84 @@ import java.util.List;
  * <p><b>While idle it writes nothing at all</b> — not even a release. Rule 4's second clause: a core
  * holding every input at {@code false} every tick would fight the user's own keyboard whenever the
  * bot is not running.
+ *
+ * <p><b>Plan-ahead and repath are different mechanisms, and only one of them overlaps with
+ * movement.</b> Plan-ahead fires when the driven path runs out short of the goal: it searches from
+ * the path's <em>end</em>, not from the player, and appends the continuation, so the anchor stays
+ * valid and the player never breaks stride — inputs keep being written on the very ticks the search
+ * runs. Repath fires on off-path or stuck: it searches from the player and replaces the path whole,
+ * resetting the anchor, and the executor releases every input once and stands still while it runs,
+ * because there is nothing valid left to drive toward.
  */
 public final class PathExecutor {
 
+    /**
+     * How few steps may remain before the next segment is searched, while still walking.
+     *
+     * <p>Twenty. A search costs roughly thirteen slices, and at one slice per tick that is thirteen
+     * ticks; a step of walking costs about 4.6 ticks at vanilla speed, so three remaining steps
+     * would already cover a search. Twenty is margin — about 4.6 s, close to the 7.5 s Baritone
+     * uses for the same purpose.
+     *
+     * <p><b>Extrapolated.</b> It also assumes this executor's searches cost roughly what the
+     * probe's do, and they should cost less: the probe grants {@code PARKOUR} and this does not, so
+     * its branching factor is lower. That makes twenty conservative in the safe direction, by an
+     * unmeasured amount.
+     */
+    static final int PLAN_AHEAD_STEPS = 20;
+
+    /**
+     * How many consecutive driving ticks the anchor may fail to advance before repathing.
+     *
+     * <p>Forty — two seconds. Measuring path progress rather than position is what makes this
+     * immune both to a player shuffling against a block boundary and to a legitimately slow tick,
+     * and it is why the executor needs no velocity. <b>Extrapolated.</b>
+     */
+    static final int STUCK_TICKS = 40;
+
+    /**
+     * How many repaths may fail to advance the anchor before the executor gives up.
+     *
+     * <p>Three. The counter resets on any advance, so a long route that repaths repeatedly while
+     * making real progress is not killed by a budget meant for thrash. <b>Extrapolated.</b>
+     */
+    static final int MAX_CONSECUTIVE_REPATHS = 3;
+
     private final BlockSource world;
     private final IActuator actuator;
+    private final IPlayerView player;
     private final RuntimeLog log;
 
+    /**
+     * Built once: {@link AStarPathfinder}'s constructor runs {@code MovementRegistry.discover()},
+     * an uncached {@code ServiceLoader} classpath scan measured at ~6 ms, and a search per tick
+     * would pay that repeatedly and invisibly.
+     */
+    private final SegmentedSearch search;
+
     private PathFollower follower;
+
+    /** Where {@link #walkTo} last aimed; what every search, plan-ahead or repath, searches toward. */
+    private Pos goal;
+
+    /** The search in flight, or {@code null} if none is. */
+    private Run pendingRun;
+
+    /** The world the pending run reads, held alongside it so both are dropped together. */
+    private WorldSnapshot pendingSnapshot;
+
+    /** Whether {@link #pendingRun} is a plan-ahead (append) rather than a repath (replace). */
+    private boolean pendingIsPlanAhead;
+
+    private int stuckTicks;
+    private int lastAnchor;
+    private int consecutiveRepaths;
 
     /**
      * @param world    the world searches read; never {@code null}
      * @param actuator the adapter's actuator, wrapped in the humanizer here; never {@code null}
-     * @param player   the player the humanizer turns from; never {@code null}
+     * @param player   the player the humanizer turns from, and the position a search starts from;
+     *                 never {@code null}
      * @param log      where a termination is explained; never {@code null}
      * @throws IllegalArgumentException if any argument is null
      */
@@ -56,7 +130,9 @@ public final class PathExecutor {
         // tick a different IPlayerView would make the humanizer turn from a stale yaw while drive
         // steers from a live position.
         this.actuator = new HumanizedActuator(actuator, player);
+        this.player = player;
         this.log = log;
+        this.search = new SegmentedSearch(new AStarPathfinder());
     }
 
     /**
@@ -72,9 +148,27 @@ public final class PathExecutor {
         follower = new PathFollower(path, steps);
     }
 
+    /**
+     * Begins a walk to a destination, searching from wherever the player currently is.
+     *
+     * <p>Replaces whatever was being driven or searched for. Grants no capabilities — decision 7 —
+     * so a search this executor runs never produces a parkour step.
+     *
+     * @param x target X
+     * @param y target Y
+     * @param z target Z
+     */
+    public void walkTo(int x, int y, int z) {
+        goal = new Pos(x, y, z);
+        consecutiveRepaths = 0;
+        cancelPending();
+        follower = null;
+        beginSearch(floorInt(player.x()), floorInt(player.y()), floorInt(player.z()), false);
+    }
+
     /** @return whether this executor is driving or searching, and therefore owes inputs */
     public boolean active() {
-        return follower != null;
+        return follower != null || pendingRun != null;
     }
 
     /**
@@ -83,8 +177,14 @@ public final class PathExecutor {
      * <p>Idempotent, and writes nothing when already idle: global rule 2 has an adapter call the
      * core's {@code stop} on every client level transition, including the ordinary world load where
      * nothing was running, and releasing there would stamp on the user's keyboard.
+     *
+     * <p><b>Also cancels any pending search.</b> A pending {@link Run} holds a {@link WorldSnapshot}
+     * wrapping a live {@link BlockSource}, so it pins a level; cancelling drops that reference. This
+     * runs whether or not a path was being driven, since a search can be in flight with no follower
+     * at all — the interval between {@link #walkTo} and the first path being found.
      */
     public void stop() {
+        cancelPending();
         if (follower == null) {
             return;
         }
@@ -93,11 +193,20 @@ public final class PathExecutor {
     }
 
     /**
-     * Spends one tick: re-anchor, then drive.
+     * Spends one tick: advance a pending search and adopt it if it finished, then re-anchor and
+     * drive.
+     *
+     * <p>The order is load-bearing. A slice is spent on any pending run first, and adopted the
+     * moment it finishes — in the same tick, so a plan-ahead's continuation is available to drive
+     * without a tick lost to the boundary. Only then, if there is nothing to drive, does this
+     * return without writing anything.
      *
      * @param player where the player is now; never {@code null}
      */
     public void tick(IPlayerView player) {
+        if (pendingRun != null && pendingRun.advance(Run.SLICE_NODES)) {
+            adopt();
+        }
         if (follower == null) {
             return;
         }
@@ -110,6 +219,36 @@ public final class PathExecutor {
             stop();
             return;
         }
+
+        int currentAnchor = follower.anchor();
+        if (currentAnchor > lastAnchor) {
+            stuckTicks = 0;
+            consecutiveRepaths = 0;
+        } else {
+            stuckTicks++;
+        }
+        lastAnchor = currentAnchor;
+
+        if (stuckTicks >= STUCK_TICKS) {
+            log.info("Continuo executor: stuck, repathing");
+            beginRepath(player);
+            return;
+        }
+
+        // Plan-ahead: search from the path's END, not the player, and append rather than
+        // replace, so the anchor computed above stays valid and this tick still drives below.
+        // Decision 2's whole point is that this overlaps movement instead of preceding it.
+        //
+        // goal is null whenever the current path was installed through follow() rather than
+        // walkTo() -- package-private, and used directly by tests that drive a hand-built path
+        // with nothing to search toward. There is no goal to plan ahead against in that case, so
+        // this simply does not trigger, rather than searching toward a destination nobody named.
+        if (goal != null && pendingRun == null && follower.remaining() <= PLAN_AHEAD_STEPS
+                && !follower.last().equals(goal)) {
+            Pos last = follower.last();
+            beginSearch(last.x(), last.y(), last.z(), true);
+        }
+
         Step step = follower.current();
         if (step == null) {
             // The anchor is the final node -- current() returns null past the last step -- but
@@ -121,7 +260,7 @@ public final class PathExecutor {
             // Treating "no step left" as arrival would let the bot declare success up to two
             // blocks short of a goal the search chose as one exact block, so instead this drives
             // straight at the final node and lets arrived() fire once the player actually closes
-            // the gap. Task 8's stuck detector bounds the case where it cannot.
+            // the gap. The stuck detector above bounds the case where it cannot.
             driveToward(follower.last(), player);
             return;
         }
@@ -135,6 +274,100 @@ public final class PathExecutor {
             return;
         }
         drive(kind, step, player);
+    }
+
+    /**
+     * Adopts a finished pending run: copies its path and steps out, drops the
+     * {@link SegmentedResult}, and either appends (plan-ahead) or replaces (everything else).
+     *
+     * <p><b>The result is never retained.</b> {@code SegmentedResult.expanded()} accumulates across
+     * every segment of the run, bounded by roughly the segment cap times the node budget; holding it
+     * for the duration of a walk rather than of one search would be strictly worse than the code
+     * this branch replaced.
+     */
+    private void adopt() {
+        SegmentedResult result = pendingRun.result();
+        List<Pos> path = new ArrayList<Pos>(result.path());
+        List<Step> steps = new ArrayList<Step>(result.steps());
+        PathOutcome outcome = result.outcome();
+        boolean planAhead = pendingIsPlanAhead;
+        pendingRun = null;
+        pendingSnapshot = null;
+        // `result` falls out of scope here uncopied into any field -- its expanded() list, and
+        // the run that produced it, are unreachable from this object from this point on.
+
+        if (outcome == PathOutcome.NO_PATH) {
+            // I5/the design's own contract: NO_PATH is the only definitive "stop retrying" signal
+            // a search produces. Retrying -- whether as another plan-ahead or another repath --
+            // would re-search a goal already proven impossible from this position.
+            log.info("Continuo executor: no path to the goal -- stopping rather than retrying a"
+                + " goal already proven impossible");
+            stop();
+            return;
+        }
+        if (path.isEmpty()) {
+            log.info("Continuo executor: search exceeded its budget with nothing to show for it"
+                + " -- stopping");
+            stop();
+            return;
+        }
+        if (planAhead) {
+            follower.append(path, steps);
+        } else {
+            follower = new PathFollower(path, steps);
+            lastAnchor = 0;
+            stuckTicks = 0;
+        }
+    }
+
+    /**
+     * Off-path handling: release every input once, cancel any pending plan-ahead -- it was
+     * searching from a path end this is about to discard -- drop the follower, and repath from the
+     * player.
+     */
+    private void offPath(IPlayerView player) {
+        log.info("Continuo executor: off path, repathing");
+        beginRepath(player);
+    }
+
+    /**
+     * Releases every input once, cancels any pending search, drops the follower, and begins a new
+     * search from the player -- unless the repath budget is already spent, in which case this gives
+     * up instead of trying again.
+     */
+    private void beginRepath(IPlayerView player) {
+        releaseAll();
+        cancelPending();
+        follower = null;
+        consecutiveRepaths++;
+        if (consecutiveRepaths > MAX_CONSECUTIVE_REPATHS) {
+            log.info("Continuo executor: giving up after " + MAX_CONSECUTIVE_REPATHS
+                + " repaths without progress");
+            return;
+        }
+        beginSearch(floorInt(player.x()), floorInt(player.y()), floorInt(player.z()), false);
+    }
+
+    /** Starts a search toward {@link #goal}, wrapping {@link #world} in a fresh snapshot. */
+    private void beginSearch(int x, int y, int z, boolean planAhead) {
+        WorldSnapshot snapshot = new WorldSnapshot(world);
+        pendingSnapshot = snapshot;
+        pendingRun = search.begin(snapshot, x, y, z,
+            new GoalBlock(goal.x(), goal.y(), goal.z()), CapabilitySet.none());
+        pendingIsPlanAhead = planAhead;
+    }
+
+    /** Cancels and drops any pending run, so it releases the {@link WorldSnapshot} it reads. */
+    private void cancelPending() {
+        if (pendingRun != null) {
+            pendingRun.cancel();
+            pendingRun = null;
+        }
+        pendingSnapshot = null;
+    }
+
+    private static int floorInt(double v) {
+        return (int) Math.floor(v);
     }
 
     /** Writes the whole input set and the desired facing for one step. */
@@ -177,14 +410,28 @@ public final class PathExecutor {
             player.pitch());
     }
 
-    private void offPath(IPlayerView player) {
-        log.info("Continuo executor: off path, stopping");
-        stop();
-    }
-
     private void releaseAll() {
         for (Input input : Input.values()) {
             actuator.setInput(input, false);
         }
+    }
+
+    /**
+     * @return the search in flight, or {@code null} if none is; visible for testing that a search
+     *         is spent one slice a tick, and that a repath cancels a pending plan-ahead by reference
+     */
+    Run pendingRun() {
+        return pendingRun;
+    }
+
+    /**
+     * @return the anchor index of the path currently being driven
+     * @throws IllegalStateException if this executor is not driving
+     */
+    int anchor() {
+        if (follower == null) {
+            throw new IllegalStateException("not driving");
+        }
+        return follower.anchor();
     }
 }
