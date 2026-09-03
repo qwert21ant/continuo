@@ -71,6 +71,8 @@ class PathExecutorDriveTest {
 
         assertEquals(Input.values().length, written().size(),
             "every Input constant must be written every driving tick");
+        assertEquals(Input.values().length, actuator.callCount(),
+            "each of the seven must be written exactly once, not merely present in the map");
     }
 
     @Test
@@ -169,6 +171,9 @@ class PathExecutorDriveTest {
         executor.tick(player);
 
         Map<Input, Boolean> state = written();
+        assertEquals(Input.values().length, actuator.callCount(),
+            "each input must be released exactly once -- written() collapses repeats, so this is"
+                + " the check that actually pins \"once\"");
         assertEquals(Input.values().length, state.size(), "the release states the whole set");
         for (Input input : Input.values()) {
             assertEquals(Boolean.FALSE, state.get(input), input + " must be released on arrival");
@@ -190,6 +195,9 @@ class PathExecutorDriveTest {
         executor.stop();
 
         Map<Input, Boolean> state = written();
+        assertEquals(Input.values().length, actuator.callCount(),
+            "each input must be released exactly once -- written() collapses repeats, so this is"
+                + " the check that actually pins \"once\"");
         assertEquals(Input.values().length, state.size());
         for (Input input : Input.values()) {
             assertEquals(Boolean.FALSE, state.get(input));
@@ -220,5 +228,70 @@ class PathExecutorDriveTest {
         assertFalse(executor.active());
         assertTrue(log.messages().toString().contains("cannot be named"),
             "the log must name the delta, since this means MovementKind's table has a hole");
+    }
+
+    @Test
+    void aParkourStepStopsRatherThanExecuting() {
+        // Mirrors anUnnameableStepStopsRatherThanGuessing: a two-block level delta along one axis
+        // names a real MovementKind (PARKOUR), so this exercises the OTHER branch of tick()'s
+        // termination check -- the one this executor refuses to grant or execute rather than the
+        // one MovementKind's table has no name for.
+        List<Pos> path = new ArrayList<Pos>();
+        path.add(new Pos(0, 64, 0));
+        path.add(new Pos(2, 64, 0));
+        executor.follow(path, PathResults.stepsOf(path));
+        standOn(0, 64, 0, true);
+
+        executor.tick(player);
+
+        assertFalse(executor.active());
+        assertTrue(log.messages().toString().contains("parkour"),
+            "the log must name why: this executor does not grant or execute parkour");
+    }
+
+    @Test
+    void aSmallTurnArrivesExactlyAtTheTargetAndPitchIsPassedThroughUnchanged() {
+        // Finding 5: pins the exact written yaw rather than only checking sign/magnitude via a
+        // message string, which would pass for any negative yaw. Walking toward a node due +X
+        // wants yaw -90; starting at -100 the required delta (10) is under MAX_DEG_PER_TICK (30),
+        // so the humanizer must not clamp it -- the written yaw must be exactly -90.
+        //
+        // Finding 4: every other test uses pitch 0.0f, which LookCall.pitch also defaults to, so a
+        // hardcoded zero would pass unnoticed. This uses a non-zero pitch and asserts it survives.
+        followFlat(10);
+        player.set(0.5, 64.0, 0.5, -100f, 7.5f, true);
+
+        executor.tick(player);
+
+        assertEquals(1, actuator.lookCalls().size());
+        assertEquals(-90f, actuator.lookCalls().get(0).yaw, 0.001f,
+            "the delta (10) is under the rate limit, so the write must land exactly on the target");
+        assertEquals(7.5f, actuator.lookCalls().get(0).pitch, 0.001f,
+            "pitch must be passed through unchanged, not hardcoded to zero");
+    }
+
+    @Test
+    void beingPastTheLastStepButShortOfArrivalDrivesOnRatherThanThrowing() {
+        // reanchor accepts anywhere within OFF_PATH_RADIUS (2.0) but arrived() needs ARRIVE_RADIUS
+        // (0.5), so there is an annulus around the final node where the anchor is the last index,
+        // there is no step to drive, and the bot has NOT arrived. Declaring arrival here would stop
+        // the bot up to two blocks short of a goal that is one exact block.
+        //
+        // The walk-up loop stops one node short of the last (index 3, not 4): landing exactly on
+        // the last node inside the loop would arrive and stop the follower there, before the
+        // annulus case below ever gets a tick to reproduce against.
+        followFlat(4);
+        standOn(0, 64, 0, true);
+        for (int i = 0; i <= 3; i++) {
+            standOn(i, 64, 0, true);
+            executor.tick(player);
+        }
+        actuator.clear();
+        player.set(4.5, 64.0, 0.5 + 1.2, player.yaw(), 0.0f, true);
+
+        executor.tick(player);
+
+        assertTrue(executor.active(), "1.2 blocks short of the goal is not arrival");
+        assertEquals(Boolean.TRUE, written().get(Input.FORWARD), "it must close the gap");
     }
 }

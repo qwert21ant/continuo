@@ -50,6 +50,11 @@ public final class PathExecutor {
             throw new IllegalArgumentException("no constructor argument may be null");
         }
         this.world = world;
+        // The humanizer reads yaw from THIS player -- the constructor's -- on every setLook call,
+        // while drive() below reads position from tick(IPlayerView)'s own argument. Identical
+        // today because the one caller passes the same instance both ways; a future caller handing
+        // tick a different IPlayerView would make the humanizer turn from a stale yaw while drive
+        // steers from a live position.
         this.actuator = new HumanizedActuator(actuator, player);
         this.log = log;
     }
@@ -106,6 +111,20 @@ public final class PathExecutor {
             return;
         }
         Step step = follower.current();
+        if (step == null) {
+            // The anchor is the final node -- current() returns null past the last step -- but
+            // arrived() said no. This is a real state, not a bug in the follower: reanchor's
+            // window (OFF_PATH_RADIUS, 2.0 blocks) is wider than arrived's tolerance
+            // (ARRIVE_RADIUS, 0.5 blocks), so there is an annulus around the last node where the
+            // player is close enough to anchor there but not close enough to have arrived.
+            //
+            // Treating "no step left" as arrival would let the bot declare success up to two
+            // blocks short of a goal the search chose as one exact block, so instead this drives
+            // straight at the final node and lets arrived() fire once the player actually closes
+            // the gap. Task 8's stuck detector bounds the case where it cannot.
+            driveToward(follower.last(), player);
+            return;
+        }
         MovementKind kind = step.kind();
         if (kind == null || kind == MovementKind.PARKOUR) {
             String reason = kind == null
@@ -126,7 +145,21 @@ public final class PathExecutor {
         // so holding JUMP through a staircase throttles it to one block per ten ticks. Conditioning
         // on onGround() produces the release that clears the cooldown, without remembering anything.
         boolean jump = kind == MovementKind.ASCEND && player.onGround();
+        actuate(jump, step.to(), player);
+    }
 
+    /**
+     * Closes the last stretch of a path once there is no further step to drive.
+     *
+     * <p>Never jumps: the follower is already at the final node's row, and this exists only to
+     * cover the gap {@link PathFollower#arrived} left open, not to climb anything.
+     */
+    private void driveToward(Pos target, IPlayerView player) {
+        actuate(false, target, player);
+    }
+
+    /** Writes the whole input set and the desired facing toward one target position. */
+    private void actuate(boolean jump, Pos target, IPlayerView player) {
         // The full set, every tick, per global rule 4. Writing only what changed would leave a
         // JUMP held from a finished ascend, and would rely on a previous setInput persisting --
         // which rule 4 says a core may not do.
@@ -140,7 +173,7 @@ public final class PathExecutor {
 
         // A diagonal is walked by facing its destination and holding FORWARD, which is why LEFT
         // and RIGHT are never pressed.
-        actuator.setLook(Yaw.toward(player.x(), player.z(), step.to().x(), step.to().z()),
+        actuator.setLook(Yaw.toward(player.x(), player.z(), target.x(), target.z()),
             player.pitch());
     }
 
