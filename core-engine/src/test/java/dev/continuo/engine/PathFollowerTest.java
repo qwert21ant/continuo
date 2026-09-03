@@ -109,6 +109,23 @@ class PathFollowerTest {
     }
 
     @Test
+    void aPlayerDriftedOffTheBlockCentreIsStillOnPath() {
+        // The deciding comparison is between a SQUARED distance and a squared radius. Drifted 1.5
+        // blocks sideways, the squared distance is 2.25 against a squared radius of 4.0, so this is
+        // on path. Comparing the same squared distance against the unsquared 2.0 would call it off
+        // path and repath a player who is walking normally. Every other test stands exactly on a
+        // block centre, where 0 compares equal either way, so this is the only case that can tell.
+        PathFollower follower = straightRun(20);
+        standOn(5, 64, 0);
+        assertTrue(follower.reanchor(player));
+
+        player.set(5.5, 64.0, 0.5 + 1.5, 0.0f, 0.0f, true);
+
+        assertTrue(follower.reanchor(player),
+            "1.5 blocks off the centre line is within OFF_PATH_RADIUS of 2.0");
+    }
+
+    @Test
     void theWindowStopsASelfCrossingRouteFromSnappingBackToTheFirstPass() {
         // A route that walks out, turns, and comes back along a parallel row so that its very
         // last node lands on the same block as its second node. Every real multi-segment search
@@ -162,7 +179,21 @@ class PathFollowerTest {
     }
 
     @Test
-    void standingOnTheLastNodeOfAnEarlierRevolutionIsNotArrival() {
+    void arrivalMeasuresYFeetToFeetWithNoBlockCentreOffset() {
+        // A node's Y is the block the feet occupy, which is exactly what IPlayerView.y() returns,
+        // so distanceTo must offset X and Z to the block centre but NOT Y. With the player standing
+        // at the node's own Y and 0.4 off in X, the true squared distance is 0.16, inside
+        // ARRIVE_RADIUS squared of 0.25. A spurious +0.5 on dy makes it 0.41 and arrival never
+        // fires -- a bot that walks to its goal and refuses to stop.
+        PathFollower follower = straightRun(3);
+        player.set(3.5 + 0.4, 64.0, 0.5, 0.0f, 0.0f, true);
+
+        assertTrue(follower.reanchor(player));
+        assertTrue(follower.arrived(player), "0.4 off in X only is within ARRIVE_RADIUS");
+    }
+
+    @Test
+    void beingShortOfTheFinalNodeIsNotArrival() {
         PathFollower follower = straightRun(20);
         standOn(5, 64, 0);
         follower.reanchor(player);
@@ -216,6 +247,26 @@ class PathFollowerTest {
             @Override
             public void execute() {
                 follower.append(disconnected, PathResults.stepsOf(disconnected));
+            }
+        });
+    }
+
+    @Test
+    void appendRefusesAContinuationWhoseStepCountDoesNotMatch() {
+        // The constructor already guards this invariant on construction; append is the only other
+        // way into the object, so it must guard the invariant too rather than trust the caller.
+        final PathFollower follower = straightRun(5);
+        final List<Pos> more = new ArrayList<Pos>();
+        more.add(new Pos(5, 64, 0));
+        more.add(new Pos(6, 64, 0));
+        more.add(new Pos(7, 64, 0));
+        // Three positions need two steps; hand it only one.
+        final List<Step> tooFewSteps = PathResults.stepsOf(more).subList(0, 1);
+
+        assertThrows(IllegalArgumentException.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() {
+                follower.append(more, tooFewSteps);
             }
         });
     }

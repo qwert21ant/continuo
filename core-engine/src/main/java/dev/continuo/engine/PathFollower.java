@@ -151,8 +151,19 @@ final class PathFollower {
      * @param moreSteps its moves
      */
     void append(List<Pos> more, List<Step> moreSteps) {
+        if (more == null || moreSteps == null) {
+            throw new IllegalArgumentException("neither more nor moreSteps may be null");
+        }
         if (more.isEmpty()) {
+            if (!moreSteps.isEmpty()) {
+                throw new IllegalArgumentException("an empty continuation cannot carry "
+                    + moreSteps.size() + " steps");
+            }
             return;
+        }
+        if (moreSteps.size() != more.size() - 1) {
+            throw new IllegalArgumentException("a continuation of " + more.size()
+                + " positions must carry " + (more.size() - 1) + " steps, got " + moreSteps.size());
         }
         // The continuation is searched from this path's end, so its first position repeats that
         // node and is dropped -- the same join Run.append makes between segments, for the same
