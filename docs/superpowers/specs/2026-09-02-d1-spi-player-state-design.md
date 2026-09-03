@@ -651,11 +651,13 @@ equivalent mutant, or correct-as-is).
    guard.
 5. `PathProbe` takes its start position from `IPlayerView`, reports player state, and runs §9.2's two
    checks.
-6. `./gradlew build --rerun-tasks` is green, with the test count recorded before and after. Gate on
-   `build`, never `:test` — javadoc is build-failing and `:test` does not run it.
-7. **In game, on both versions:** the path key turns the player to face the marked goal; no standing
-   invariant notice on flat ground; no look round-trip notice; the 40-tick walk still travels ≈8
-   blocks; reported position matches F3.
+6. ✅ **MET.** `./gradlew build --rerun-tasks` is green, with the test count recorded before and
+   after. Gate on `build`, never `:test` — javadoc is build-failing and `:test` does not run it.
+   **513 → 536**, summed across all 58 `TEST-*.xml` after a full unfiltered run on the merged
+   `master` itself.
+7. ✅ **MET on both versions, 2026-09-02 — see §15.** The path key turns the player to face the
+   marked goal; no standing invariant notice on flat ground; no look round-trip notice; the 40-tick
+   walk still travels ≈8 blocks; reported position matches F3.
 
 Criterion 7 is the only evidence that exists for §8, and it cannot be met headlessly.
 
@@ -677,8 +679,9 @@ Criterion 7 is the only evidence that exists for §8, and it cannot be met headl
 - **The probe's render is still budgeted by nothing** — 262,144 reads worst case. Untouched again.
 - **`SegmentedResult.expanded()`** still accumulates unbounded across segments, carried from C4.
 - **The climb-aware heuristic**, parked at a measured 6% lower bound (C3 §2.3, C4 §11).
-- **`SLICE_NODES = 2000` is still extrapolated, not measured.** One probe press settles it; the owner
-  has deferred it deliberately.
+- ~~**`SLICE_NODES = 2000` is still extrapolated, not measured.**~~ **Closed 2026-09-02 — §15.3.**
+  Measured at 22.3 ms cold and 6.1–8.8 ms warm; the value stands, and the project no longer has an
+  extrapolated constant in it.
 
 ---
 
@@ -698,10 +701,9 @@ Criterion 7 is the only evidence that exists for §8, and it cannot be met headl
 
 ## 14. Honest uncertainties
 
-- **§9.2's check 1 has never been run.** Its value rests on the claim that anywhere a player can
-  stand has headroom, so the 1.62-offset sample is air. That is a strong argument, not a measurement.
-  Mutation 4 is what converts it into one, and it must actually be executed in a client rather than
-  reasoned about.
+- ~~**§9.2's check 1 has never been run.**~~ **Answered 2026-09-02 — see §15.2. It works.** Mutation
+  4 was executed in a 1.7.10 client and the notice fired, so the check is a measurement now rather
+  than an argument.
 - **The list of legitimate check-1 failures is a first draft.** Slabs, stairs, fences, boats, ladders
   and fluid are the cases found by thinking about it. In-game use will find more, and the right
   response is to extend the list rather than to weaken the check.
@@ -712,3 +714,97 @@ Criterion 7 is the only evidence that exists for §8, and it cannot be met headl
   classifier change.
 - **No estimate is offered for how much of D2 this makes easy.** Decision 7's claim that the executor
   becomes a pure function is a design argument. It will be true or false when D2 writes one.
+
+---
+
+## 15. In-game verification, 2026-09-02
+
+Run on both versions after the merge. Every done criterion in §11 is discharged, and the one claim
+§14 admitted was an argument rather than a measurement is now a measurement.
+
+### 15.1 What passed
+
+| check | 1.7.10 | 1.21.11 |
+|---|---|---|
+| the path key turns the player to face the marked goal | ✅ | ✅ |
+| no standing-invariant notice on flat ground | ✅ | ✅ |
+| no look round-trip notice on a still mouse | ✅ | ✅ |
+| the 40-tick walk still travels ≈8 blocks | ✅ | ✅ |
+| reported position matches F3 | ✅ | ✅ |
+
+**Level-triggered actuation was verified against the failure it exists for.** Opening the inventory
+mid-walk no longer stops the player, in single-player *and* on LAN. Under the edge-triggered core
+this silently truncated the walk and presented as a wrong distance — the exact hazard rule 4 has
+described since M1 and refused to resolve until now. It is the only in-game evidence that decision 7
+does what it claims, and it is the check §9.3 did not think to ask for.
+
+**The search is bit-identical to C5's across the whole refactor.** The C4/C5 route
+`(1588, 71, −967) → (1737, 72, −786)` returned `FOUND`, 2 segments, 245 steps, 25,053 expanded, cost
+`1169.8916476768006` — the same figures C5 recorded, from a probe whose start position now comes
+from `IPlayerView` instead of from integers each adapter computed for itself. **A one-block error in
+`y()` would have moved the start and changed the cost.** That is the strongest available evidence
+that §7.2's refactor is behaviour-preserving, and it was free.
+
+**The look round trip is confirmed by the data, not only by the absence of a notice.** Computed for
+that route, `yawToward` gives `−39.39°`. The second press reports `yaw −39.4` — the value the *first*
+press asked for, still held seconds and many ticks later. `setLook` writes, `IPlayerView.yaw()` reads
+it back, and the two agree.
+
+### 15.2 Mutation 4 executed — the standing invariant works
+
+§10.2's mutation 4 was applied in a 1.7.10 client: `ForgePlayerView.y()` changed to return `posY`.
+
+```
+BUDGET_EXCEEDED, 1 segment, 0 steps, 25000 expanded, cost 0.0,
+(157, 64, 377) -> (160, 64, 377), budget 25000, ...
+player 157.49 64.62 377.60, ... onGround true;
+onGround is true but the block below the feet at 157,63,377 is AIR, which cannot
+support a standing player.
+```
+
+**The notice fired.** The arithmetic behind it: reported `y()` of `64.62` minus 1.7.10's
+`yOffset` of `1.62` puts the real feet at `63.00`, so the correct sample is block 62 (solid floor)
+and the mutated one is block 63 — the air the player's own body occupies. §9.2's claim that "anywhere
+a player can stand has headroom, so the offset sample is air essentially always" held on the first
+real terrain it met.
+
+**Worth recording: the post-floor error is one block here, not 1.62.** Flooring absorbs the
+fractional part, so the size of the error depends on where in the block the player stands — feet at
+`63.00` give a one-block error, feet at `63.50` would give two (`65.12` floors to 65 against a true
+63). The check does not care, but anyone reasoning about the symptom should.
+
+**And the mutation reproduced the predicted downstream symptom exactly.** §3.2 warned that a start
+1.62 blocks too high "begins its search inside the player's own head, in air, and returns `NO_PATH`
+or a route that starts with a fall — a failure that looks like a pathfinding bug and is not one."
+What actually happened is worse and more convincing: **a three-block route exhausted the entire
+25,000-node budget.** Both ends were wrong, because `markGoal` floors the same reading. Without the
+standing invariant, a developer would see `BUDGET_EXCEEDED` on a route they could walk in two seconds
+and go looking for the bug in A\*.
+
+The mutation was reverted; the shipped `y()` returns `boundingBox.minY`.
+
+### 15.3 `SLICE_NODES = 2000` is measured, and stays
+
+C5 §13.1 set it by halving 4,000 on the reasoning that the first slice's first-touch fill dominates
+and would halve too. That was arithmetic. Three presses of the C4/C5 route:
+
+| press | setup | live | worst slice |
+|---|---|---|---|
+| cold | 5.9 ms | 92.5 ms | **22.3 ms** |
+| 2 | 0.9 ms | 66.4 ms | **8.8 ms** |
+| 3 | 0.9 ms | 62.5 ms | **6.1 ms** |
+
+A fourth press on other terrain, warm, gave **5.6 ms**.
+
+**Warm landed on the prediction; cold ran 24% over it.** §5.4's arithmetic said "about 6 ms warm or
+18 ms cold" and got 6.1–8.8 and 22.3. So the fill does **not** halve linearly with slice size —
+worth knowing, because that assumption is what justified the halving in the first place.
+
+**It stays at 2,000 anyway.** 22.3 ms is 45% of a tick against the 71% that 4,000 measured, it
+happens once per session, and the next press is 8.8. Dropping to 1,000 would buy a few milliseconds
+of cold worst case for another 0.65 s of latency on *every* path — the wrong trade. **The last
+extrapolated constant in the project is now a measurement.**
+
+*Aside, not a finding:* fill is 43% of live here against roughly a third in C5's run, with the search
+arithmetic slightly down. Absolute times are not comparable between runs — §3.2's own caveat — and
+the standing check adds exactly one block read. Recorded in case it reproduces; not chased.
