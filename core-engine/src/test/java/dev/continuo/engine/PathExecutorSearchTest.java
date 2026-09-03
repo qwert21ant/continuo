@@ -270,8 +270,9 @@ class PathExecutorSearchTest {
         }
         assertTrue(ticks > 1,
             "fixture assumption: this route must need more than one tick to search");
-        assertTrue(h.actuator.callCount() > 0,
-            "the same tick the search finishes must also drive");
+        assertEquals(Boolean.TRUE, written(h).get(Input.FORWARD),
+            "the same tick the search finishes must also drive -- callCount() alone would also"
+                + " accept a release");
         assertTrue(h.executor.active());
     }
 
@@ -370,6 +371,14 @@ class PathExecutorSearchTest {
         int previousAnchor = -1;
         int i = 0;
         while (h.executor.active()) {
+            // Bounds-checked before indexing, and the "still actually driving" check runs before
+            // anchor() -- a replace-instead-of-append mutation derails the follower (an
+            // unexpected off-path, or simply running out of the route this test knows about)
+            // well before either guard message below would otherwise fire, and a raw
+            // IndexOutOfBoundsException or anchor()'s IllegalStateException reads as a crash, not
+            // as the intended finding.
+            assertTrue(i < wholeRoute.size() + 20,
+                "fixture assumption broke -- driving never reached the real goal, at tick " + i);
             Pos node = wholeRoute.get(i);
             standOn(h, node.x(), node.y(), node.z(), true);
             h.executor.tick(h.player);
@@ -377,6 +386,9 @@ class PathExecutorSearchTest {
                 sawPendingRun = true;
             }
             if (h.executor.active()) {
+                assertTrue(h.executor.isDriving(),
+                    "an append gone wrong -- a replace, or the follower dropped by an unexpected"
+                        + " off-path/repath -- must not silently derail driving, at tick " + i);
                 int anchorNow = h.executor.anchor();
                 assertTrue(anchorNow >= previousAnchor,
                     "the anchor must never regress -- a replace instead of an append would reset"
@@ -384,8 +396,6 @@ class PathExecutorSearchTest {
                 previousAnchor = anchorNow;
             }
             i++;
-            assertTrue(i < wholeRoute.size() + 20,
-                "fixture assumption broke -- driving never reached the real goal");
         }
 
         assertTrue(sawPendingRun, "a plan-ahead search must actually have run");
@@ -428,10 +438,74 @@ class PathExecutorSearchTest {
             "the repath's own run must be a different object from the cancelled plan-ahead");
     }
 
+    @Test
+    void followClearsAnyPendingSearchAndResetsCounters() {
+        // Finding 1 of fix round 1: follow() must be a clean slate regardless of what was in
+        // flight. Without cancelling a pending plan-ahead first, the plan-ahead later resolves and
+        // adopt() reaches follower.append() against a follower this call already replaced -- its
+        // continuation begins at the OLD follower's last node, not this one's -- and
+        // PathFollower.append throws IllegalArgumentException straight out of tick().
+        //
+        // Deliberately does not reuse shortPrefixTowardMazeGoal here: that helper's own follow()
+        // call would itself be the thing under test, so this drives the initial search to a real
+        // adoption first (an ordinary walkTo + settle, no pending run left over), THEN installs a
+        // short prefix over it, so the plan-ahead triggered below is the only search in flight
+        // when the second follow() call -- the one actually being tested -- happens.
+        MazeRoom world = new MazeRoom();
+        Harness h = new Harness(world);
+        int y = MazeRoom.FLOOR_Y + 1;
+        int z = MazeRoom.WIDTH / 2;
+        standOn(h, 0, y, z, true);
+        h.executor.walkTo(MazeRoom.LENGTH, y, z);
+        tickUntilSearchSettles(h, 10);
+        assertTrue(h.executor.active(), "fixture assumption: the initial search must have adopted");
+
+        SegmentedResult full = fullMazeSearch(world);
+        int cut = PathExecutor.PLAN_AHEAD_STEPS + 5;
+        List<Pos> prefix = new ArrayList<Pos>(full.path().subList(0, cut + 1));
+        h.executor.follow(prefix, PathResults.stepsOf(prefix));
+
+        int triggerAnchor = prefix.size() - 1 - PathExecutor.PLAN_AHEAD_STEPS;
+        for (int i = 0; i <= triggerAnchor; i++) {
+            Pos node = prefix.get(i);
+            standOn(h, node.x(), node.y(), node.z(), true);
+            h.executor.tick(h.player);
+        }
+        assertNotNull(h.executor.pendingRun(), "fixture assumption: plan-ahead should be pending");
+
+        // An unrelated path, nowhere near the maze or the pending search's target -- follow()
+        // never reads the world, so it does not need to be walkable.
+        List<Pos> unrelated = new ArrayList<Pos>();
+        unrelated.add(new Pos(500, 65, 500));
+        unrelated.add(new Pos(501, 65, 500));
+        unrelated.add(new Pos(502, 65, 500));
+        h.executor.follow(unrelated, PathResults.stepsOf(unrelated));
+
+        assertNull(h.executor.pendingRun(),
+            "follow() must cancel a pending search rather than leave it to resolve against an"
+                + " unrelated follower");
+
+        // If the cancelled search were still pending, this tick would throw
+        // IllegalArgumentException out of adopt() -> PathFollower.append instead of driving.
+        standOn(h, 500, 65, 500, true);
+        h.executor.tick(h.player);
+
+        assertTrue(h.executor.active());
+        assertEquals(0, h.executor.anchor(), "driving the newly installed path, from its own start");
+        assertEquals(Boolean.TRUE, written(h).get(Input.FORWARD), "and it actually drives");
+    }
+
     /**
      * Sets up a driving executor whose follower is a short, real prefix of the maze's true route,
-     * ending well before the goal -- via {@code walkTo} (to set the goal) then {@code follow}
-     * (to install the prefix in its place, bypassing the real multi-tick search for speed).
+     * ending well before the goal -- via {@code walkTo} (to set the goal, and start a real search
+     * this never lets run) then {@code follow} (to install the prefix in its place instead, bypassing
+     * the real multi-tick search for speed).
+     *
+     * <p>Deliberately does NOT call {@code stop()} between the two: {@code stop()} clears
+     * {@link PathExecutor#goal}, and this needs the goal {@code walkTo} set to survive so the
+     * installed prefix still has something to plan-ahead toward. {@code follow()} cancelling
+     * {@code walkTo}'s own pending search itself (Finding 1's fix) is what makes this safe without
+     * an intervening {@code stop()} at all.
      */
     private static List<Pos> shortPrefixTowardMazeGoal(MazeRoom world, Harness h, int y, int z) {
         SegmentedResult full = fullMazeSearch(world);
@@ -440,7 +514,6 @@ class PathExecutorSearchTest {
 
         standOn(h, 0, y, z, true);
         h.executor.walkTo(MazeRoom.LENGTH, y, z);
-        h.executor.stop();
         h.executor.follow(prefix, PathResults.stepsOf(prefix));
         return prefix;
     }
@@ -450,12 +523,19 @@ class PathExecutorSearchTest {
         // Teleport the player far off the route. Assert: a full release on that tick, no drive
         // while the repath runs, then driving resumes on a path whose first node is near where
         // the player now is.
-        FlatCorridor world = new FlatCorridor();
+        //
+        // MazeRoom, not FlatCorridor: a repath there settles in a single slice, so the "no drive
+        // while the repath runs" loop below would never execute its guarded body at all -- a
+        // guarded assertion that never runs reads as coverage it is not. The teleport target
+        // (5, 0) was measured (a throwaway search from that exact position) at 6,420 expanded
+        // nodes toward the goal, the same cost as the original route, so the repath genuinely
+        // spans several ticks.
+        MazeRoom world = new MazeRoom();
         Harness h = new Harness(world);
-        int y = FlatCorridor.FLOOR_Y + 1;
-        int z = FlatCorridor.WIDTH / 2;
+        int y = MazeRoom.FLOOR_Y + 1;
+        int z = MazeRoom.WIDTH / 2;
         standOn(h, 0, y, z, true);
-        h.executor.walkTo(FlatCorridor.LENGTH, y, z);
+        h.executor.walkTo(MazeRoom.LENGTH, y, z);
         tickUntilSearchSettles(h, 10);
 
         standOn(h, 1, y, z, true);
@@ -480,17 +560,22 @@ class PathExecutorSearchTest {
         assertNotNull(repathRun);
 
         int guard = 0;
+        int noDriveTicksObserved = 0;
         while (!repathRun.finished()) {
             h.actuator.clear();
             h.executor.tick(h.player);
             guard++;
             if (!repathRun.finished()) {
                 assertEquals(0, h.actuator.callCount(), "nothing is driven while the repath runs");
+                noDriveTicksObserved++;
             }
             assertTrue(guard < 20, "fixture assumption broke -- the repath never finished");
         }
+        assertTrue(noDriveTicksObserved > 0,
+            "fixture assumption: the repath must span more than one tick, or the no-drive"
+                + " assertion above never actually ran");
 
-        assertTrue(h.actuator.callCount() > 0,
+        assertEquals(Boolean.TRUE, written(h).get(Input.FORWARD),
             "driving resumes the same tick the repath is found");
         assertEquals(0, h.executor.anchor(), "the new path starts where the player now is");
     }

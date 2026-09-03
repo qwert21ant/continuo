@@ -101,9 +101,6 @@ public final class PathExecutor {
     /** The search in flight, or {@code null} if none is. */
     private Run pendingRun;
 
-    /** The world the pending run reads, held alongside it so both are dropped together. */
-    private WorldSnapshot pendingSnapshot;
-
     /** Whether {@link #pendingRun} is a plan-ahead (append) rather than a repath (replace). */
     private boolean pendingIsPlanAhead;
 
@@ -136,16 +133,27 @@ public final class PathExecutor {
     }
 
     /**
-     * Begins driving a path, replacing whatever was being driven.
+     * Begins driving a path, replacing whatever was being driven or searched for.
      *
      * <p>Package-private because a caller outside this package names a destination rather than a
      * route; {@code walkTo} is the public entry.
+     *
+     * <p><b>A clean slate, regardless of what was in flight.</b> Any pending search is cancelled --
+     * without this, a plan-ahead left running past this call would still resolve against the
+     * follower this replaces, and {@link PathFollower#append} would throw straight out of
+     * {@link #tick}, since its continuation would no longer begin where the new path ends. The
+     * stuck and repath counters are reset too, so a path installed here starts exactly as fresh as
+     * one adopted from a real search does.
      *
      * @param path  the route, start to end; never empty
      * @param steps its moves
      */
     void follow(List<Pos> path, List<Step> steps) {
+        cancelPending();
         follower = new PathFollower(path, steps);
+        lastAnchor = 0;
+        stuckTicks = 0;
+        consecutiveRepaths = 0;
     }
 
     /**
@@ -182,9 +190,17 @@ public final class PathExecutor {
      * wrapping a live {@link BlockSource}, so it pins a level; cancelling drops that reference. This
      * runs whether or not a path was being driven, since a search can be in flight with no follower
      * at all — the interval between {@link #walkTo} and the first path being found.
+     *
+     * <p><b>Also clears the goal.</b> A stopped executor is pursuing nothing, so a {@link #goal}
+     * left over from before this call would be a value with no operational referent — reachable only
+     * by a future {@link #follow} call made without an intervening {@link #walkTo}, which would then
+     * silently arm plan-ahead against a destination this call was told to abandon. {@code goal} is
+     * therefore non-{@code null} exactly when a {@link #walkTo} has happened since the last
+     * {@code stop}.
      */
     public void stop() {
         cancelPending();
+        goal = null;
         if (follower == null) {
             return;
         }
@@ -284,6 +300,14 @@ public final class PathExecutor {
      * every segment of the run, bounded by roughly the segment cap times the node budget; holding it
      * for the duration of a walk rather than of one search would be strictly worse than the code
      * this branch replaced.
+     *
+     * <p><b>A {@code NO_PATH} result's prefix is discarded, not walked.</b> {@link SegmentedResult}
+     * carries a non-empty {@code path()} on {@code NO_PATH} whenever an earlier segment made real
+     * progress before the terminal search failed. This stops without adopting that prefix at all --
+     * for a plan-ahead, that discards steps the search genuinely found beyond where the follower
+     * already ends, not merely the ones it failed to find. Stopping outright is still correct, since
+     * {@code NO_PATH} proves the goal unreachable regardless; the prefix is real information this
+     * simply does not use.
      */
     private void adopt() {
         SegmentedResult result = pendingRun.result();
@@ -292,7 +316,6 @@ public final class PathExecutor {
         PathOutcome outcome = result.outcome();
         boolean planAhead = pendingIsPlanAhead;
         pendingRun = null;
-        pendingSnapshot = null;
         // `result` falls out of scope here uncopied into any field -- its expanded() list, and
         // the run that produced it, are unreachable from this object from this point on.
 
@@ -343,6 +366,9 @@ public final class PathExecutor {
         if (consecutiveRepaths > MAX_CONSECUTIVE_REPATHS) {
             log.info("Continuo executor: giving up after " + MAX_CONSECUTIVE_REPATHS
                 + " repaths without progress");
+            // Same invariant stop() keeps: goal is non-null only while a walk is actually being
+            // pursued, and giving up ends the walk exactly as definitively as stop() does.
+            goal = null;
             return;
         }
         beginSearch(floorInt(player.x()), floorInt(player.y()), floorInt(player.z()), false);
@@ -351,19 +377,23 @@ public final class PathExecutor {
     /** Starts a search toward {@link #goal}, wrapping {@link #world} in a fresh snapshot. */
     private void beginSearch(int x, int y, int z, boolean planAhead) {
         WorldSnapshot snapshot = new WorldSnapshot(world);
-        pendingSnapshot = snapshot;
         pendingRun = search.begin(snapshot, x, y, z,
             new GoalBlock(goal.x(), goal.y(), goal.z()), CapabilitySet.none());
         pendingIsPlanAhead = planAhead;
     }
 
-    /** Cancels and drops any pending run, so it releases the {@link WorldSnapshot} it reads. */
+    /**
+     * Cancels and drops any pending run, so it releases the {@link WorldSnapshot} it reads.
+     *
+     * <p>No separate field holds that snapshot: {@link Run} already does, and {@link Run#cancel}
+     * nulls its own copy, so a second reference here would only outlive it and pin the level a tick
+     * longer than necessary.
+     */
     private void cancelPending() {
         if (pendingRun != null) {
             pendingRun.cancel();
             pendingRun = null;
         }
-        pendingSnapshot = null;
     }
 
     private static int floorInt(double v) {
@@ -433,5 +463,14 @@ public final class PathExecutor {
             throw new IllegalStateException("not driving");
         }
         return follower.anchor();
+    }
+
+    /**
+     * @return whether this executor has a path to drive right now, as opposed to merely searching
+     *         with no follower yet (or any longer) -- visible so a test can tell the two {@code
+     *         active()} states apart with a clear message instead of {@link #anchor}'s exception
+     */
+    boolean isDriving() {
+        return follower != null;
     }
 }
