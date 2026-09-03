@@ -8,7 +8,7 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import dev.continuo.core.BlockClassifier;
 import dev.continuo.core.BlockTableLoader;
-import dev.continuo.core.ContinuoCore;
+import dev.continuo.engine.ContinuoCore;
 import dev.continuo.runtime.AdapterRuntime;
 import dev.continuo.runtime.BlockDumpWalker;
 import dev.continuo.runtime.ClickSource;

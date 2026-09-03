@@ -44,6 +44,7 @@ tasks.applyJST.configure {
 dependencies {
     implementation(project(":platform"))
     implementation(project(":core"))
+    implementation(project(":core-engine"))
     implementation(project(":runtime"))
 }
 

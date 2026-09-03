@@ -1,5 +1,10 @@
-package dev.continuo.core;
+package dev.continuo.engine;
 
+import dev.continuo.core.BlockClassifier;
+import dev.continuo.core.BlockData;
+import dev.continuo.core.BlockLookup;
+import dev.continuo.core.BlockTableLoader;
+import dev.continuo.core.CoreApi;
 import dev.continuo.platform.IPlatformContext;
 import dev.continuo.platform.Input;
 import dev.continuo.platform.TickPhase;

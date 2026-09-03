@@ -1,5 +1,7 @@
-package dev.continuo.core;
+package dev.continuo.engine;
 
+import dev.continuo.core.BlockShape;
+import dev.continuo.core.CoreApi;
 import dev.continuo.testkit.FakeActuator;
 import dev.continuo.testkit.FakePlatformContext;
 import dev.continuo.platform.BlockDescription;

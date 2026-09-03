@@ -7,7 +7,7 @@ import dev.continuo.platform.IPlatformContext;
  * Everything an adapter runtime calls on the core.
  *
  * <p>This is the A2b injection seam. It exists so that a conformance suite can substitute a
- * recording implementation for {@link ContinuoCore} and observe an adapter runtime's
+ * recording implementation for {@code ContinuoCore} and observe an adapter runtime's
  * behaviour without a running game. It deliberately lives here rather than in
  * {@code dev.continuo.platform}: that package is the contract between the core and every
  * Minecraft version, and a testing concern must not become a permanent obligation on every

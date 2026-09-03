@@ -20,6 +20,7 @@ rootProject.name = "continuo"
 include("platform")
 include("core")
 include("core-pathfinder")
+include("core-engine")
 include("core-movement")
 include("movement-parkour")
 include("platform-testkit")
