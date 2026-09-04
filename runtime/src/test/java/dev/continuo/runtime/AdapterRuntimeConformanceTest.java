@@ -1,5 +1,6 @@
 package dev.continuo.runtime;
 
+import dev.continuo.core.RuntimeLog;
 import dev.continuo.platform.IPlatformContext;
 import dev.continuo.testkit.AdapterConformanceTest;
 import dev.continuo.testkit.AdapterUnderTest;

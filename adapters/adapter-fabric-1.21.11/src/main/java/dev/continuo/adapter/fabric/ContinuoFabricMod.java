@@ -3,7 +3,9 @@ package dev.continuo.adapter.fabric;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.continuo.core.BlockClassifier;
 import dev.continuo.core.BlockTableLoader;
-import dev.continuo.core.ContinuoCore;
+import dev.continuo.core.RuntimeLog;
+import dev.continuo.engine.ContinuoCore;
+import dev.continuo.pathfinder.Pos;
 import dev.continuo.runtime.AdapterRuntime;
 import dev.continuo.runtime.BlockDumpWalker;
 import dev.continuo.runtime.PathProbe;
@@ -86,16 +88,31 @@ public final class ContinuoFabricMod implements ClientModInitializer {
             category
         ));
 
-        core = new ContinuoCore();
+        RuntimeLog log = new Slf4jRuntimeLog(LOGGER);
+        core = new ContinuoCore(log);
         FabricPlatformContext context = new FabricPlatformContext(Minecraft.getInstance());
 
         runtime = new AdapterRuntime(
             core,
-            new Slf4jRuntimeLog(LOGGER),
+            log,
             walkKey::consumeClick,
             () -> {
-                LOGGER.info("Continuo walk requested");
-                core.requestWalk();
+                // A one-tick stale-goal window, narrow and shared with the Forge adapter:
+                // probe.onLevel() (which discards a mark on a level change) runs from the
+                // END_CLIENT_TICK poll below, but this click is dispatched from
+                // AdapterRuntime.tickStart's START-phase click loop. On the one tick a level
+                // transition first becomes visible, a click already queued from before the
+                // transition reads probe.goal() here before onLevel() has run for this tick, so
+                // it can walk toward a goal marked in the previous level. Not fixed -- narrow,
+                // symmetric, and moving either poll is out of scope for this task.
+                Pos target = probe.goal();
+                if (target == null) {
+                    LOGGER.info("Continuo: no goal marked -- stand on the destination and press"
+                        + " the mark key");
+                } else {
+                    LOGGER.info("Continuo: walking to {}", target);
+                    core.walkTo(target.x(), target.y(), target.z());
+                }
             });
         runtime.start(context);
 

@@ -69,7 +69,7 @@ of any new module above `core-pathfinder`, not an ancestor of it — which is wh
 | `walk.traverse` | `TraverseMove.java:44` | `(±1, 0, 0)` or `(0, 0, ±1)` |
 | `walk.diagonal` | `DiagonalMove.java:73` | `(±1, 0, ±1)` |
 | `walk.ascend` | `AscendMove.java:55` | `(±1, +1, 0)` or `(0, +1, ±1)` |
-| `walk.descend` | `DescendMove.java:99` | `(±1, −n, 0)` or `(0, −n, ±1)`, `n ≥ 1` |
+| `walk.descend` | `DescendMove.java:96` | `(±1, −n, 0)` or `(0, −n, ±1)`, `1 ≤ n ≤ MovementCosts.MAX_SAFE_FALL` |
 | `walk.parkour` | `ParkourMove.java:102` | `(±2, 0, 0)` or `(0, 0, ±2)` |
 
 `TraverseMove.expand` (`:38`) iterates `Cardinals` at the origin's own `y`; `DiagonalMove.expand`
@@ -278,7 +278,7 @@ hand-written table**, which would only ever prove the table agrees with itself.
 | `dy == 0`, `abs(dx) + abs(dz) == 1` | `TRAVERSE` |
 | `dy == 0`, `abs(dx) == 1 && abs(dz) == 1` | `DIAGONAL` |
 | `dy == +1`, `abs(dx) + abs(dz) == 1` | `ASCEND` |
-| `dy <= -1`, `abs(dx) + abs(dz) == 1` | `DESCEND` |
+| `dy < 0 && dy >= -MovementCosts.MAX_SAFE_FALL`, `abs(dx) + abs(dz) == 1` | `DESCEND` |
 | `dy == 0`, two along exactly one axis (`abs(dx) == 2` with `dz == 0`, or the transpose) | `PARKOUR` |
 | anything else | `null` |
 

@@ -1,6 +1,7 @@
 package dev.continuo.runtime;
 
 import dev.continuo.core.CoreApi;
+import dev.continuo.core.RuntimeLog;
 import dev.continuo.platform.IPlatformContext;
 import dev.continuo.platform.TickPhase;
 

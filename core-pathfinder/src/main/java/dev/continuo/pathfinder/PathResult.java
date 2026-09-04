@@ -19,6 +19,7 @@ public final class PathResult {
     private final List<Pos> path;
     private final List<Pos> expanded;
     private final double cost;
+    private final List<Step> steps;
 
     /**
      * @param outcome how the search ended; never {@code null}
@@ -37,6 +38,7 @@ public final class PathResult {
         this.path = Collections.unmodifiableList(new ArrayList<Pos>(path));
         this.expanded = Collections.unmodifiableList(new ArrayList<Pos>(expanded));
         this.cost = cost;
+        this.steps = Steps.derive(this.path);
     }
 
     /** @return how the search ended; never {@code null} */
@@ -72,9 +74,19 @@ public final class PathResult {
         return expanded.size();
     }
 
+    /**
+     * The moves this path is made of: one per adjacent pair of {@link #path()} entries, so
+     * {@code steps().size()} is {@code path().size() - 1}, and empty whenever the path is.
+     *
+     * @return the steps, unmodifiable
+     */
+    public List<Step> steps() {
+        return steps;
+    }
+
     @Override
     public String toString() {
-        return "PathResult[" + outcome + ", " + path.size() + " steps, "
+        return "PathResult[" + outcome + ", " + path.size() + " nodes, "
             + expanded.size() + " expanded, cost " + cost + "]";
     }
 }

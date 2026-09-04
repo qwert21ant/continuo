@@ -1,6 +1,6 @@
 package dev.continuo.adapter.fabric;
 
-import dev.continuo.runtime.RuntimeLog;
+import dev.continuo.core.RuntimeLog;
 import org.slf4j.Logger;
 
 /** Bridges {@link RuntimeLog} to the SLF4J logger 1.21.11 ships. */

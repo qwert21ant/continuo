@@ -4,6 +4,7 @@ import dev.continuo.core.BlockData;
 import dev.continuo.core.BlockSource;
 import dev.continuo.core.SealedSnapshot;
 import dev.continuo.core.WorldSnapshot;
+import dev.continuo.core.Yaw;
 import dev.continuo.movement.Capability;
 import dev.continuo.movement.CapabilitySet;
 import dev.continuo.movement.Standability;
@@ -79,36 +80,6 @@ public final class PathProbe {
      * run, not by this number.
      */
     public static final int NODE_BUDGET = 25000;
-
-    /**
-     * How many nodes one slice expands.
-     *
-     * <p><b>2,000, set by the in-game run of 2026-08-31 (C5 design §13) and confirmed by measurement
-     * on 2026-09-02 (D1 design §15.3).</b> It was 4,000, from C5 §5.4's arithmetic, which predicted
-     * a slice near 7 ms. Measured on the C4 §13 route, 4,000 gave a worst slice of <b>11.4 ms warm
-     * and 35.6 ms cold</b> — the cold figure being 71% of a 50 ms tick, once per session on the
-     * first path.
-     *
-     * <p><b>At 2,000 the measured worst slice is 22.3 ms cold and 6.1–8.8 ms warm</b>, on the same
-     * route. Warm landed on the prediction; <b>cold ran 24% over it</b>, so the assumption that
-     * halving the budget halves the first slice's first-touch fill is <b>not</b> quite true — the
-     * fill does not scale linearly with slice size. The value stands anyway: 22.3 ms is 45% of a
-     * tick against 4,000's 71%, it happens once per session, and the next press is under 9 ms.
-     * Halving again would buy a few milliseconds of cold worst case for another 0.65 s of latency
-     * on every path, which is the wrong trade.
-     *
-     * <p>The cost is latency, and it is small: the same route takes about 13 slices instead of 7,
-     * so roughly 0.65 s rather than 0.35 s to compute.
-     *
-     * <p><b>Why the worst slice and not the average.</b> Per-slice cost is strongly non-uniform:
-     * early slices touch all-new terrain and pay the fill, later ones hit the snapshot's memo, and
-     * C4 §13.3 measured that non-linearity before C5 existed. The average slice on that route was
-     * 8.6 ms while the worst was 11.4; sizing to the average would put a hitch in every path.
-     *
-     * <p>A node budget buys determinism — C1 §5.1, and a wall-clock slice boundary would make every
-     * path assertion in the suite flaky — at the price of exactly this variable millisecond cost.
-     */
-    public static final int SLICE_NODES = 2000;
 
     /**
      * How far the reported yaw may drift from the requested one before the round-trip check fires.
@@ -249,6 +220,15 @@ public final class PathProbe {
     }
 
     /**
+     * The marked goal, for a caller that wants to walk there rather than search to it.
+     *
+     * @return the mark, or {@code null} if none is set or a level change discarded it
+     */
+    public Pos goal() {
+        return goal;
+    }
+
+    /**
      * Discards any marked goal when the client level instance changes.
      *
      * <p>Call once per tick from the adapter's poll, before the keys are read, passing whatever
@@ -386,7 +366,7 @@ public final class PathProbe {
             + fmt2(player.z()) + ", yaw " + fmt(player.yaw()) + ", pitch " + fmt(player.pitch())
             + ", onGround " + player.onGround();
         activeStandingNotice = standingNotice(world, player, px, py, pz);
-        float yaw = yawToward(player.x(), player.z(), target.x(), target.z());
+        float yaw = Yaw.toward(player.x(), player.z(), target.x(), target.z());
         actuator.setLook(yaw, player.pitch());
         pendingYaw = Float.valueOf(yaw);
         return null;
@@ -436,20 +416,6 @@ public final class PathProbe {
     }
 
     /**
-     * The yaw that points from a position toward a block's centre, in the convention both target
-     * versions share: {@code 0} faces {@code +Z}, {@code 90} faces {@code -X}. Both derive forward
-     * motion as {@code (-sin yaw, cos yaw)}, which inverts to {@code yaw = -atan2(dx, dz)}.
-     *
-     * <p>Package-private so it can be tested against that convention directly, rather than only
-     * through a search.
-     */
-    static float yawToward(double fromX, double fromZ, int toX, int toZ) {
-        double dx = (toX + 0.5) - fromX;
-        double dz = (toZ + 0.5) - fromZ;
-        return (float) Math.toDegrees(-Math.atan2(dx, dz));
-    }
-
-    /**
      * Whether a {@code setLook} appears to have taken effect, as a notice rather than an assertion.
      *
      * <p>{@link IActuator#setLook} guarantees no round trip — the user's mouse and the server both
@@ -461,7 +427,7 @@ public final class PathProbe {
      * @return the notice, or {@code null} if the two agree
      */
     private static String lookNotice(float asked, float got) {
-        float difference = Math.abs(wrapDegrees(asked - got));
+        float difference = Math.abs(Yaw.wrap(asked - got));
         if (difference <= LOOK_TOLERANCE_DEGREES) {
             return null;
         }
@@ -470,18 +436,6 @@ public final class PathProbe {
             + " Either IActuator.setLook is not writing the rotation field or IPlayerView.yaw() is"
             + " not reading it. Expected after moving the mouse or a server position correction,"
             + " which also rewrites rotation; a defect otherwise";
-    }
-
-    /** Degrees folded into {@code [-180, 180)}, so 359 and -1 are one degree apart. */
-    private static float wrapDegrees(float degrees) {
-        float wrapped = degrees % 360.0f;
-        if (wrapped >= 180.0f) {
-            wrapped -= 360.0f;
-        }
-        if (wrapped < -180.0f) {
-            wrapped += 360.0f;
-        }
-        return wrapped;
     }
 
     /**
@@ -513,7 +467,7 @@ public final class PathProbe {
             pendingYaw = null;
         }
         long at = System.nanoTime();
-        boolean done = active.advance(SLICE_NODES);
+        boolean done = active.advance(Run.SLICE_NODES);
         double ms = msSince(at);
         slices++;
         totalSliceMs += ms;

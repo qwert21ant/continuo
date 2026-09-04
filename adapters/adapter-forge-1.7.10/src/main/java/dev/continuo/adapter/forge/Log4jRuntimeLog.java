@@ -1,6 +1,6 @@
 package dev.continuo.adapter.forge;
 
-import dev.continuo.runtime.RuntimeLog;
+import dev.continuo.core.RuntimeLog;
 import org.apache.logging.log4j.Logger;
 
 /**

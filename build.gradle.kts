@@ -4,14 +4,15 @@ plugins {
 
 /**
  * The only place module dependency direction is declared. A module may depend on exactly
- * the projects listed for it, and nothing else. Adapters may depend on platform, core and
- * runtime; nothing may depend on an adapter.
+ * the projects listed for it, and nothing else. Adapters may depend on platform, core,
+ * core-engine and runtime; nothing may depend on an adapter.
  */
 val allowedProjectDependencies: Map<String, Set<String>> = mapOf(
     ":platform" to emptySet(),
     ":core" to setOf(":platform"),
     ":core-movement" to setOf(":core"),
     ":core-pathfinder" to setOf(":core", ":core-movement"),
+    ":core-engine" to setOf(":core-pathfinder"),
     ":movement-parkour" to setOf(":core", ":core-movement"),
     ":platform-testkit" to setOf(":platform", ":core"),
     ":runtime" to setOf(":platform", ":core", ":core-movement", ":core-pathfinder",
@@ -21,8 +22,8 @@ val allowedProjectDependencies: Map<String, Set<String>> = mapOf(
     // build.gradle.kts and declares no dependencies, but it is still a real project in
     // `allprojects` and must be listed or the direction check fails on it.
     ":adapters" to emptySet(),
-    ":adapters:adapter-fabric-1.21.11" to setOf(":platform", ":core", ":runtime"),
-    ":adapters:adapter-forge-1.7.10" to setOf(":platform", ":core", ":runtime")
+    ":adapters:adapter-fabric-1.21.11" to setOf(":platform", ":core", ":core-engine", ":runtime"),
+    ":adapters:adapter-forge-1.7.10" to setOf(":platform", ":core", ":core-engine", ":runtime")
 )
 
 val checkDependencyDirection = tasks.register("checkDependencyDirection") {
