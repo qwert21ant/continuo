@@ -24,10 +24,9 @@
  *       cannot stop its own caller from re-entering it, so the suite has no case for it.
  * </ul>
  *
- * <p>Those remain the job of {@code docs/smoke-checklist-a1.md} and
- * {@code docs/smoke-checklist-a2.md}. This suite covers the shared logic; the checklists cover
- * the platform binding. <b>Neither subsumes the other, and a green run of either is not
- * evidence about the other's subject.</b>
+ * <p>Those remain the job of {@code docs/smoke-checklist.md}. This suite covers the shared logic;
+ * the checklist covers the platform binding. <b>Neither subsumes the other, and a green run of
+ * either is not evidence about the other's subject.</b>
  *
  * <h2>B1 adds no conformance cases here, deliberately</h2>
  *
@@ -38,7 +37,7 @@
  * core tests, <b>not</b> a conformance harness, and a green run of anything in this package says
  * nothing about whether either adapter reports a block truthfully. The cross-adapter dump under
  * {@code docs/parity/} is the substitute for that missing coverage, and it is a manual step —
- * see {@code docs/smoke-checklist-a1.md} and {@code docs/smoke-checklist-a2.md} again, this
- * time for the block-dump steps rather than the walk steps.
+ * see {@code docs/smoke-checklist.md} again, this time for the block-dump step rather than the
+ * walk steps.
  */
 package dev.continuo.testkit;
